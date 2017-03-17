@@ -6,7 +6,7 @@ static void do_rank_0_work(int citiesToCompute, std::string *cmd);
 static void do_rank_i_work(int citiesToCompute, std::string *cmd);
 
 int main(int argc, char **argv){
-  MPI_Init(&argc, &argv);
+    MPI_Init(&argc, &argv);
 	int rank, communicatorSize;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &communicatorSize);
@@ -33,6 +33,7 @@ int main(int argc, char **argv){
         std::cout << "This is argument " << i << " " << argv[i] << "\n";
   		std::cout << "communicatorSize: " << communicatorSize << "\n";
       std::cout << "This is command: " << cmd[1] << "\n";
+      std::cout << "This is column:" << convert_string_to_int_index(cmd[3]) << "\n";
       //viewDataRow(0,data);
     }
     process(rank, communicatorSize, cmd);
@@ -54,21 +55,89 @@ static void process(int rank, int communicatorSize, std::string *cmd){
       do_rank_0_work(citiesToCompute, cmd);
     else
       do_rank_i_work(citiesToCompute, cmd);
+
   }
 }
 
 static void do_rank_0_work(int citiesToCompute, std::string *cmd){
   char *** data = parse(FILENAME);
   MPI_Request sendReq;
-  std::cout << "Distributing data to other processes..." << std::endl;
+
+  //preparing the data to send
+  int column_index = convert_string_to_int_index(cmd[3]);
+  double *total_rows_of_data_at_that_column = new double[ROWS];
+  for(int i = 0; i < ROWS; i++){
+    total_rows_of_data_at_that_column[i] = (double)atof(data[i][column_index]);
+    //std::cout << total_rows_of_data_at_that_column[i] << " ";
+  }
+
+  if(cmd[1] == "sr"){
+    if(cmd[2] == "max"){
+      MPI_Scatter(total_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
+                   MPI_IN_PLACE,       0, MPI_DOUBLE, // recvCount & type are ignored
+                   0, MPI_COMM_WORLD);
+
+      std::cout << "Distributing data to other processes..." << std::endl;
+
+      //std::cout << "Print out the first 25 elements and find the max\n";
+      double max = 0;
+      for (int i = 0; i < ROWS; i++){
+        std::cout << total_rows_of_data_at_that_column[i] << " ";
+        max = total_rows_of_data_at_that_column[i] > max ? total_rows_of_data_at_that_column[i] : max;
+      }
+      std::cout << "\nDone!\n";
+      std::cout << "The max is: " << max << "\n";
+
+      double *result = new double[citiesToCompute];
+      MPI_Reduce(total_rows_of_data_at_that_column, result, citiesToCompute,
+        MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+      double max_mpi;
+      for(int i = 0; i < citiesToCompute; i++){
+        std::cout << result[i] << " ";
+        max_mpi = result[i] > max? result[i] : max;
+      }
+            std::cout << "\nThe max from mpi is: " << max_mpi << "\n";
+      /*
+      std::cout << "Waiting for the others to send me their results..." << std::endl;
+      double *ans = new double[ROWS];
+   	  MPI_Gather(MPI_IN_PLACE, 0, MPI_DOUBLE,
+   	           ans, citiesToCompute, MPI_DOUBLE,
+   	           0, MPI_COMM_WORLD);
+      */
+    }
+  }
+
   /*
-  MPI_Iscatter(A, nRowsToCompute * P, MPI_DOUBLE,
-               MPI_IN_PLACE,       0, MPI_DOUBLE, // recvCount & type are ignored
-               0, MPI_COMM_WORLD, &sendReq);
+
   */
+
+
+  delete[] total_rows_of_data_at_that_column;
   cleanup(data);
 }
 
 static void do_rank_i_work(int citiesToCompute, std::string *cmd){
+      double* my_rows_of_data_at_that_column = new double[citiesToCompute];
+      MPI_Request dataReq;
 
+      MPI_Scatter(NULL, 0, MPI_DOUBLE, // sendBuf, sendCount, sendType ignored
+    		my_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
+    		0, MPI_COMM_WORLD); // rank "0" originated the scatter
+
+      MPI_Reduce(my_rows_of_data_at_that_column, 0, 1,
+        MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+      /*
+      for(int i = 0; i < citiesToCompute; i++)
+        my_rows_of_data_at_that_column[i] = 111.111;
+
+      for(int i = 0; i < citiesToCompute; i++)
+        std::cout << my_rows_of_data_at_that_column[i] << " ";
+      */
+        /*
+      MPI_Gather(my_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
+    	           nullptr, 0, MPI_DOUBLE,
+    	           0, MPI_COMM_WORLD);
+      */
+      delete [] my_rows_of_data_at_that_column;
 }

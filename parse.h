@@ -74,7 +74,7 @@ int convert_string_to_int_index(std::string s){
   if(s.size() > 1)
     return ((int)s[0] - 64)*26 + (int)s[1] -64 - 1;
   else
-    return int(s[0]) -1;
+    return (int)(s[0])- 64 -1;
 }
 
 void viewDataRow(int rownum, char*** map){
