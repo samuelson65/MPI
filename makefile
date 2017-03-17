@@ -1,4 +1,5 @@
 make:
-	mpic++ main.c++ -o proj2
+	mpic++ main.c++ parse.h -o proj2
+
 clean:
 	rm proj2
