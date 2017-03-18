@@ -19,7 +19,6 @@ void cleanup(char***);
 void viewDataRow(int, char***);
 int convert_string_to_int_index(std::string c);
 
-
 char *** parse(std::string filename){
   std::ifstream read;
   read.open(filename);

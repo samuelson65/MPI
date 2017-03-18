@@ -5,8 +5,17 @@ static void process(int rank, int communicatorSize, std::string *cmd);
 static void do_rank_0_work(int citiesToCompute, std::string *cmd);
 static void do_rank_i_work(int citiesToCompute, std::string *cmd);
 
+//void maxloc_val_rank_position
+
+typedef struct pass_in_data_struc{
+  double val;
+  int rank;
+} pass_in_data;
+
+
+
 int main(int argc, char **argv){
-    MPI_Init(&argc, &argv);
+  MPI_Init(&argc, &argv);
 	int rank, communicatorSize;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &communicatorSize);
@@ -48,6 +57,18 @@ static void process(int rank, int communicatorSize, std::string *cmd){
 			std::cerr << "communicatorSize " << communicatorSize
 			          << " does not evenly divide number of cities = " << NUM_CITIES << '\n';
 	} else {
+    //exp
+    /*
+    MPI_Datatype mpi_val_rank_pos;
+    MPI_Datatype types[3] = { MPI_DOUBLE, MPI_INT, MPI_INT }; //value, rank, position
+    MPI_Aint disps[3] = { offsetof(mpi_val_rank_pos, val),
+                    offsetof(mpi_val_rank_pos, rank),
+                    offsetof(mpi_val_rank_pos, pos),  }
+    int lens[3] = {1,0,0}; //data we need to define for MPI to create a type for
+    MPI_Type_create_struct(3, lens, disps, types, &mpi_index_value);
+    MPI_Type_commit(&mpi_dbl_twoindex);
+    */
+    //end exp
     int citiesToCompute = NUM_CITIES / communicatorSize;
     //std::cout << "\n\n citiesToCompute " << citiesToCompute << "\n\n";
 
@@ -62,19 +83,25 @@ static void process(int rank, int communicatorSize, std::string *cmd){
 static void do_rank_0_work(int citiesToCompute, std::string *cmd){
   char *** data = parse(FILENAME);
   MPI_Request sendReq;
+  int column_index = convert_string_to_int_index(cmd[3]);
 
   //preparing the data to send
-  int column_index = convert_string_to_int_index(cmd[3]);
   double *total_rows_of_data_at_that_column = new double[ROWS];
   for(int i = 0; i < ROWS; i++){
     total_rows_of_data_at_that_column[i] = (double)atof(data[i][column_index]);
     //std::cout << total_rows_of_data_at_that_column[i] << " ";
   }
 
+    //preparing data 2nd version
+  //val_rank_pos *data_at_that_column = new val_rank_pos[ROWS];
+
+
   if(cmd[1] == "sr"){
     if(cmd[2] == "max"){
+      double* rank0_rows = new double[citiesToCompute];
+
       MPI_Scatter(total_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
-                   MPI_IN_PLACE,       0, MPI_DOUBLE, // recvCount & type are ignored
+                   rank0_rows, citiesToCompute, MPI_DOUBLE, // recvCount & type are ignored
                    0, MPI_COMM_WORLD);
 
       std::cout << "Distributing data to other processes..." << std::endl;
@@ -82,29 +109,25 @@ static void do_rank_0_work(int citiesToCompute, std::string *cmd){
       //std::cout << "Print out the first 25 elements and find the max\n";
       double max = 0;
       for (int i = 0; i < ROWS; i++){
-        std::cout << total_rows_of_data_at_that_column[i] << " ";
+        //std::cout << total_rows_of_data_at_that_column[i] << " ";
         max = total_rows_of_data_at_that_column[i] > max ? total_rows_of_data_at_that_column[i] : max;
       }
       std::cout << "\nDone!\n";
       std::cout << "The max is: " << max << "\n";
 
+      // each process has an array of num(citiesToCompute) double
+
+
       double *result = new double[citiesToCompute];
-      MPI_Reduce(total_rows_of_data_at_that_column, result, citiesToCompute,
+      MPI_Reduce(rank0_rows, result, citiesToCompute,
         MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-      double max_mpi;
+      double max_mpi = 0;
       for(int i = 0; i < citiesToCompute; i++){
         std::cout << result[i] << " ";
-        max_mpi = result[i] > max? result[i] : max;
+        max_mpi = result[i] > max_mpi? result[i] : max_mpi;
       }
             std::cout << "\nThe max from mpi is: " << max_mpi << "\n";
-      /*
-      std::cout << "Waiting for the others to send me their results..." << std::endl;
-      double *ans = new double[ROWS];
-   	  MPI_Gather(MPI_IN_PLACE, 0, MPI_DOUBLE,
-   	           ans, citiesToCompute, MPI_DOUBLE,
-   	           0, MPI_COMM_WORLD);
-      */
     }
   }
 
@@ -125,19 +148,14 @@ static void do_rank_i_work(int citiesToCompute, std::string *cmd){
     		my_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
     		0, MPI_COMM_WORLD); // rank "0" originated the scatter
 
-      MPI_Reduce(my_rows_of_data_at_that_column, 0, 1,
-        MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-      /*
-      for(int i = 0; i < citiesToCompute; i++)
-        my_rows_of_data_at_that_column[i] = 111.111;
+      double max = 0;
+      for(int i = 0; i < citiesToCompute; i++){
+        max = my_rows_of_data_at_that_column[i] > max? my_rows_of_data_at_that_column[i] : max;
+      }
+      std::cout << "max here at rank: " << max << "\n";
 
-      for(int i = 0; i < citiesToCompute; i++)
-        std::cout << my_rows_of_data_at_that_column[i] << " ";
-      */
-        /*
-      MPI_Gather(my_rows_of_data_at_that_column, citiesToCompute, MPI_DOUBLE,
-    	           nullptr, 0, MPI_DOUBLE,
-    	           0, MPI_COMM_WORLD);
-      */
+      MPI_Reduce(my_rows_of_data_at_that_column, 0, citiesToCompute,
+        MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
       delete [] my_rows_of_data_at_that_column;
 }
