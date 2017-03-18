@@ -143,7 +143,8 @@ static void do_rank_0_work(int citiesToCompute, std::string *cmd){
           }
         }
 
-        std::cout << "\n\nMax value: " << max_mpi << "in rank: " << max_mpis_rank << "\n";
+        std::cout << "\n\nMax value: " << max_mpi << " in rank: " << max_mpis_rank << "\n";
+        
       /*
       double max_mpi = 0;
       for(int i = 0; i < citiesToCompute; i++){
