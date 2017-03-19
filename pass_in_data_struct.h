@@ -1,8 +1,11 @@
 #include <mpi.h>
 #include "parse.h"
 
+
+static double number_to_compare = 0.0; // number used for compare methods (gt and lt)
+std::string no_num_error_message = "Oops looks like you did not enter a number to compare\n";
 // "number blocks" in the struct
-static const int NUM_STRUCT_FIELDS = 3;
+static const int NUM_STRUCT_FIELDS = 4;
 void defineStruct_pass_in_data(MPI_Datatype* typeToBeCreated);
 void define_op_max_pass_in_data(MPI_Op* op);
 void max_location_index(void *in, void *inout, int *len, MPI_Datatype *type);
@@ -13,6 +16,7 @@ typedef struct pass_in_data_struc{
   double val;
   int rank;
   int index;
+  int number;
 } pass_in_data;
 
 // template for MPI opertations
@@ -21,11 +25,11 @@ void max_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
     pass_in_data *inoutvals = (pass_in_data*)inout;
 
     //remember this is global operations?
-    std::cout << "LEN: " <<*len<<"\n";
+    //std::cout << "LEN: " <<*len<<"\n";
     for (int i=0; i<*len; i++) {
         if (invals[i].val > inoutvals[i].val) {
             inoutvals[i].val  = invals[i].val;
-            inoutvals[i].rank = invals[i].rank;
+            //inoutvals[i].rank = invals[i].rank;
             inoutvals[i].index = invals[i].index;
         }
     }
@@ -39,7 +43,7 @@ void min_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
     for (int i=0; i<*len; i++) {
         if (invals[i].val < inoutvals[i].val) {
             inoutvals[i].val  = invals[i].val;
-            inoutvals[i].rank = invals[i].rank;
+            //inoutvals[i].rank = invals[i].rank;
             inoutvals[i].index = invals[i].index;
         }
     }
@@ -48,22 +52,56 @@ void min_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
 }
 
 // template for MPI opertations
-
-void take_avg(void *in, void *inout, int *len, MPI_Datatype *type){
+void take_sum(void *in, void *inout, int *len, MPI_Datatype *type){
     pass_in_data *invals    = (pass_in_data*)in;
     pass_in_data *inoutvals = (pass_in_data*)inout;
-    double sum = 0;
+    //double sum = 0;
 
-    for (int i=0; i<*len; i++) {
-        //std::cout << "invals rank " << invals[i].rank << "\n";
+    /*
+    int i_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &i_rank);
+    */
+    for (int i=0; i<*len; i++)
         inoutvals[i].val += invals[i].val;
-        sum+=invals[i].val;
-    }
-    //std::cout << "SUM:" << sum << "\n" ;
-    //std::cout << "rank: " << invals[15].rank << "\n";
-    //std::cout <<"SUM at rank" << invals[0].rank <<": "<< sum<<"\n";
-    //std::cout << inoutvals[24] << "\n";
+    /*
+    for (int i=0; i<*len; i++)
+      std::cout << "At rank " << i_rank << " and inoutvals[" << i <<"].val is " << inoutvals[i].val << "\n";
+    */
     return;
+}
+
+void num_gt(void *in, void *inout, int *len, MPI_Datatype *type){
+  pass_in_data *invals    = (pass_in_data*)in;
+  pass_in_data *inoutvals = (pass_in_data*)inout;
+  /*
+  int i_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &i_rank);
+  */
+  for (int i=0; i<*len; i++)
+      inoutvals[i].number += invals[i].number;
+  /*
+  for (int i=0; i<*len; i++) {
+      double v1 = invals[i].val;
+      double v2 = inoutvals[i].val;
+      std::cout << "At rank " << i_rank << " and v1 " << v1 << " and v2 " << v2 << "\n";
+      if(v1 > number_to_compare){
+        //std::cout << "At rank " << i_rank << " and at" << i << " and Value is " << invals[i].val << "\n";
+          inoutvals[i].number++;
+      }
+      if(v2 > number_to_compare){
+        inoutvals[i].number++;
+      }
+  }
+  */
+  //for (int i=0; i<*len; i++)
+  //  std::cout << "At rank " << i_rank << " and inoutvals[" << i <<"].number is " << inoutvals[i].number << "\n";
+}
+
+void num_lt(void *in, void *inout, int *len, MPI_Datatype *type){
+  pass_in_data *invals    = (pass_in_data*)in;
+  pass_in_data *inoutvals = (pass_in_data*)inout;
+  for (int i=0; i<*len; i++)
+      inoutvals[i].number += invals[i].number;
 }
 
 
@@ -72,6 +110,23 @@ void copy_data_at_that_column(char*** data, int rows, int column_index, int part
     p[i].val = (double)std::stod(data[i][column_index]);
     p[i].rank = (i+1)/partition_size; // since mpi scatter arrange each process in order => rank is the floor division: index / citiesToCompute
     p[i].index = i;
+    p[i].number = 0;
+  }
+}
+
+void adjust_number_gt(int rows, pass_in_data* p){
+  for(int i = 0; i < rows; i++){
+    if(p[i].val > number_to_compare){
+      p[i].number = 1;
+    }
+  }
+}
+
+void adjust_number_lt(int rows, pass_in_data* p){
+  for(int i = 0; i < rows; i++){
+    if(p[i].val < number_to_compare){
+      p[i].number = 1;
+    }
   }
 }
 /*
@@ -90,22 +145,54 @@ void defineStruct_pass_in_data(MPI_Datatype* typeToBeCreated){
 	types[0] = MPI_DOUBLE; // type of val
 	types[1] = MPI_INT;   // type of rank
 	types[2] = MPI_INT; // base type of index
+  types[3] = MPI_INT; // type of number
 
   //if it's an array, then it has length >= 1
 	blklen[0] = 1; // length of val
 	blklen[1] = 1; // length of rank
 	blklen[2] = 1; // length of index
+  blklen[3] = 1; // length of number
 
   displ[0] = 0;
   pass_in_data sample;
   MPI_Aint base; // base address of a pass_in_data instance
   MPI_Get_address(&sample.val, &base);
   // base address of successive fields of a given pass_in_data instance:
+
+  /* FOR EDUCATION PURPOSES:
+  int i_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &i_rank);
+
+  if(i_rank == 0){
+    std::cout << "BASE " << base << "\n";
+    std::cout << "disp[0] is at 0\n";
+  }
+  */
   MPI_Aint oneField;
   MPI_Get_address(&sample.rank, &oneField);
-  displ[1] = oneField - base; // offset (displacement) to 'y'
+  /*
+  if(i_rank == 0){
+    std::cout << "ADDRESS one field " << oneField << "\n";
+    std::cout << "disp[1] is on: " << oneField - base << "\n";
+  }
+  */
+  displ[1] = oneField - base; // offset (displacement) to
   MPI_Get_address(&sample.index, &oneField);
-  displ[2] = oneField - base; // offset (displacement) to 'z'
+  /*
+  if(i_rank == 0){
+    std::cout << "ADDRESS one field " << oneField << "\n";
+    std::cout << "disp[2] is on: " << oneField - base << "\n";
+  }
+  */
+  displ[2] = oneField - base; // offset (displacement) to
+  MPI_Get_address(&sample.number, &oneField);
+  /*
+  if(i_rank == 0){
+    std::cout << "ADDRESS one field " << oneField << "\n";
+    std::cout << "disp[3] is on: " << oneField - base << "\n";
+  }
+  */
+  displ[3] = oneField - base;
 
   MPI_Type_create_struct(NUM_STRUCT_FIELDS, blklen, displ, types, typeToBeCreated);
   MPI_Type_commit(typeToBeCreated);
@@ -117,10 +204,15 @@ void define_op_max_pass_in_data(MPI_Op* op){
 void define_op_min_pass_in_data(MPI_Op* op){
   MPI_Op_create(min_location_index, 1, op);
 }
-void define_op_avg_pass_in_data(MPI_Op* op){
-    MPI_Op_create(take_avg, 1, op);
+void define_op_sum_pass_in_data(MPI_Op* op){
+    MPI_Op_create(take_sum, 1, op);
 }
-
+void define_op_numGt_pass_in_data(MPI_Op* op){
+  MPI_Op_create(num_gt, 1, op);
+}
+void define_op_numLt_pass_in_data(MPI_Op* op){
+  MPI_Op_create(num_lt, 1, op);
+}
 /*
   in:
     std::string name - the name of the column
@@ -163,6 +255,13 @@ void report_avg_answer(std::string name, pass_in_data* p, int length){
     sum+=p[i].val;
   avg = sum/ROWS;
   std::cout << "Average " << name << " = " << avg << std::endl;
+}
+
+void report_gtlt_answer(std::string name, pass_in_data* p, int length, std::string cmd){
+  double sum = 0;
+  for(int i = 0; i < length; i++)
+    sum+=p[i].number;
+  std::cout << "Number Cities with " << name << " " << cmd << " " <<number_to_compare << " = " << sum << "\n";
 }
 
 
