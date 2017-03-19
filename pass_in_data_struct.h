@@ -55,7 +55,7 @@ void take_avg(void *in, void *inout, int *len, MPI_Datatype *type){
     double sum = 0;
 
     for (int i=0; i<*len; i++) {
-        std::cout << "invals rank " << invals[i].rank << "\n";
+        //std::cout << "invals rank " << invals[i].rank << "\n";
         inoutvals[i].val += invals[i].val;
         sum+=invals[i].val;
     }
@@ -74,13 +74,61 @@ void copy_data_at_that_column(char*** data, int rows, int column_index, int part
     p[i].index = i;
   }
 }
-
+/*
 void copy_value_at_that_column(char*** data, int rows, int column_index, double* p){
   for(int i = 0; i < rows; i++)
     p[i] = (double)std::stod(data[i][column_index]);
 }
+*/
 
+void defineStruct_pass_in_data(MPI_Datatype* typeToBeCreated){
+  /* create our new data type and its associated methods */
+  MPI_Datatype types[NUM_STRUCT_FIELDS];
+  MPI_Aint displ[NUM_STRUCT_FIELDS];
+  int blklen[NUM_STRUCT_FIELDS];
 
+	types[0] = MPI_DOUBLE; // type of val
+	types[1] = MPI_INT;   // type of rank
+	types[2] = MPI_INT; // base type of index
+
+  //if it's an array, then it has length >= 1
+	blklen[0] = 1; // length of val
+	blklen[1] = 1; // length of rank
+	blklen[2] = 1; // length of index
+
+  displ[0] = 0;
+  pass_in_data sample;
+  MPI_Aint base; // base address of a pass_in_data instance
+  MPI_Get_address(&sample.val, &base);
+  // base address of successive fields of a given pass_in_data instance:
+  MPI_Aint oneField;
+  MPI_Get_address(&sample.rank, &oneField);
+  displ[1] = oneField - base; // offset (displacement) to 'y'
+  MPI_Get_address(&sample.index, &oneField);
+  displ[2] = oneField - base; // offset (displacement) to 'z'
+
+  MPI_Type_create_struct(NUM_STRUCT_FIELDS, blklen, displ, types, typeToBeCreated);
+  MPI_Type_commit(typeToBeCreated);
+}
+
+void define_op_max_pass_in_data(MPI_Op* op){
+  MPI_Op_create(max_location_index, 1, op);
+}
+void define_op_min_pass_in_data(MPI_Op* op){
+  MPI_Op_create(min_location_index, 1, op);
+}
+void define_op_avg_pass_in_data(MPI_Op* op){
+    MPI_Op_create(take_avg, 1, op);
+}
+
+/*
+  in:
+    std::string name - the name of the column
+    char*** data - the data matrix; use this to print out the city and state's name
+    pass_in_data* p - the answer (an array of pass_in_data_struct)
+    int length - the length of pass_in_data
+    std::string s - "max" or "min"
+*/
 void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int length, std::string s){
   double val_mpi = p[0].val;
   int val_mpi_rank = p[0].rank;
@@ -107,52 +155,17 @@ void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int l
     std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << name << " = " << (int)val_mpi << "\n";
   }
   return;
+}
 
+void report_avg_answer(std::string name, pass_in_data* p, int length){
+  double sum = 0, avg = 0;
+  for(int i = 0; i < length; i++)
+    sum+=p[i].val;
+  avg = sum/ROWS;
+  std::cout << "Average " << name << " = " << avg << std::endl;
 }
 
 
-void defineStruct_pass_in_data(MPI_Datatype* typeToBeCreated){
-  /* create our new data type and its associated methods */
-
-  MPI_Datatype types[NUM_STRUCT_FIELDS];
-  MPI_Aint displ[NUM_STRUCT_FIELDS];
-  int blklen[NUM_STRUCT_FIELDS];
-
-	types[0] = MPI_DOUBLE; // type of val
-	types[1] = MPI_INT;   // type of rank
-	types[2] = MPI_INT; // base type of index
-
-  //if it's an array, then it has length >= 1
-	blklen[0] = 1; // length of val
-	blklen[1] = 1; // length of rank
-	blklen[2] = 1; // length of index
-
-
-  displ[0] = 0;
-  pass_in_data sample;
-  MPI_Aint base; // base address of a pass_in_data instance
-  MPI_Get_address(&sample.val, &base);
-  // base address of successive fields of a given pass_in_data instance:
-  MPI_Aint oneField;
-  MPI_Get_address(&sample.rank, &oneField);
-  displ[1] = oneField - base; // offset (displacement) to 'y'
-  MPI_Get_address(&sample.index, &oneField);
-  displ[2] = oneField - base; // offset (displacement) to 'z'
-
-
-  MPI_Type_create_struct(NUM_STRUCT_FIELDS, blklen, displ, types, typeToBeCreated);
-  MPI_Type_commit(typeToBeCreated);
-}
-
-void define_op_max_pass_in_data(MPI_Op* op){
-  MPI_Op_create(max_location_index, 1, op);
-}
-void define_op_min_pass_in_data(MPI_Op* op){
-  MPI_Op_create(min_location_index, 1, op);
-}
-void define_op_avg_pass_in_data(MPI_Op* op){
-    MPI_Op_create(take_avg, 1, op);
-}
 
 /*
 void cleanUp_mpi(MPI_Datatype* typeToBeCreated){

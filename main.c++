@@ -87,22 +87,7 @@ void process(int rank, int communicatorSize, std::string *cmd){
         } else if(cmd[2] == "avg") {
           MPI_Reduce(total_pass_in, ans, citiesToCompute,
           MPI_pass_in_data, mpi_take_avg, 0, MPI_COMM_WORLD);
-          //exp
-          double sum=0, avg = 0;
-          for(int i= 0; i < ROWS; i++){
-            sum += total_pass_in[i].val;
-          }
-          std::cout << "Correct avg: " << sum/ROWS << "\n";
-          sum=0;
-          for(int i = 0; i < citiesToCompute; i++){
-            //std::cout << "SUM AT EACH PARTITION: " << ans[i].val << "\n";
-            sum+=ans[i].val;
-          }
-          avg = sum/ROWS;
-          std::cout << "Computed avg: " << avg << "\n";
-          //end exp
-
-
+          report_avg_answer(that_column_name, ans, citiesToCompute);
         }
         delete[] ans;
       }
