@@ -64,11 +64,15 @@ void process(int rank, int communicatorSize, std::string *cmd){
       int column_index = convert_string_to_int_index(cmd[3]);
       std::string that_column_name = categories[column_index];
       pass_in_data *total_pass_in = new pass_in_data[ROWS];
+      //double *total_double_pas_in = new double[ROWS];
       copy_data_at_that_column(data, ROWS, column_index, citiesToCompute, total_pass_in);
+      //copy_value_at_that_column(data, ROWS, column_index, total_double_pas_in);
 
       if(cmd[1] == "sr"){
         //pass_in_data* rank_0_proc = new pass_in_data[citiesToCompute]; //don't need this
         pass_in_data* ans = new pass_in_data[citiesToCompute];
+        //double* double_ans = new double[citiesToCompute];
+
         MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data,
                      MPI_IN_PLACE, 0, MPI_pass_in_data,
                      0, MPI_COMM_WORLD);
@@ -94,7 +98,7 @@ void process(int rank, int communicatorSize, std::string *cmd){
             //std::cout << "SUM AT EACH PARTITION: " << ans[i].val << "\n";
             sum+=ans[i].val;
           }
-          avg = sum/citiesToCompute;
+          avg = sum/ROWS;
           std::cout << "Computed avg: " << avg << "\n";
           //end exp
 

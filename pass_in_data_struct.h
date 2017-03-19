@@ -55,11 +55,13 @@ void take_avg(void *in, void *inout, int *len, MPI_Datatype *type){
     double sum = 0;
 
     for (int i=0; i<*len; i++) {
-        inoutvals[i].val += invals[i].val/ROWS;
-        sum+=inoutvals[i].val;
+        std::cout << "invals rank " << invals[i].rank << "\n";
+        inoutvals[i].val += invals[i].val;
+        sum+=invals[i].val;
     }
-    std::cout << "rank: " << invals[15].rank << "\n";
-    std::cout <<"SUM at rank" << invals[0].rank <<": "<< sum<<"\n";
+    //std::cout << "SUM:" << sum << "\n" ;
+    //std::cout << "rank: " << invals[15].rank << "\n";
+    //std::cout <<"SUM at rank" << invals[0].rank <<": "<< sum<<"\n";
     //std::cout << inoutvals[24] << "\n";
     return;
 }
@@ -72,6 +74,12 @@ void copy_data_at_that_column(char*** data, int rows, int column_index, int part
     p[i].index = i;
   }
 }
+
+void copy_value_at_that_column(char*** data, int rows, int column_index, double* p){
+  for(int i = 0; i < rows; i++)
+    p[i] = (double)std::stod(data[i][column_index]);
+}
+
 
 void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int length, std::string s){
   double val_mpi = p[0].val;
