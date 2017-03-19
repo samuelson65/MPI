@@ -1,4 +1,5 @@
 #include <mpi.h>
+#include "parse.h"
 
 // "number blocks" in the struct
 static const int NUM_STRUCT_FIELDS = 3;
@@ -26,6 +27,58 @@ void max_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
         }
     }
     return;
+}
+
+void min_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
+    pass_in_data *invals    = (pass_in_data*)in;
+    pass_in_data *inoutvals = (pass_in_data*)inout;
+
+    for (int i=0; i<*len; i++) {
+        if (invals[i].val < inoutvals[i].val) {
+            inoutvals[i].val  = invals[i].val;
+            inoutvals[i].rank = invals[i].rank;
+            inoutvals[i].index = invals[i].index;
+        }
+    }
+    return;
+}
+
+
+void copy_data_at_that_column(char*** data, int rows, int column_index, int partition_size, pass_in_data* p){
+  for(int i = 0; i < rows; i++){
+    p[i].val = (double)std::stod(data[i][column_index]);
+    p[i].rank = (i+1)/partition_size; // since mpi scatter arrange each process in order => rank is the floor division: index / citiesToCompute
+    p[i].index = i;
+  }
+}
+
+void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int length, std::string s){
+  double val_mpi = p[0].val;
+  int val_mpi_rank = p[0].rank;
+  int val_mpi_index = p[0].index;
+  if(s == "max"){
+    for(int i = 1; i < length; i++){
+      //std::cout << "Value: " << p[i].val << " Rank: " << p[i].rank << "\n";
+      if(p[i].val > val_mpi){
+        val_mpi = p[i].val ;
+        val_mpi_rank = p[i].rank;
+        val_mpi_index = p[i].index;
+      }
+    }
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << name << " = " << (int)val_mpi << "\n";
+  } else {
+    for(int i = 1; i < length; i++){
+      //std::cout << "Value: " << p[i].val << " Rank: " << p[i].rank << "\n";
+      if(p[i].val < val_mpi){
+        val_mpi = p[i].val ;
+        val_mpi_rank = p[i].rank;
+        val_mpi_index = p[i].index;
+      }
+    }
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << name << " = " << (int)val_mpi << "\n";
+  }
+  return;
+
 }
 
 
@@ -65,7 +118,9 @@ void defineStruct_pass_in_data(MPI_Datatype* typeToBeCreated){
 void define_op_max_pass_in_data(MPI_Op* op){
   MPI_Op_create(max_location_index, 1, op);
 }
-
+void define_op_min_pass_in_data(MPI_Op* op){
+  MPI_Op_create(min_location_index, 1, op);
+}
 
 
 /*

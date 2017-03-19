@@ -1,7 +1,4 @@
-#include "parse.h"
 #include "pass_in_data_struct.h"
-
-
 
 void process(int rank, int communicatorSize, std::string *cmd);
 
@@ -36,7 +33,6 @@ int main(int argc, char **argv){
       //viewDataRow(0,data);
     }
 
-
     if ((NUM_CITIES % communicatorSize) != 0){
   		if (rank == 0)
   			std::cerr << "communicatorSize " << communicatorSize
@@ -57,50 +53,35 @@ void process(int rank, int communicatorSize, std::string *cmd){
     defineStruct_pass_in_data(&MPI_pass_in_data);
     MPI_Op mpi_max_location_index;
     define_op_max_pass_in_data(&mpi_max_location_index);
+    MPI_Op mpi_min_location_index;
+    define_op_min_pass_in_data(&mpi_min_location_index);
 
     if(rank == 0){
       char *** data = parse(FILENAME);
-      std::cout << data[0][0] << " " << data[0][1] << "\n";
+      char ** categories = parse_first_line(FILENAME);
       int column_index = convert_string_to_int_index(cmd[3]);
+      std::string that_column_name = categories[column_index];
       pass_in_data *total_pass_in = new pass_in_data[ROWS];
-      for(int i = 0; i < ROWS; i++){
-        total_pass_in[i].val = (double)atof(data[i][column_index]);
-        total_pass_in[i].rank = (i+1)/citiesToCompute; // since mpi scatter arrange each process in order => rank is the floor division: index / citiesToCompute
-        total_pass_in[i].index = i+1;
-        //std::cout << total_rows_of_data_at_that_column[i] << " ";
-      }
-        if(cmd[1] == "sr"){
-          if(cmd[2] == "max"){
-            //double* rank0_rows = new double[citiesToCompute];
-            pass_in_data* rank_0_proc = new pass_in_data[citiesToCompute];
+      copy_data_at_that_column(data, ROWS, column_index, citiesToCompute, total_pass_in);
 
-            MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data,
-                         rank_0_proc, citiesToCompute, MPI_pass_in_data, // recvCount & type are ignored
-                         0, MPI_COMM_WORLD);
-
-            std::cout << "Distributing data to other processes..." << std::endl;
-            pass_in_data* ans = new pass_in_data[citiesToCompute];
-            //double *result = new double[citiesToCompute];
-            MPI_Reduce(total_pass_in, ans, citiesToCompute,
-            MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
-
-            double max_mpi = 0;
-            int max_mpi_rank = 0;
-            int max_mpi_index = 0;
-            for(int i = 0; i < citiesToCompute; i++){
-              std::cout << "Value: " << ans[i].val <<
-              " Rank: " << ans[i].rank << "\n";
-              if(ans[i].val > max_mpi){
-                max_mpi = ans[i].val ;
-                max_mpi_rank = ans[i].rank;
-                max_mpi_index = ans[i].index;
-              }
-            }
-          std::cout << "\n\nMax value: " << max_mpi << " in rank: " << max_mpi_rank <<  " in the index: " << max_mpi_index << "\n";
-          std::cout << "Table: " << data[max_mpi_index-1][0] << ", " <<  data[max_mpi_index-1][1] << "\n";
+      if(cmd[1] == "sr"){
+        //pass_in_data* rank_0_proc = new pass_in_data[citiesToCompute]; //don't need this
+        pass_in_data* ans = new pass_in_data[citiesToCompute];
+        MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data,
+                     MPI_IN_PLACE, 0, MPI_pass_in_data,
+                     0, MPI_COMM_WORLD);
+        if(cmd[2] == "max"){
+          MPI_Reduce(total_pass_in, ans, citiesToCompute,
+          MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
+          report_maxmin_answer(that_column_name, data, ans, citiesToCompute, "max");  //get the row index
+        } else if(cmd[2] == "min") {
+          MPI_Reduce(total_pass_in, ans, citiesToCompute,
+          MPI_pass_in_data, mpi_min_location_index, 0, MPI_COMM_WORLD);
+          report_maxmin_answer(that_column_name, data, ans, citiesToCompute, "min");
         }
+        delete[] ans;
       }
-      cleanup(data);
+      cleanup(data, categories);
     }
     else{ //if rank != 0
       pass_in_data* my_rows = new pass_in_data[citiesToCompute];
@@ -109,8 +90,12 @@ void process(int rank, int communicatorSize, std::string *cmd){
       MPI_Scatter(NULL, 0, MPI_pass_in_data, // sendBuf, sendCount, sendType ignored
         my_rows, citiesToCompute, MPI_pass_in_data,
         0, MPI_COMM_WORLD); // rank "0" originated the scatter
-      MPI_Reduce(my_rows, 0, citiesToCompute,
-      MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
+      if(cmd[2] == "max"){
+        MPI_Reduce(my_rows, 0, citiesToCompute,
+        MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
+      } else if(cmd[2] == "min") {
+        MPI_Reduce(my_rows, 0, citiesToCompute,
+        MPI_pass_in_data, mpi_min_location_index, 0, MPI_COMM_WORLD);
+      }
     }
-
 }

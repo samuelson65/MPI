@@ -14,17 +14,36 @@
 /*
   methods
 */
+
+char** parse_first_line(std::string filename);
 char *** parse(std::string filename);
-void cleanup(char***);
+void cleanup(char*** map, char** first_line);
 void viewDataRow(int, char***);
 int convert_string_to_int_index(std::string c);
+
+char** parse_first_line(std::string filename){
+  std::ifstream read;
+  read.open(filename);
+  char** first_line = (char**)malloc(COLS * sizeof(char**));
+  char *token; std::string line;
+  std::getline(read, line); read.close();
+  token = strtok((char*)line.c_str(), ",");
+  for (int j = 0; j < COLS; ++j){
+    first_line[j] = (char *) malloc(MAXFLDS * sizeof(char));
+    strcpy(first_line[j], token);
+    token = strtok(NULL, ",");
+  }
+
+  return first_line;
+}
+
 
 char *** parse(std::string filename){
   std::ifstream read;
   read.open(filename);
 
   //create a matrix of c_strings
-  char ***map = (char ***) malloc(ROWS * sizeof(char **));
+  char ***map = (char ***)malloc(ROWS * sizeof(char **));
 
   //For fields with values enclosed with parenthesis, we mark it with "NA"
   std::string na = "NA";
@@ -39,7 +58,6 @@ char *** parse(std::string filename){
 
   for (int i = 0; i < ROWS; ++i){
      map[i] = (char **) malloc(COLS * sizeof(char*));
-
      std::getline(read, line);
      token = strtok((char*)line.c_str(), ",");
      for (int j = 0; j < COLS; ++j){
@@ -54,18 +72,21 @@ char *** parse(std::string filename){
      }
      //printf("\n");
   }
-
+  read.close();
   return map;
 }
 
-void cleanup(char*** map){
+void cleanup(char*** map, char** first_line){
   //clean up
   for (int i = 0; i < ROWS; ++i){
    for (int j = 0; j < COLS; ++j)
       free(map[i][j]);
    free(map[i]);
   }
+  for (int j = 0; j < COLS; ++j)
+     free(first_line[j]);
   free(map);
+  free(first_line);
 }
 
 int convert_string_to_int_index(std::string s){
