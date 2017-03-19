@@ -15,10 +15,13 @@ typedef struct pass_in_data_struc{
   int index;
 } pass_in_data;
 
+// template for MPI opertations
 void max_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
     pass_in_data *invals    = (pass_in_data*)in;
     pass_in_data *inoutvals = (pass_in_data*)inout;
 
+    //remember this is global operations?
+    std::cout << "LEN: " <<*len<<"\n";
     for (int i=0; i<*len; i++) {
         if (invals[i].val > inoutvals[i].val) {
             inoutvals[i].val  = invals[i].val;
@@ -29,10 +32,10 @@ void max_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
     return;
 }
 
+// template for MPI opertations
 void min_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
     pass_in_data *invals    = (pass_in_data*)in;
     pass_in_data *inoutvals = (pass_in_data*)inout;
-
     for (int i=0; i<*len; i++) {
         if (invals[i].val < inoutvals[i].val) {
             inoutvals[i].val  = invals[i].val;
@@ -40,6 +43,24 @@ void min_location_index(void *in, void *inout, int *len, MPI_Datatype *type){
             inoutvals[i].index = invals[i].index;
         }
     }
+    //std::cout << "Rank: " << inoutvals[i].rank << " Index: "<< inoutvals[24].index << " Value: " << inoutvals[24].val << "\n";
+    return;
+}
+
+// template for MPI opertations
+
+void take_avg(void *in, void *inout, int *len, MPI_Datatype *type){
+    pass_in_data *invals    = (pass_in_data*)in;
+    pass_in_data *inoutvals = (pass_in_data*)inout;
+    double sum = 0;
+
+    for (int i=0; i<*len; i++) {
+        inoutvals[i].val += invals[i].val/ROWS;
+        sum+=inoutvals[i].val;
+    }
+    std::cout << "rank: " << invals[15].rank << "\n";
+    std::cout <<"SUM at rank" << invals[0].rank <<": "<< sum<<"\n";
+    //std::cout << inoutvals[24] << "\n";
     return;
 }
 
@@ -121,7 +142,9 @@ void define_op_max_pass_in_data(MPI_Op* op){
 void define_op_min_pass_in_data(MPI_Op* op){
   MPI_Op_create(min_location_index, 1, op);
 }
-
+void define_op_avg_pass_in_data(MPI_Op* op){
+    MPI_Op_create(take_avg, 1, op);
+}
 
 /*
 void cleanUp_mpi(MPI_Datatype* typeToBeCreated){
