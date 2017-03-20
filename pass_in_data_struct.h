@@ -97,12 +97,14 @@ void num_gtlt(void *in, void *inout, int *len, MPI_Datatype *type){
   //  std::cout << "At rank " << i_rank << " and inoutvals[" << i <<"].number is " << inoutvals[i].number << "\n";
 }
 
-void copy_data_at_that_column(char*** data, int rows, int column_index, int partition_size, pass_in_data* p){
-  for(int i = 0; i < rows; i++){
-    p[i].val = (double)std::stod(data[i][column_index]);
-    p[i].rank = (i+1)/partition_size; // since mpi scatter arrange each process in order => rank is the floor division: index / citiesToCompute
+void copy_data_at_that_column(char*** data, int rows, int column_index, int partition_size, pass_in_data* p, int start){
+  int k = 0;
+  for(int i = start; i < rows+start; i++){
+    p[i].val = (double)std::stod(data[k][column_index]);
+    //p[i].rank = (i+1)/partition_size; // since mpi scatter arrange each process in order => rank is the floor division: index / citiesToCompute
     p[i].index = i;
     p[i].number = 0;
+    k++;
   }
 }
 
@@ -252,6 +254,28 @@ void report_gtlt_answer(std::string* name, char*** data, pass_in_data* p, int le
   for(int i = 0; i < length; i++)
     sum+=p[i].number;
   std::cout << "Number Cities with " << *name << " " << *gtlt << " " << number_to_compare << " = " << sum << "\n";
+}
+
+double bg_method(pass_in_data* p, int rank, std::string method){
+  int start = rank*ROWS;
+  std::cout << "I'm rank:" << rank << " my start: " << start << " my_end: " <<  ROWS+start << "\n";
+  double result = p[start].val;
+
+  if(method == "max"){
+    for(int i = start+1; i < ROWS+start; i++)
+      result = p[i].val > result ? p[i].val : result;
+  }
+  if(method == "min"){
+    for(int i = start+1; i < ROWS+start; i++)
+      result = p[i].val < result ? p[i].val : result;
+  }
+  if(method == "avg"){
+    for(int i = start+1; i < ROWS+start; i++)
+      result +=p[i].val;
+    result /= ROWS;
+  }
+  std::cout << "I'm rank:" << rank << " My result: " << result << "\n";
+  return result;
 }
 
 
