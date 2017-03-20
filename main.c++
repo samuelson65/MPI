@@ -18,8 +18,7 @@ int main(int argc, char **argv){
   if (argc < 4){
     if (rank == 0) // only report error once
       std::cerr << "Specify method, function outcome, and specified column on the command line.\n";
-  }
-  else{
+  } else {
     std::string cmd[argc];
     for(int i = 0; i < argc; i++)
       cmd[i] = argv[i];
@@ -31,15 +30,6 @@ int main(int argc, char **argv){
     // cmd[5] - a numeric value for sr-number-condition method || city-column for bd method
     // cmd[6] - city-column for bd method
     // cmd[7] - city-column for bd method, and so on..
-    if(rank == 0){
-      for(int i = 0; i < argc; i++)
-        std::cout << "This is argument " << i << " " << argv[i] << "\n";
-  		std::cout << "communicatorSize: " << communicatorSize << "\n";
-      std::cout << "This is command: " << cmd[1] << "\n";
-      std::cout << "This is column:" << convert_string_to_int_index(cmd[3]) << "\n";
-      //viewDataRow(0,data);
-    }
-
     if (cmd[1] == "sr" && (NUM_CITIES % communicatorSize) != 0){
   		if (rank == 0) std::cerr << "communicatorSize " << communicatorSize << " does not evenly divide number of cities = " << NUM_CITIES << '\n';}
     else if(cmd[1] == "bg" && (communicatorSize != argc - 3)){
@@ -52,7 +42,6 @@ int main(int argc, char **argv){
 }
 
 void process(int rank, int communicatorSize, std::string *cmd, int argc){
-
     int citiesToCompute = NUM_CITIES / communicatorSize;
     defineStruct_pass_in_data(&MPI_pass_in_data);
     define_op_max_pass_in_data(&mpi_max_location_index);
@@ -98,7 +87,6 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
         int num_columns = argc-3;
         int data_chunk = ROWS*num_columns;
         int process_col_index[num_columns];
-        std::cout << "ROWS*num_columns: " << data_chunk << "\n";
         pass_in_data *total_pass_in = new pass_in_data[data_chunk];
         for(int i = 0; i < num_columns; i++){
           process_col_index[i] = convert_string_to_int_index(cmd[3 + i]);
@@ -109,9 +97,8 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
         ans[0] = bg_method(total_pass_in, 0, cmd[2]); // 0, since this is rank 0
         MPI_Bcast(total_pass_in, data_chunk, MPI_pass_in_data, 0, MPI_COMM_WORLD);
         MPI_Gather(MPI_IN_PLACE, 0, MPI_DOUBLE, &ans, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        report_bg_answer(categories, ans, process_col_index, &cmd[2], num_columns);
 
-        for(int i = 0; i < num_columns; i++)
-          std::cout << ans[i] << "\n";
       }
     }
     else{ //if rank != 0
@@ -130,12 +117,6 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
       //  std::cout << "I'm rank:" << i_rank << " my start: " << start << " my_end: " <<  ROWS+start << "\n";
         double answer = bg_method(my_cpy, i_rank, cmd[2]);
         MPI_Gather(&answer, 1, MPI_DOUBLE, nullptr, 0, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-
       }
     }//end big else block
-
-
-
-
 }// end process

@@ -258,7 +258,7 @@ void report_gtlt_answer(std::string* name, char*** data, pass_in_data* p, int le
 
 double bg_method(pass_in_data* p, int rank, std::string method){
   int start = rank*ROWS;
-  std::cout << "I'm rank:" << rank << " my start: " << start << " my_end: " <<  ROWS+start << "\n";
+  //std::cout << "I'm rank:" << rank << " my start: " << start << " my_end: " <<  ROWS+start << "\n";
   double result = p[start].val;
 
   if(method == "max"){
@@ -274,8 +274,13 @@ double bg_method(pass_in_data* p, int rank, std::string method){
       result +=p[i].val;
     result /= ROWS;
   }
-  std::cout << "I'm rank:" << rank << " My result: " << result << "\n";
+  //std::cout << "I'm rank:" << rank << " My result: " << result << "\n";
   return result;
+}
+
+void report_bg_answer(char **categories, double *ans, int *col_array, std::string *method, int total_entries){
+  for(int i = 0; i < total_entries; i++)
+    std::cout << *method << " " << categories[col_array[i]] << " = " << ans[i] << "\n";
 }
 
 
