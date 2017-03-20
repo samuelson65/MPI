@@ -61,8 +61,6 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
     define_op_sum_pass_in_data(&mpi_take_sum);
     define_op_numGtLt_pass_in_data(&mpi_num_gtlt);
 
-    //array of MPI operations
-    MPI_Op mpi_operation[5] = {mpi_max_location_index, mpi_min_location_index, mpi_take_sum, mpi_num_gtlt};
     //map the MPI operations
     std::map<std::string, MPI_Op> MPI_operation_map = {{"max", mpi_max_location_index}, {"min", mpi_min_location_index},
     {"avg", mpi_take_sum}, {"number", mpi_num_gtlt}};
@@ -88,11 +86,8 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
         if(cmd[4] == "lt") adjust_number_lt(ROWS, total_pass_in);
       }
 
-      MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data,
-                   MPI_IN_PLACE, 0, MPI_pass_in_data,
-                   0, MPI_COMM_WORLD);
-      MPI_Reduce(total_pass_in, ans, citiesToCompute,
-      MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+      MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data, MPI_IN_PLACE, 0, MPI_pass_in_data, 0, MPI_COMM_WORLD);
+      MPI_Reduce(total_pass_in, ans, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
       report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
 
       delete[] ans;
@@ -102,11 +97,8 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
       pass_in_data* my_rows = new pass_in_data[citiesToCompute];
       MPI_Request dataReq;
 
-      MPI_Scatter(NULL, 0, MPI_pass_in_data, // sendBuf, sendCount, sendType ignored
-        my_rows, citiesToCompute, MPI_pass_in_data,
-        0, MPI_COMM_WORLD); // rank "0" originated the scatter
-      MPI_Reduce(my_rows, 0, citiesToCompute,
-      MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+      MPI_Scatter(NULL, 0, MPI_pass_in_data, my_rows, citiesToCompute, MPI_pass_in_data, 0, MPI_COMM_WORLD); // rank "0" originated the scatter
+      MPI_Reduce(my_rows, 0, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
 
     }//end big else block
 }
