@@ -22,7 +22,7 @@ int main(int argc, char **argv){
     std::string cmd[argc];
     for(int i = 0; i < argc; i++)
       cmd[i] = argv[i];
-    // cmd[0] -
+    // cmd[0] - ./proj2
     // cmd[1] - type of method: sr or bd
     // cmd[2] - function outcomes: max, min, avg, or conditional quantities
     // cmd[3] - city-column: the column index of the city with respect to the input; "A" is 0, "AA" is 26, "DM" is 116, etc.
@@ -55,31 +55,32 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
 
     if(rank == 0){
       //array of function pointers
-      void (*report_answer[])(std::string*, char***, pass_in_data*, int, std::string* , std::string* ) =
-      {report_maxmin_answer, report_avg_answer, report_gtlt_answer};
+      void (*report_answer[])(std::string*, char***, pass_in_data*, int, std::string* , std::string* ) = {report_maxmin_answer, report_avg_answer, report_gtlt_answer};
       std::map<std::string, int> report = {{"max", 0}, {"min", 0}, {"avg", 1}, {"number", 2}};
 
       char *** data = parse(FILENAME);
       char ** categories = parse_first_line(FILENAME);
-      if(cmd[1] == "sr"){
-        int column_index = convert_string_to_int_index(cmd[3]);
-        std::string that_column_name = categories[column_index];
-        pass_in_data *total_pass_in = new pass_in_data[ROWS];
-        copy_data_at_that_column(data, ROWS, column_index, citiesToCompute, total_pass_in, 0);
 
-        pass_in_data* ans = new pass_in_data[citiesToCompute];
-        if(cmd[2] == "number" && argc >= 6){
-          number_to_compare = std::stod(cmd[5]);
-          //std::cout << "NUM TO compare " << number_to_compare << "\n";
-          if(cmd[4] == "gt") adjust_number_gt(ROWS, total_pass_in);
-          if(cmd[4] == "lt") adjust_number_lt(ROWS, total_pass_in);
-        }
-
-        MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data, MPI_IN_PLACE, 0, MPI_pass_in_data, 0, MPI_COMM_WORLD);
-        MPI_Reduce(total_pass_in, ans, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
-        report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
-
-        delete[] ans;
+      if(cmd[1] == "sr"){ // argements after "proj2 sr" are just multiples of 2
+        for(int i = 2; i < argc; i+= 2){
+          int column_index = convert_string_to_int_index(cmd[i+1]);
+          std::string that_column_name = categories[column_index];
+          pass_in_data *total_pass_in = new pass_in_data[ROWS];
+          copy_data_at_that_column(data, ROWS, column_index, citiesToCompute, total_pass_in, 0);
+          if(cmd[i] == "number" && argc >= i+4){
+            number_to_compare = std::stod(cmd[i+3]);
+            if(cmd[i+2] == "gt") adjust_number_gt(ROWS, total_pass_in);
+            if(cmd[i+2] == "lt") adjust_number_lt(ROWS, total_pass_in);
+          }
+          pass_in_data* ans = new pass_in_data[citiesToCompute];
+          MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data, MPI_IN_PLACE, 0, MPI_pass_in_data, 0, MPI_COMM_WORLD);
+          MPI_Reduce(total_pass_in, ans, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[i]], 0, MPI_COMM_WORLD);
+          report_answer[report[cmd[i]]](&that_column_name, data, ans, citiesToCompute, &cmd[i], &cmd[i+2]);
+          MPI_Status sendStatus[2];
+          delete[] ans;
+          delete[] total_pass_in;
+          i += cmd[i] == "number" ? 2 : 0;
+        }//end for
         cleanup(data, categories);
       }
 
@@ -92,31 +93,32 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
           process_col_index[i] = convert_string_to_int_index(cmd[3 + i]);
           copy_data_at_that_column(data, ROWS, process_col_index[i], ROWS, total_pass_in, i*ROWS);
         }
-
         double ans[num_columns];
         ans[0] = bg_method(total_pass_in, 0, cmd[2]); // 0, since this is rank 0
         MPI_Bcast(total_pass_in, data_chunk, MPI_pass_in_data, 0, MPI_COMM_WORLD);
         MPI_Gather(MPI_IN_PLACE, 0, MPI_DOUBLE, &ans, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
         report_bg_answer(categories, ans, process_col_index, &cmd[2], num_columns);
-
+        delete[] total_pass_in;
       }
     }
     else{ //if rank != 0
       if(cmd[1] == "sr"){
-        pass_in_data* my_rows = new pass_in_data[citiesToCompute];
-        MPI_Scatter(NULL, 0, MPI_pass_in_data, my_rows, citiesToCompute, MPI_pass_in_data, 0, MPI_COMM_WORLD); // rank "0" originated the scatter
-        MPI_Reduce(my_rows, 0, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+        for(int i = 2; i < argc; i+= 2){
+          pass_in_data* my_rows = new pass_in_data[citiesToCompute];
+          MPI_Scatter(NULL, 0, MPI_pass_in_data, my_rows, citiesToCompute, MPI_pass_in_data, 0, MPI_COMM_WORLD); // rank "0" originated the scatter
+          MPI_Reduce(my_rows, 0, citiesToCompute, MPI_pass_in_data, MPI_operation_map[cmd[i]], 0, MPI_COMM_WORLD);
+          i += cmd[i] == "number" ? 2 : 0;
+          delete[] my_rows;
+        }//end for
       }
       if(cmd[1] == "bg"){
         pass_in_data* my_cpy = new pass_in_data[(argc-3)*ROWS];
         MPI_Bcast(my_cpy, (argc-3)*ROWS, MPI_pass_in_data, 0, MPI_COMM_WORLD);
-
-        int i_rank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &i_rank);
+        int i_rank; MPI_Comm_rank(MPI_COMM_WORLD, &i_rank);
         int start = i_rank*ROWS;
-      //  std::cout << "I'm rank:" << i_rank << " my start: " << start << " my_end: " <<  ROWS+start << "\n";
         double answer = bg_method(my_cpy, i_rank, cmd[2]);
         MPI_Gather(&answer, 1, MPI_DOUBLE, nullptr, 0, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        delete[] my_cpy;
       }
-    }//end big else block
+    }//end else block
 }// end process

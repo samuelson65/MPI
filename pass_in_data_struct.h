@@ -226,7 +226,7 @@ void report_maxmin_answer(std::string* name, char*** data, pass_in_data* p, int 
         val_mpi_index = p[i].index;
       }
     }
-    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << (int)val_mpi << "\n";
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << val_mpi << "\n";
   } else {
     for(int i = 1; i < length; i++){
       //std::cout << "Value: " << p[i].val << " Rank: " << p[i].rank << "\n";
@@ -236,7 +236,7 @@ void report_maxmin_answer(std::string* name, char*** data, pass_in_data* p, int 
         val_mpi_index = p[i].index;
       }
     }
-    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << (int)val_mpi << "\n";
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << val_mpi << "\n";
   }
   return;
 }
