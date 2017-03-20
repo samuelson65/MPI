@@ -1,4 +1,5 @@
 #include "pass_in_data_struct.h"
+#include <map>
 
 void process(int rank, int communicatorSize, std::string *cmd, int argc);
 
@@ -6,8 +7,7 @@ MPI_Datatype MPI_pass_in_data;
 MPI_Op mpi_max_location_index;
 MPI_Op mpi_min_location_index;
 MPI_Op mpi_take_sum;
-MPI_Op mpi_num_gt;
-MPI_Op mpi_num_lt;
+MPI_Op mpi_num_gtlt;
 
 int main(int argc, char **argv){
   MPI_Init(&argc, &argv);
@@ -59,12 +59,20 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
     define_op_max_pass_in_data(&mpi_max_location_index);
     define_op_min_pass_in_data(&mpi_min_location_index);
     define_op_sum_pass_in_data(&mpi_take_sum);
-    define_op_numGt_pass_in_data(&mpi_num_gt);
-    define_op_numLt_pass_in_data(&mpi_num_lt);
+    define_op_numGtLt_pass_in_data(&mpi_num_gtlt);
 
-    //MPI_Op mpi_operation[3] = {mpi_max_location_index, mpi_min_location_index, mpi_take_avg};
+    //array of MPI operations
+    MPI_Op mpi_operation[5] = {mpi_max_location_index, mpi_min_location_index, mpi_take_sum, mpi_num_gtlt};
+    //map the MPI operations
+    std::map<std::string, MPI_Op> MPI_operation_map = {{"max", mpi_max_location_index}, {"min", mpi_min_location_index},
+    {"avg", mpi_take_sum}, {"number", mpi_num_gtlt}};
 
     if(rank == 0 && cmd[1] == "sr"){
+      //array of function pointers
+      void (*report_answer[])(std::string*, char***, pass_in_data*, int, std::string* , std::string* ) =
+      {report_maxmin_answer, report_avg_answer, report_gtlt_answer};
+      std::map<std::string, int> report = {{"max", 0}, {"min", 0}, {"avg", 1}, {"number", 2}};
+
       char *** data = parse(FILENAME);
       char ** categories = parse_first_line(FILENAME);
       int column_index = convert_string_to_int_index(cmd[3]);
@@ -72,15 +80,12 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
       pass_in_data *total_pass_in = new pass_in_data[ROWS];
       copy_data_at_that_column(data, ROWS, column_index, citiesToCompute, total_pass_in);
 
-
       pass_in_data* ans = new pass_in_data[citiesToCompute];
       if(cmd[2] == "number" && argc >= 6){
         number_to_compare = std::stod(cmd[5]);
         std::cout << "NUM TO compare " << number_to_compare << "\n";
         if(cmd[4] == "gt") adjust_number_gt(ROWS, total_pass_in);
         if(cmd[4] == "lt") adjust_number_lt(ROWS, total_pass_in);
-      } else {
-        std::cerr << no_num_error_message;
       }
 
       MPI_Scatter(total_pass_in, citiesToCompute, MPI_pass_in_data,
@@ -88,28 +93,25 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
                    0, MPI_COMM_WORLD);
       if(cmd[2] == "max"){
         MPI_Reduce(total_pass_in, ans, citiesToCompute,
-        MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
-        report_maxmin_answer(that_column_name, data, ans, citiesToCompute, "max");  //get the row index
+        MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+        report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);  //get the row index
       } else if(cmd[2] == "min") {
         MPI_Reduce(total_pass_in, ans, citiesToCompute,
-        MPI_pass_in_data, mpi_min_location_index, 0, MPI_COMM_WORLD);
-        report_maxmin_answer(that_column_name, data, ans, citiesToCompute, "min");
+        MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+        report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
       } else if(cmd[2] == "avg") {
         MPI_Reduce(total_pass_in, ans, citiesToCompute,
-        MPI_pass_in_data, mpi_take_sum, 0, MPI_COMM_WORLD);
-        for(int i = 0; i < citiesToCompute; i++){
-          std::cout << "ANS SUM = " << ans[i].val << "\n";
-        }
-        report_avg_answer(that_column_name, ans, citiesToCompute);
+        MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+        report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
       } else if(cmd[2] == "number") {
           if(cmd[4] == "gt"){
             MPI_Reduce(total_pass_in, ans, citiesToCompute,
-            MPI_pass_in_data, mpi_num_gt, 0, MPI_COMM_WORLD);
-            report_gtlt_answer(that_column_name, ans, citiesToCompute, cmd[4]);
+            MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+            report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
           } else if (cmd[4] == "lt") {
             MPI_Reduce(total_pass_in, ans, citiesToCompute,
-            MPI_pass_in_data, mpi_num_lt, 0, MPI_COMM_WORLD);
-            report_gtlt_answer(that_column_name, ans, citiesToCompute, cmd[4]);
+            MPI_pass_in_data, MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
+            report_answer[report[cmd[2]]](&that_column_name, data, ans, citiesToCompute, &cmd[2], &cmd[4]);
           }
       }//end else if
       delete[] ans;
@@ -124,22 +126,22 @@ void process(int rank, int communicatorSize, std::string *cmd, int argc){
         0, MPI_COMM_WORLD); // rank "0" originated the scatter
       if(cmd[2] == "max"){
         MPI_Reduce(my_rows, 0, citiesToCompute,
-        MPI_pass_in_data, mpi_max_location_index, 0, MPI_COMM_WORLD);
+        MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
       } else if(cmd[2] == "min") {
         MPI_Reduce(my_rows, 0, citiesToCompute,
-        MPI_pass_in_data, mpi_min_location_index, 0, MPI_COMM_WORLD);
+        MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
       } else if(cmd[2] == "avg") {
         MPI_Reduce(my_rows, 0, citiesToCompute,
-        MPI_pass_in_data, mpi_take_sum, 0, MPI_COMM_WORLD);
+        MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
       } else if(cmd[2] == "number") {
         if(argc < 6){
         } else {
             if(cmd[4] == "gt"){
               MPI_Reduce(my_rows, 0, citiesToCompute,
-              MPI_pass_in_data, mpi_num_gt, 0, MPI_COMM_WORLD);
+              MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
             }else if(cmd[4] == "lt"){
               MPI_Reduce(my_rows, 0, citiesToCompute,
-              MPI_pass_in_data, mpi_num_lt, 0, MPI_COMM_WORLD);
+              MPI_pass_in_data,  MPI_operation_map[cmd[2]], 0, MPI_COMM_WORLD);
             }
         }
       }

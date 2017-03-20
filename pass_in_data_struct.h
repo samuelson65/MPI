@@ -70,7 +70,7 @@ void take_sum(void *in, void *inout, int *len, MPI_Datatype *type){
     return;
 }
 
-void num_gt(void *in, void *inout, int *len, MPI_Datatype *type){
+void num_gtlt(void *in, void *inout, int *len, MPI_Datatype *type){
   pass_in_data *invals    = (pass_in_data*)in;
   pass_in_data *inoutvals = (pass_in_data*)inout;
   /*
@@ -96,14 +96,6 @@ void num_gt(void *in, void *inout, int *len, MPI_Datatype *type){
   //for (int i=0; i<*len; i++)
   //  std::cout << "At rank " << i_rank << " and inoutvals[" << i <<"].number is " << inoutvals[i].number << "\n";
 }
-
-void num_lt(void *in, void *inout, int *len, MPI_Datatype *type){
-  pass_in_data *invals    = (pass_in_data*)in;
-  pass_in_data *inoutvals = (pass_in_data*)inout;
-  for (int i=0; i<*len; i++)
-      inoutvals[i].number += invals[i].number;
-}
-
 
 void copy_data_at_that_column(char*** data, int rows, int column_index, int partition_size, pass_in_data* p){
   for(int i = 0; i < rows; i++){
@@ -207,12 +199,10 @@ void define_op_min_pass_in_data(MPI_Op* op){
 void define_op_sum_pass_in_data(MPI_Op* op){
     MPI_Op_create(take_sum, 1, op);
 }
-void define_op_numGt_pass_in_data(MPI_Op* op){
-  MPI_Op_create(num_gt, 1, op);
+void define_op_numGtLt_pass_in_data(MPI_Op* op){
+  MPI_Op_create(num_gtlt, 1, op);
 }
-void define_op_numLt_pass_in_data(MPI_Op* op){
-  MPI_Op_create(num_lt, 1, op);
-}
+
 /*
   in:
     std::string name - the name of the column
@@ -221,11 +211,11 @@ void define_op_numLt_pass_in_data(MPI_Op* op){
     int length - the length of pass_in_data
     std::string s - "max" or "min"
 */
-void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int length, std::string s){
+void report_maxmin_answer(std::string* name, char*** data, pass_in_data* p, int length, std::string* maxmin, std::string* gtlt){
   double val_mpi = p[0].val;
   int val_mpi_rank = p[0].rank;
   int val_mpi_index = p[0].index;
-  if(s == "max"){
+  if(*maxmin == "max"){
     for(int i = 1; i < length; i++){
       //std::cout << "Value: " << p[i].val << " Rank: " << p[i].rank << "\n";
       if(p[i].val > val_mpi){
@@ -234,7 +224,7 @@ void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int l
         val_mpi_index = p[i].index;
       }
     }
-    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << name << " = " << (int)val_mpi << "\n";
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << (int)val_mpi << "\n";
   } else {
     for(int i = 1; i < length; i++){
       //std::cout << "Value: " << p[i].val << " Rank: " << p[i].rank << "\n";
@@ -244,24 +234,24 @@ void report_maxmin_answer(std::string name, char*** data, pass_in_data* p, int l
         val_mpi_index = p[i].index;
       }
     }
-    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << name << " = " << (int)val_mpi << "\n";
+    std::cout << data[val_mpi_index][1] << ", " <<  data[val_mpi_index][0] << ", " << *name << " = " << (int)val_mpi << "\n";
   }
   return;
 }
 
-void report_avg_answer(std::string name, pass_in_data* p, int length){
+void report_avg_answer(std::string* name, char*** data, pass_in_data* p, int length, std::string* maxmin, std::string* gtlt){
   double sum = 0, avg = 0;
   for(int i = 0; i < length; i++)
     sum+=p[i].val;
   avg = sum/ROWS;
-  std::cout << "Average " << name << " = " << avg << std::endl;
+  std::cout << "Average " << *name << " = " << avg << std::endl;
 }
 
-void report_gtlt_answer(std::string name, pass_in_data* p, int length, std::string cmd){
+void report_gtlt_answer(std::string* name, char*** data, pass_in_data* p, int length, std::string* maxmin, std::string* gtlt){
   double sum = 0;
   for(int i = 0; i < length; i++)
     sum+=p[i].number;
-  std::cout << "Number Cities with " << name << " " << cmd << " " <<number_to_compare << " = " << sum << "\n";
+  std::cout << "Number Cities with " << *name << " " << *gtlt << " " << number_to_compare << " = " << sum << "\n";
 }
 
 
