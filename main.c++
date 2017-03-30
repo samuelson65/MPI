@@ -1,5 +1,6 @@
 #include "pass_in_data_struct.h"
 #include <map>
+#include <memory>
 
 void process(int rank, int communicatorSize, std::string *cmd, int argc);
 
