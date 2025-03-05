@@ -55,3 +55,36 @@ print(positive_influences.head(10))
 
 print("\nProtective Factors (Reduce Readmission):")
 print(negative_influences.tail(10))
+
+
+
+def get_drg_weight(drg_df, drg_code, date_of_service):
+    """
+    Given a DataFrame with DRG codes, their weights, and effective/term dates, 
+    this function returns the weight for a given DRG code on a specific date of service.
+    
+    Parameters:
+    drg_df (DataFrame): DataFrame containing 'drg', 'weight', 'effective_date', and 'term_date'.
+    drg_code (int or str): The DRG code to look up.
+    date_of_service (datetime or str): The service date to check.
+
+    Returns:
+    float or None: The weight of the DRG if found, else None.
+    """
+    # Ensure date_of_service is a datetime object
+    date_of_service = pd.to_datetime(date_of_service)
+
+    # Filter for the DRG code and date range
+    filtered_df = drg_df[
+        (drg_df['drg'] == drg_code) &
+        (drg_df['effective_date'] <= date_of_service) &
+        (drg_df['term_date'] >= date_of_service)
+    ]
+
+    # Return the weight if a match is found
+    if not filtered_df.empty:
+        return filtered_df.iloc[0]['weight']  # Assuming one valid record per DRG-date range
+    else:
+        return None  # No matching DRG for the given date
+
+
