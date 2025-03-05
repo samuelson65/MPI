@@ -87,4 +87,59 @@ def get_drg_weight(drg_df, drg_code, date_of_service):
     else:
         return None  # No matching DRG for the given date
 
+def get_drg_weight(drg_df, drg_code, date_of_service):
+    """
+    Fetch the DRG weight based on the given DRG code and date of service.
+    Returns None if the DRG code is not found or out of the valid date range.
+    """
+    date_of_service = pd.to_datetime(date_of_service)
 
+    # Ensure 'drg' column exists in drg_df
+    if 'drg' not in drg_df.columns:
+        raise KeyError("'drg' column is missing from the DRG DataFrame")
+
+    # Filter DRG codes that match and fall within the date range
+    filtered_df = drg_df[
+        (drg_df['drg'] == drg_code) & 
+        (drg_df['effective_date'] <= date_of_service) & 
+        (drg_df['term_date'] >= date_of_service)
+    ]
+
+    # If no valid DRG entry is found, return None
+    if filtered_df.empty:
+        return None
+
+    return filtered_df.iloc[0]['weight']
+
+
+def filter_lower_weight_drgs(row, drg_df):
+    date_of_service = row.get('date_of_service', None)  # Get date_of_service safely
+    if date_of_service is None:
+        print(f"Missing date_of_service in row: {row}")
+        return {}
+
+    actual_drg_weight = get_drg_weight(drg_df, row['actual_drg'], date_of_service)
+    
+    if actual_drg_weight is None:
+        print(f"DRG weight not found for actual DRG {row['actual_drg']} on {date_of_service}")
+        return {}
+
+    drg_map = row.get('result', {})  # Get 'result' safely, default to empty dict
+
+    filtered_drg_map = {}
+    
+    for diag, drg_list in drg_map.items():
+        if not isinstance(drg_list, list):
+            print(f"Unexpected non-list value for DRG mapping in {diag}: {drg_list}")
+            continue
+
+        filtered_drg_map[diag] = [
+            drg for drg in drg_list 
+            if (drg_weight := get_drg_weight(drg_df, drg, date_of_service)) is not None 
+            and drg_weight < actual_drg_weight
+        ]
+
+    return filtered_drg_map
+
+# Apply function to DataFrame
+df['filtered_result'] = df.apply(lambda row: filter_lower_weight_drgs(row, drg_df), axis=1)
