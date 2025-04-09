@@ -1,0 +1,40 @@
+Diagnosis Drop Recommendation Model
+
+import pandas as pd import numpy as np from sklearn.model_selection import train_test_split from catboost import CatBoostClassifier
+
+1. Sample Dataset
+
+sample_data = [ { "claim_id": 1, "diag_severity_dict": {"D101": 2, "D205": 4, "D401": 3}, "dropped_diag": "D205|D401", "age": 67, "gender": "F", "diag_count": 3, "is_finding": 1 }, { "claim_id": 2, "diag_severity_dict": {"D109": 1, "D301": 2}, "dropped_diag": "D109", "age": 58, "gender": "M", "diag_count": 2, "is_finding": 0 }, { "claim_id": 3, "diag_severity_dict": {"D111": 4, "D205": 4}, "dropped_diag": "", "age": 75, "gender": "F", "diag_count": 2, "is_finding": 0 } ]
+
+df_claims = pd.DataFrame(sample_data)
+
+2. Flatten the diagnosis-level dataset
+
+expanded_rows = [] for _, row in df_claims.iterrows(): diag_dict = row['diag_severity_dict'] dropped = row['dropped_diag'].split("|") if row['dropped_diag'] else [] for code, severity in diag_dict.items(): expanded_rows.append({ "claim_id": row['claim_id'], "code": code, "severity": severity, "was_dropped": int(code in dropped), "age": row['age'], "gender": row['gender'], "diag_count": row['diag_count'], "is_finding": row['is_finding'] })
+
+df_diag = pd.DataFrame(expanded_rows)
+
+3. Encode categorical variable
+
+df_diag['gender'] = df_diag['gender'].map({'M': 0, 'F': 1})
+
+4. Train/Test Split
+
+X = df_diag[['code', 'severity', 'age', 'gender', 'diag_count']] y = df_diag['was_dropped']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, random_state=42)
+
+5. CatBoost handles categorical features
+
+model = CatBoostClassifier(iterations=100, learning_rate=0.1, depth=4, verbose=0) model.fit(X_train, y_train, cat_features=[0])
+
+6. Function to Predict Droppable Codes in New Claims
+
+def recommend_dropped_codes(claim): rows = [] diag_dict = claim['diag_severity_dict'] for code, severity in diag_dict.items(): rows.append({ "code": code, "severity": severity, "age": claim['age'], "gender": 1 if claim['gender'] == 'F' else 0, "diag_count": claim['diag_count'] }) df_new = pd.DataFrame(rows) preds = model.predict_proba(df_new)[:, 1]  # Probability of being dropped df_new['drop_prob'] = preds suggested = df_new[df_new['drop_prob'] > 0.5]  # threshold can be adjusted return suggested[['code', 'drop_prob']].sort_values(by='drop_prob', ascending=False)
+
+7. Example New Claim Input
+
+new_claim = { "diag_severity_dict": {"D205": 4, "D401": 3, "D999": 2}, "age": 70, "gender": "F", "diag_count": 3 }
+
+recommendations = recommend_dropped_codes(new_claim) print(recommendations)
+
