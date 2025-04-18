@@ -143,3 +143,92 @@ def filter_lower_weight_drgs(row, drg_df):
 
 # Apply function to DataFrame
 df['filtered_result'] = df.apply(lambda row: filter_lower_weight_drgs(row, drg_df), axis=1)
+
+
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import shap
+import plotly.graph_objects as go
+
+# Sample data: claims with DRG, diagnosis, length of stay, age, procedures, and overpayment flag
+data = pd.DataFrame({
+    'DRG_Code': ['039', '039', '470', '470', '039', '470', '039', '470'],
+    'Diagnosis_Code': ['I10', 'E11', 'I10', 'E11', 'I25', 'I25', 'I10', 'E11'],
+    'Length_of_Stay': [3, 2, 5, 1, 4, 2, 6, 3],
+    'Age': [65, 70, 60, 50, 80, 75, 68, 55],
+    'Num_Procedures': [2, 1, 3, 1, 2, 2, 4, 1],
+    'Overpayment_Flag': [1, 1, 0, 1, 0, 1, 1, 0]
+})
+
+# Encode categorical variables
+data['DRG_Code_enc'] = data['DRG_Code'].astype('category').cat.codes
+data['Diagnosis_Code_enc'] = data['Diagnosis_Code'].astype('category').cat.codes
+
+# Features and target
+feature_cols = ['DRG_Code_enc', 'Diagnosis_Code_enc', 'Length_of_Stay', 'Age', 'Num_Procedures']
+X = data[feature_cols]
+y = data['Overpayment_Flag']
+
+# Train model
+model = RandomForestClassifier(random_state=42)
+model.fit(X, y)
+
+# Create SHAP explainer
+explainer = shap.TreeExplainer(model)
+
+def explain_overpayment_for_drg(drg_code):
+    # Filter claims for the given DRG code
+    drg_data = data[data['DRG_Code'] == drg_code]
+    if drg_data.empty:
+        print(f"No data for DRG code {drg_code}")
+        return
+
+    X_drg = drg_data[feature_cols]
+    shap_values = explainer.shap_values(X_drg)[1]  # Class 1 (overpayment) SHAP values
+
+    # Aggregate mean absolute SHAP values by feature for this DRG
+    mean_abs_shap = np.abs(shap_values).mean(axis=0)
+    feature_importance = pd.DataFrame({
+        'Feature': feature_cols,
+        'Mean_Abs_SHAP': mean_abs_shap
+    }).sort_values(by='Mean_Abs_SHAP', ascending=False)
+
+    # Also show direction of influence for the first claim (example)
+    first_shap = shap_values[0]
+    first_features = X_drg.iloc[0]
+
+    influence_df = pd.DataFrame({
+        'Feature': feature_cols,
+        'SHAP_Value': first_shap,
+        'Feature_Value': first_features.values
+    }).sort_values(by='SHAP_Value', key=abs, ascending=False)
+
+    print(f"\nTop features influencing overpayment risk for DRG {drg_code} (mean absolute SHAP):")
+    print(feature_importance)
+
+    print(f"\nSHAP values for first claim in DRG {drg_code}:")
+    print(influence_df)
+
+    # Plot top 5 features by absolute SHAP value for the first claim
+    top_features = influence_df.head(5)
+    colors = ['red' if val > 0 else 'blue' for val in top_features['SHAP_Value']]
+
+    fig = go.Figure(go.Bar(
+        x=top_features['SHAP_Value'],
+        y=top_features['Feature'],
+        orientation='h',
+        marker_color=colors,
+        text=top_features['Feature_Value'],
+        textposition='auto'
+    ))
+    fig.update_layout(
+        title=f"Top Influential Features for Overpayment Prediction (DRG {drg_code})",
+        xaxis_title="SHAP Value (Impact on Prediction)",
+        yaxis_title="Feature",
+        yaxis=dict(autorange="reversed")
+    )
+    fig.show()
+
+# Example usage: explain overpayment for DRG '039'
+explain_overpayment_for_drg('039')
