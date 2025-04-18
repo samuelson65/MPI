@@ -4,9 +4,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
 import shap
 import plotly.graph_objects as go
-from scipy.stats import ttest_1samp
+from scipy.stats import ttest_1samp, spearmanr
 
-# Sample data: claims with DRG, diagnosis, length of stay, age, procedures, and overpayment flag
+# Sample data (same as before)
 data = pd.DataFrame({
     'DRG_Code': ['039', '039', '470', '470', '039', '470', '039', '470', '039', '470', '039', '470'],
     'Diagnosis_Code': ['I10', 'E11', 'I10', 'E11', 'I25', 'I25', 'I10', 'E11', 'I10', 'E11', 'I25', 'I25'],
@@ -16,121 +16,124 @@ data = pd.DataFrame({
     'Overpayment_Flag': [1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1]
 })
 
-# Encode categorical variables
+# Encoding categorical variables
 data['DRG_Code_enc'] = data['DRG_Code'].astype('category').cat.codes
 data['Diagnosis_Code_enc'] = data['Diagnosis_Code'].astype('category').cat.codes
 
-# Features and target
 feature_cols = ['DRG_Code_enc', 'Diagnosis_Code_enc', 'Length_of_Stay', 'Age', 'Num_Procedures']
 X = data[feature_cols]
 y = data['Overpayment_Flag']
 
-# Train Random Forest model
 model = RandomForestClassifier(random_state=42, n_estimators=100)
 model.fit(X, y)
 
-# SHAP explainer
 explainer = shap.TreeExplainer(model)
 
 def bootstrap_p_values(model, X, y, n_bootstrap=100):
-    """
-    Calculate p-values for permutation feature importance using bootstrapping.
-    """
     result = permutation_importance(model, X, y, n_repeats=n_bootstrap, random_state=42)
     importances = result.importances_mean
-
-    # Null hypothesis: importance = 0
-    # Use t-test across repeats for each feature
     p_values = []
     for i in range(len(feature_cols)):
-        t_stat, p_val = ttest_1samp(result.importances[i], 0)
+        _, p_val = ttest_1samp(result.importances[i], 0)
         p_values.append(p_val)
     return importances, p_values
+
+def generate_natural_language_summary(feature_stats, drg_code, avg_risk):
+    lines = [f"Overpayment risk analysis for DRG {drg_code}:"]
+    lines.append(f"Average predicted risk is {avg_risk:.2f}.")
+    for _, row in feature_stats.iterrows():
+        direction = "increases" if row['Mean_SHAP'] > 0 else "decreases"
+        signif = "significantly " if row['Significant'] else ""
+        lines.append(
+            f"- Feature '{row['Feature']}' {signif}{direction} the overpayment risk "
+            f"with an average impact magnitude of {abs(row['Mean_SHAP']):.3f}."
+        )
+    return "\n".join(lines)
 
 def explain_overpayment_for_drg(drg_code):
     drg_data = data[data['DRG_Code'] == drg_code]
     if drg_data.empty:
-        print(f"No data found for DRG code {drg_code}")
+        print(f"No data for DRG {drg_code}")
         return
 
     X_drg = drg_data[feature_cols]
     y_drg = drg_data['Overpayment_Flag']
 
-    # Predict probabilities
     probs = model.predict_proba(X_drg)[:, 1]
+    shap_values = explainer.shap_values(X_drg)[1]
 
-    # SHAP values for DRG claims
-    shap_values = explainer.shap_values(X_drg)[1]  # class 1 (overpayment)
-
-    # Mean absolute SHAP values per feature
-    mean_abs_shap = np.abs(shap_values).mean(axis=0)
-    shap_importance_df = pd.DataFrame({
+    # Feature-wise SHAP stats
+    feature_stats = pd.DataFrame({
         'Feature': feature_cols,
-        'Mean_Abs_SHAP': mean_abs_shap
-    }).sort_values(by='Mean_Abs_SHAP', ascending=False)
+        'Mean_SHAP': np.mean(shap_values, axis=0),
+        'Median_SHAP': np.median(shap_values, axis=0),
+        'Std_SHAP': np.std(shap_values, axis=0),
+        'Mean_Abs_SHAP': np.mean(np.abs(shap_values), axis=0)
+    })
 
-    # Permutation importance and p-values for statistical significance
-    perm_importance, p_values = bootstrap_p_values(model, X_drg, y_drg)
+    # Permutation importance with p-values
+    perm_imp, p_vals = bootstrap_p_values(model, X_drg, y_drg)
+    feature_stats['Permutation_Importance'] = perm_imp
+    feature_stats['p_value'] = p_vals
+    feature_stats['Significant'] = feature_stats['p_value'] < 0.05
 
-    perm_df = pd.DataFrame({
-        'Feature': feature_cols,
-        'Permutation_Importance': perm_importance,
-        'p_value': p_values
-    }).sort_values(by='Permutation_Importance', ascending=False)
+    # Correlation with target
+    corrs = []
+    for f in feature_cols:
+        corr, _ = spearmanr(drg_data[f], y_drg)
+        corrs.append(corr)
+    feature_stats['SpearmanCorr'] = corrs
 
-    # Merge SHAP and permutation importance info
-    importance_df = pd.merge(shap_importance_df, perm_df, on='Feature')
+    # Interaction effects (top 2 features only for simplicity)
+    shap_interaction_values = explainer.shap_interaction_values(X_drg)[1]
+    # Calculate mean absolute interaction for each feature pair
+    interaction_means = np.mean(np.abs(shap_interaction_values), axis=0)
+    # We'll just print top interactions for first two features for brevity
+    top_interactions = []
+    for i in range(len(feature_cols)):
+        for j in range(i+1, len(feature_cols)):
+            top_interactions.append({
+                'Feature1': feature_cols[i],
+                'Feature2': feature_cols[j],
+                'Mean_Abs_Interaction': interaction_means[i, j]
+            })
+    top_interactions = sorted(top_interactions, key=lambda x: x['Mean_Abs_Interaction'], reverse=True)[:3]
 
-    # Map categorical features back to original categories for interpretation
-    diag_cat_map = dict(enumerate(data['Diagnosis_Code'].astype('category').cat.categories))
-    drg_cat_map = dict(enumerate(data['DRG_Code'].astype('category').cat.categories))
+    # Natural language summary
+    summary = generate_natural_language_summary(feature_stats, drg_code, probs.mean())
+    print(summary)
 
-    print(f"\n=== Overpayment Risk Explanation for DRG {drg_code} ===")
-    print(f"Number of claims analyzed: {len(drg_data)}")
-    print(f"Average predicted overpayment risk: {probs.mean():.2f}\n")
+    print("\nDetailed Feature Statistics:")
+    print(feature_stats[['Feature', 'Mean_SHAP', 'Median_SHAP', 'Std_SHAP', 'Mean_Abs_SHAP', 'Permutation_Importance', 'p_value', 'Significant', 'SpearmanCorr']])
 
-    print("Top features influencing overpayment risk (with statistical significance):")
-    for i, row in importance_df.head(7).iterrows():
-        signif = "✅ Statistically significant" if row['p_value'] < 0.05 else "⚠️ Not statistically significant"
+    print("\nTop Feature Interaction Effects:")
+    for inter in top_interactions:
+        print(f"- Interaction between '{inter['Feature1']}' and '{inter['Feature2']}': mean absolute impact {inter['Mean_Abs_Interaction']:.4f}")
 
-        # For categorical features, show example category names
-        feature_name = row['Feature']
-        if feature_name == 'Diagnosis_Code_enc':
-            example_codes = drg_data['Diagnosis_Code'].unique()
-            feature_desc = f"{feature_name} (e.g., {', '.join(example_codes)})"
-        elif feature_name == 'DRG_Code_enc':
-            feature_desc = f"{feature_name} (DRG {drg_code})"
-        else:
-            feature_desc = feature_name
-
-        print(f"- {feature_desc}: mean SHAP={row['Mean_Abs_SHAP']:.3f}, "
-              f"perm importance={row['Permutation_Importance']:.3f}, p-value={row['p_value']:.3f} {signif}")
-
-    # Detailed SHAP values for the first claim in this DRG
+    # Visualize top 7 features by mean absolute SHAP for first claim
     first_shap = shap_values[0]
     first_features = X_drg.iloc[0]
-
     influence_df = pd.DataFrame({
         'Feature': feature_cols,
         'SHAP_Value': first_shap,
         'Feature_Value': first_features.values
-    }).sort_values(by='SHAP_Value', key=abs, ascending=False).head(10)
+    }).sort_values(by='SHAP_Value', key=abs, ascending=False).head(7)
 
-    # Color bars: red for positive impact (increases risk), blue for negative (decreases risk)
     colors = ['red' if val > 0 else 'blue' for val in influence_df['SHAP_Value']]
 
-    # Replace encoded categorical values with readable labels for display
-    def decode_feature_value(feature, val):
-        if feature == 'Diagnosis_Code_enc':
-            return diag_cat_map.get(val, val)
-        elif feature == 'DRG_Code_enc':
-            return drg_cat_map.get(val, val)
-        else:
-            return val
+    # Decode categorical features for display
+    diag_map = dict(enumerate(data['Diagnosis_Code'].astype('category').cat.categories))
+    drg_map = dict(enumerate(data['DRG_Code'].astype('category').cat.categories))
 
-    influence_df['Feature_Value_Display'] = [
-        decode_feature_value(f, v) for f, v in zip(influence_df['Feature'], influence_df['Feature_Value'])
-    ]
+    def decode(f, v):
+        if f == 'Diagnosis_Code_enc':
+            return diag_map.get(v, v)
+        elif f == 'DRG_Code_enc':
+            return drg_map.get(v, v)
+        else:
+            return v
+
+    influence_df['Feature_Value_Display'] = [decode(f, v) for f, v in zip(influence_df['Feature'], influence_df['Feature_Value'])]
 
     fig = go.Figure(go.Bar(
         x=influence_df['SHAP_Value'],
@@ -140,7 +143,6 @@ def explain_overpayment_for_drg(drg_code):
         text=influence_df['Feature_Value_Display'],
         textposition='auto'
     ))
-
     fig.update_layout(
         title=f"Top Feature Impacts on Overpayment Risk for First Claim in DRG {drg_code}",
         xaxis_title="SHAP Value (Impact on Prediction)",
@@ -148,7 +150,6 @@ def explain_overpayment_for_drg(drg_code):
         yaxis=dict(autorange="reversed"),
         template='plotly_white'
     )
-
     fig.show()
 
 # Example usage
