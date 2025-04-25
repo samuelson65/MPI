@@ -56,7 +56,7 @@ def generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions):
 def explain_overpayment_for_drg(drg_code):
     drg_data = data[data['DRG_Code'] == drg_code]
     if drg_data.empty:
-        return f"No data found for DRG {drg_code}"
+        return f"No data found for DRG {drg_code}", None  # Return tuple with None for the plot
     
     X_drg = drg_data[feature_cols]
     y_drg = drg_data['Overpayment_Flag']
@@ -70,9 +70,9 @@ def explain_overpayment_for_drg(drg_code):
     })
     
     # Permutation importance
-    perm_imp, p_vals = permutation_importance(model, X_drg, y_drg, n_repeats=100, random_state=42)
+    perm_imp = permutation_importance(model, X_drg, y_drg, n_repeats=100, random_state=42)
     feature_stats['Permutation_Importance'] = perm_imp['importances_mean']
-    feature_stats['p_value'] = p_vals
+    feature_stats['p_value'] = [ttest_1samp(perm_imp['importances'][i], 0).pvalue for i in range(len(feature_cols))]
     feature_stats['Significant'] = feature_stats['p_value'] < 0.05
     
     # Interactions
@@ -110,9 +110,13 @@ def explain_overpayment_for_drg(drg_code):
         template='plotly_white'
     )
     
-    return nlg_summary, fig
+    return (nlg_summary, fig)  # Return results as a tuple
 
 # Example usage
-summary, plot = explain_overpayment_for_drg('039')
-print(summary)
-plot.show()
+result = explain_overpayment_for_drg('039')
+if isinstance(result, tuple):
+    summary, plot = result
+    print(summary)
+    plot.show()
+else:
+    print(result)  # Handles cases where no data is found
