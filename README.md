@@ -44,7 +44,7 @@ def generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions):
     
     # Interactions
     summary.append("\n**Key Interactions:**")
-    for inter in top_interactions[:2]:  # Top 2 interactions
+    for inter in top_interactions[:2]:
         summary.append(f"  - **{inter['Feature1']}** and **{inter['Feature2']}** jointly influence risk")
     
     # Clinical flags
@@ -53,25 +53,42 @@ def generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions):
     
     return "\n".join(summary)
 
-def generate_queries(drg_code, top_features, top_interactions):
-    """Generate suggested search queries based on findings."""
-    queries = [f"DRG {drg_code} overpayment risk drivers"]
+def generate_queries(drg_code, top_features, top_interactions, df):
+    """Generate conditional queries based on feature thresholds."""
+    queries = []
     
-    # Feature-specific queries
+    # Get median thresholds for numerical features
+    los_median = df[df['DRG_Code'] == drg_code]['Length_of_Stay'].median()
+    procedure_median = df[df['DRG_Code'] == drg_code]['Num_Procedures'].median()
+    
+    # Generate conditional queries for top features
     for feature in top_features['Feature'].head(3):
         if feature == 'Length_of_Stay':
-            queries.append(f"DRG {drg_code} length of stay impact on reimbursement")
+            direction = "greater" if top_features.loc[top_features['Feature'] == feature, 'Mean_SHAP'].values[0] > 0 else "less"
+            queries.append(
+                f"Select DRG {drg_code} when length of stay is {direction} than {los_median} days"
+            )
         elif feature == 'Diagnosis_Code_enc':
-            diag_codes = data[data['DRG_Code'] == drg_code]['Diagnosis_Code'].unique()
-            queries.append(f"DRG {drg_code} with diagnosis codes {', '.join(diag_codes)} coding guidelines")
+            common_diags = df[df['DRG_Code'] == drg_code]['Diagnosis_Code'].value_counts().index[:2]
+            queries.append(
+                f"Select DRG {drg_code} when diagnosis codes include {', '.join(common_diags)}"
+            )
         elif feature == 'Num_Procedures':
-            queries.append(f"DRG {drg_code} procedure count and payment accuracy")
+            direction = "above" if top_features.loc[top_features['Feature'] == feature, 'Mean_SHAP'].values[0] > 0 else "below"
+            queries.append(
+                f"Select DRG {drg_code} when procedure count is {direction} {procedure_median}"
+            )
     
-    # Interaction queries
+    # Add interaction-based queries
     for inter in top_interactions[:2]:
         f1, f2 = inter['Feature1'], inter['Feature2']
-        if 'Diagnosis_Code_enc' in {f1, f2} and 'Length_of_Stay' in {f1, f2}:
-            queries.append(f"DRG {drg_code} diagnosis-stay duration interaction CMS guidelines")
+        if 'Length_of_Stay' in {f1, f2} and 'Diagnosis_Code_enc' in {f1, f2}:
+            common_diags = df[df['DRG_Code'] == drg_code]['Diagnosis_Code'].value_counts().index[:2]
+            los_direction = "greater" if top_features.loc[top_features['Feature'] == 'Length_of_Stay', 'Mean_SHAP'].values[0] > 0 else "less"
+            queries.append(
+                f"Select DRG {drg_code} when length of stay is {los_direction} than {los_median} days "
+                f"AND has diagnosis codes {', '.join(common_diags)}"
+            )
     
     return queries
 
@@ -113,7 +130,7 @@ def explain_overpayment_for_drg(drg_code):
     # Generate outputs
     avg_risk = np.mean(model.predict_proba(X_drg)[:, 1])
     nlg_summary = generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions)
-    queries = generate_queries(drg_code, feature_stats, top_interactions)
+    queries = generate_queries(drg_code, feature_stats, top_interactions, data)
     
     # Visualization
     first_shap = shap_values[0]
