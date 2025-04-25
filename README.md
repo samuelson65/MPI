@@ -53,10 +53,32 @@ def generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions):
     
     return "\n".join(summary)
 
+def generate_queries(drg_code, top_features, top_interactions):
+    """Generate suggested search queries based on findings."""
+    queries = [f"DRG {drg_code} overpayment risk drivers"]
+    
+    # Feature-specific queries
+    for feature in top_features['Feature'].head(3):
+        if feature == 'Length_of_Stay':
+            queries.append(f"DRG {drg_code} length of stay impact on reimbursement")
+        elif feature == 'Diagnosis_Code_enc':
+            diag_codes = data[data['DRG_Code'] == drg_code]['Diagnosis_Code'].unique()
+            queries.append(f"DRG {drg_code} with diagnosis codes {', '.join(diag_codes)} coding guidelines")
+        elif feature == 'Num_Procedures':
+            queries.append(f"DRG {drg_code} procedure count and payment accuracy")
+    
+    # Interaction queries
+    for inter in top_interactions[:2]:
+        f1, f2 = inter['Feature1'], inter['Feature2']
+        if 'Diagnosis_Code_enc' in {f1, f2} and 'Length_of_Stay' in {f1, f2}:
+            queries.append(f"DRG {drg_code} diagnosis-stay duration interaction CMS guidelines")
+    
+    return queries
+
 def explain_overpayment_for_drg(drg_code):
     drg_data = data[data['DRG_Code'] == drg_code]
     if drg_data.empty:
-        return f"No data found for DRG {drg_code}", None  # Return tuple with None for the plot
+        return f"No data found for DRG {drg_code}", None, None
     
     X_drg = drg_data[feature_cols]
     y_drg = drg_data['Overpayment_Flag']
@@ -88,11 +110,12 @@ def explain_overpayment_for_drg(drg_code):
             })
     top_interactions = sorted(interactions, key=lambda x: x['Mean_Abs_Interaction'], reverse=True)
     
-    # Generate NLG summary
+    # Generate outputs
     avg_risk = np.mean(model.predict_proba(X_drg)[:, 1])
     nlg_summary = generate_nlg_summary(drg_code, avg_risk, feature_stats, top_interactions)
+    queries = generate_queries(drg_code, feature_stats, top_interactions)
     
-    # Visualize top features
+    # Visualization
     first_shap = shap_values[0]
     influence_df = pd.DataFrame({
         'Feature': feature_cols,
@@ -110,13 +133,16 @@ def explain_overpayment_for_drg(drg_code):
         template='plotly_white'
     )
     
-    return (nlg_summary, fig)  # Return results as a tuple
+    return (nlg_summary, fig, queries)
 
 # Example usage
 result = explain_overpayment_for_drg('039')
 if isinstance(result, tuple):
-    summary, plot = result
+    summary, plot, queries = result
     print(summary)
     plot.show()
+    print("\n**Suggested Queries:**")
+    for i, q in enumerate(queries, 1):
+        print(f"{i}. {q}")
 else:
-    print(result)  # Handles cases where no data is found
+    print(result)
