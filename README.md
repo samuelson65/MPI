@@ -147,4 +147,26 @@ nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
 plt.title("Diagnosis Code Association Rules (Network Graph)")
 plt.show()
 
+SELECT 
+    c1.claim_id,
+    c1.readmission_id,
+    c1.last_date_of_service,
+    CASE 
+        WHEN EXISTS (
+            SELECT 1
+            FROM claims c2
+            WHERE 
+                c2.readmission_id = c1.readmission_id
+                AND c2.claim_id <> c1.claim_id
+                AND c2.last_date_of_service > LEAST(c1.last_date_of_service, c3.last_date_of_service)
+                AND c2.last_date_of_service < GREATEST(c1.last_date_of_service, c3.last_date_of_service)
+        ) THEN 1
+        ELSE 0
+    END AS is_between
+FROM claims c1
+JOIN claims c3
+    ON c1.readmission_id = c3.readmission_id
+    AND c1.claim_id <> c3.claim_id;
+
+
 
