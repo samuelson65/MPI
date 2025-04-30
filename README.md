@@ -53,3 +53,27 @@ nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
 
 plt.title("Diagnosis Code Association Rules (Network Graph)")
 plt.show()
+
+import pandas as pd
+
+# Sample diagnosis codes per claim (comma-separated)
+sample_data = {
+    'diagnosis_codes': [
+        "E11.9,I10,J45.909",      # Diabetes, Hypertension, Asthma
+        "E11.9,I10",              # Diabetes, Hypertension
+        "I10,J45.909",            # Hypertension, Asthma
+        "E11.9,I10",              # Diabetes, Hypertension
+        "J45.909",                # Asthma
+        "E11.9",                  # Diabetes
+        "I10",                    # Hypertension
+        "E11.9,I10,J45.909",      # All three again
+        "E11.9,J45.909",          # Diabetes, Asthma
+        "I10,J45.909"             # Hypertension, Asthma
+    ]
+}
+
+# Create DataFrame
+df_sample = pd.DataFrame(sample_data)
+
+# Display sample
+print(df_sample)
