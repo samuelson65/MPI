@@ -1,172 +1,47 @@
 import pandas as pd
-from mlxtend.preprocessing import TransactionEncoder
-from mlxtend.frequent_patterns import apriori, association_rules
+import shap
+import numpy as np
+from catboost import CatBoostClassifier
 
-# Step 1: Load data
-df_raw = pd.read_csv("diagnosis_data.csv")  # replace with your actual file name
+# Step 1: Load model and data
+# Replace with your actual model and dataset
+model = CatBoostClassifier()
+model.load_model("your_model.cbm")  # path to your model file
 
-# Step 2: Split diagnosis codes into lists
-transactions = df_raw['diagnosis_codes'].apply(lambda x: x.split(',')).tolist()
+X = pd.read_csv("your_data.csv")  # your input data
 
-# Step 3: Convert to one-hot encoded format
-te = TransactionEncoder()
-te_data = te.fit_transform(transactions)
-df_encoded = pd.DataFrame(te_data, columns=te.columns_)
+# Step 2: Get SHAP values
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X)
 
-# Step 4: Generate frequent itemsets
-frequent_itemsets = apriori(df_encoded, min_support=0.3, use_colnames=True)
+# Step 3: Function to extract top positive and negative features
+def explain_shap_values(shap_row, feature_names, instance, top_n=3):
+    shap_contribs = list(zip(feature_names, shap_row, instance))
+    shap_contribs.sort(key=lambda x: abs(x[1]), reverse=True)
+    top_pos = [f for f in shap_contribs if f[1] > 0][:top_n]
+    top_neg = [f for f in shap_contribs if f[1] < 0][:top_n]
+    return top_pos, top_neg
 
-# Step 5: Generate association rules
-rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
+# Step 4: Generate NLG summary
+def generate_nlg_summary(top_pos, top_neg):
+    summary = ""
+    if top_pos:
+        summary += "The risk of preventable readmission is high mainly due to "
+        summary += ", ".join([f"high {name} ({val})" for name, _, val in top_pos]) + ". "
+    if top_neg:
+        summary += "However, the risk is reduced because of "
+        summary += ", ".join([f"low {name} ({val})" for name, _, val in top_neg]) + "."
+    return summary.strip()
 
-# Step 6: Display important rules
-rules_sorted = rules.sort_values(by="confidence", ascending=False)
-print("Top Association Rules:\n")
-print(rules_sorted[['antecedents', 'consequents', 'support', 'confidence', 'lift']].head(10))
+# Step 5: Apply across all rows
+summaries = []
+for i in range(len(X)):
+    top_pos, top_neg = explain_shap_values(shap_values[i], X.columns, X.iloc[i])
+    summary = generate_nlg_summary(top_pos, top_neg)
+    summaries.append(summary)
 
-import networkx as nx
-import matplotlib.pyplot as plt
+# Step 6: Add to DataFrame
+X['readmission_nlg_summary'] = summaries
 
-# Filter rules with good confidence and lift for clearer visualization
-filtered_rules = rules[(rules['confidence'] > 0.6) & (rules['lift'] > 1.0)]
-
-# Create a graph
-G = nx.DiGraph()
-
-# Add edges from antecedents to consequents
-for _, row in filtered_rules.iterrows():
-    for antecedent in row['antecedents']:
-        for consequent in row['consequents']:
-            G.add_edge(antecedent, consequent, weight=row['lift'], confidence=row['confidence'])
-
-# Position nodes using spring layout
-pos = nx.spring_layout(G, k=0.5, iterations=20)
-
-# Draw nodes and edges
-plt.figure(figsize=(12, 8))
-nx.draw(G, pos, with_labels=True, node_size=3000, node_color='skyblue', font_size=10, font_weight='bold', arrows=True)
-
-# Add edge labels (lift)
-edge_labels = nx.get_edge_attributes(G, 'lift')
-edge_labels = {k: f"lift={v:.2f}" for k, v in edge_labels.items()}
-nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
-
-plt.title("Diagnosis Code Association Rules (Network Graph)")
-plt.show()
-
-import pandas as pd
-
-# Sample diagnosis codes per claim (comma-separated)
-sample_data = {
-    'diagnosis_codes': [
-        "E11.9,I10,J45.909",      # Diabetes, Hypertension, Asthma
-        "E11.9,I10",              # Diabetes, Hypertension
-        "I10,J45.909",            # Hypertension, Asthma
-        "E11.9,I10",              # Diabetes, Hypertension
-        "J45.909",                # Asthma
-        "E11.9",                  # Diabetes
-        "I10",                    # Hypertension
-        "E11.9,I10,J45.909",      # All three again
-        "E11.9,J45.909",          # Diabetes, Asthma
-        "I10,J45.909"             # Hypertension, Asthma
-    ]
-}
-
-# Create DataFrame
-df_sample = pd.DataFrame(sample_data)
-
-# Display sample
-print(df_sample)
-
-
-import pandas as pd
-from mlxtend.preprocessing import TransactionEncoder
-from mlxtend.frequent_patterns import apriori, association_rules
-import networkx as nx
-import matplotlib.pyplot as plt
-
-# Step 1: Sample diagnosis code data
-sample_data = {
-    'diagnosis_codes': [
-        "E11.9,I10,J45.909",      # Diabetes, Hypertension, Asthma
-        "E11.9,I10",              # Diabetes, Hypertension
-        "I10,J45.909",            # Hypertension, Asthma
-        "E11.9,I10",              # Diabetes, Hypertension
-        "J45.909",                # Asthma
-        "E11.9",                  # Diabetes
-        "I10",                    # Hypertension
-        "E11.9,I10,J45.909",      # All three again
-        "E11.9,J45.909",          # Diabetes, Asthma
-        "I10,J45.909"             # Hypertension, Asthma
-    ]
-}
-
-# Step 2: Create DataFrame
-df = pd.DataFrame(sample_data)
-
-# Step 3: Split diagnosis codes into list per row
-transactions = df['diagnosis_codes'].apply(lambda x: x.split(',')).tolist()
-
-# Step 4: One-hot encoding
-te = TransactionEncoder()
-te_data = te.fit_transform(transactions)
-df_encoded = pd.DataFrame(te_data, columns=te.columns_)
-
-# Step 5: Frequent itemsets
-frequent_itemsets = apriori(df_encoded, min_support=0.3, use_colnames=True)
-
-# Step 6: Association rules
-rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
-
-# Show top rules
-print("Top Association Rules:\n")
-print(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
-
-# Step 7: Visualize with NetworkX
-# Filter rules for clarity
-filtered_rules = rules[(rules['confidence'] > 0.6) & (rules['lift'] > 1.0)]
-
-# Create graph
-G = nx.DiGraph()
-
-# Add edges
-for _, row in filtered_rules.iterrows():
-    for antecedent in row['antecedents']:
-        for consequent in row['consequents']:
-            G.add_edge(antecedent, consequent, weight=row['lift'], confidence=row['confidence'])
-
-# Layout and draw
-plt.figure(figsize=(12, 8))
-pos = nx.spring_layout(G, k=0.5)
-
-# Draw nodes and edges
-nx.draw(G, pos, with_labels=True, node_size=3000, node_color='skyblue', font_size=10, arrows=True)
-edge_labels = { (u,v): f"lift={d['weight']:.2f}" for u,v,d in G.edges(data=True) }
-nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
-
-plt.title("Diagnosis Code Association Rules (Network Graph)")
-plt.show()
-
-SELECT 
-    c1.claim_id,
-    c1.readmission_id,
-    c1.last_date_of_service,
-    CASE 
-        WHEN EXISTS (
-            SELECT 1
-            FROM claims c2
-            WHERE 
-                c2.readmission_id = c1.readmission_id
-                AND c2.claim_id <> c1.claim_id
-                AND c2.last_date_of_service > LEAST(c1.last_date_of_service, c3.last_date_of_service)
-                AND c2.last_date_of_service < GREATEST(c1.last_date_of_service, c3.last_date_of_service)
-        ) THEN 1
-        ELSE 0
-    END AS is_between
-FROM claims c1
-JOIN claims c3
-    ON c1.readmission_id = c3.readmission_id
-    AND c1.claim_id <> c3.claim_id;
-
-
-
+# Optional: Save to file
+X.to_csv("readmission_with_summary.csv", index=False)
