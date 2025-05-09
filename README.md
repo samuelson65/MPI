@@ -4,7 +4,11 @@ from mlxtend.frequent_patterns import apriori, association_rules
 import networkx as nx
 import matplotlib.pyplot as plt
 
-# Step 1: Sample diagnosis code data
+# -------- STEP 1: Load Data --------
+# Option 1: Load from CSV
+# df = pd.read_csv("your_file.csv")  # Ensure it has a 'diagnosis_codes' column
+
+# Option 2: Sample data if you don’t have a CSV
 sample_data = {
     'diagnosis_codes': [
         "E11.9,I10,J45.909",
@@ -19,34 +23,35 @@ sample_data = {
         "I10,J45.909"
     ]
 }
-
-# Step 2: Create DataFrame
 df = pd.DataFrame(sample_data)
 
-# Step 3: Split diagnosis codes into list per row
+# -------- STEP 2: Preprocess --------
 transactions = df['diagnosis_codes'].apply(lambda x: x.split(',')).tolist()
 
-# Step 4: One-hot encoding
 te = TransactionEncoder()
 te_data = te.fit_transform(transactions)
 df_encoded = pd.DataFrame(te_data, columns=te.columns_)
 
-# Step 5: Frequent itemsets with lower support for small data
+# -------- STEP 3: Mine Rules --------
 frequent_itemsets = apriori(df_encoded, min_support=0.2, use_colnames=True)
-
-# Step 6: Association rules with relaxed thresholds
 rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.1)
 
-# Show top rules (don't filter too hard)
-print("Top Association Rules:\n")
+# -------- STEP 4: Export to Excel --------
 if not rules.empty:
-    print(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+    rules_to_export = rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']].copy()
+    
+    # Convert frozensets to strings for Excel compatibility
+    rules_to_export['antecedents'] = rules_to_export['antecedents'].apply(lambda x: ', '.join(list(x)))
+    rules_to_export['consequents'] = rules_to_export['consequents'].apply(lambda x: ', '.join(list(x)))
+    
+    # Export to Excel
+    rules_to_export.to_excel("association_rules_output.xlsx", index=False)
+    print("Rules exported to 'association_rules_output.xlsx'")
 else:
-    print("No rules found. Try reducing min_support or min_thresholds further.")
+    print("No association rules found to export.")
 
-# Step 7: Visualize with NetworkX (only if rules exist)
+# -------- STEP 5: Optional Visualization --------
 if not rules.empty:
-    # Loosen filters for graph
     filtered_rules = rules[(rules['confidence'] > 0.1) & (rules['lift'] > 1.0)]
 
     G = nx.DiGraph()
@@ -58,11 +63,10 @@ if not rules.empty:
     if len(G) > 0:
         plt.figure(figsize=(12, 8))
         pos = nx.spring_layout(G, k=0.5)
-
-        nx.draw(G, pos, with_labels=True, node_size=3000, node_color='lightblue', font_size=10, arrows=True)
+        nx.draw(G, pos, with_labels=True, node_size=3000, node_color='lightgreen', font_size=10, arrows=True)
         edge_labels = { (u,v): f"lift={d['weight']:.2f}" for u,v,d in G.edges(data=True) }
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='darkred')
         plt.title("Diagnosis Code Association Rules (Network Graph)")
         plt.show()
     else:
-        print("No strong associations found to visualize.")
+        print("No strong associations to visualize.")
