@@ -1,58 +1,45 @@
 import pandas as pd
-import shap
-import numpy as np
-from catboost import CatBoostClassifier
 
-# Load model and data
-model = CatBoostClassifier()
-model.load_model("your_model.cbm")  # Path to your CatBoost model
+# Inputs: shap_df = SHAP values DataFrame, X = feature values DataFrame (same index & columns)
+# Example:
+# shap_df = pd.read_csv("shap_values.csv")
+# X = pd.read_csv("original_features.csv")
 
-X = pd.read_csv("your_data.csv")  # Input features
-
-# Get SHAP values
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X)
-
-# Function to extract top SHAP contributors
-def explain_shap_values(shap_row, feature_names, instance, top_n=3):
-    shap_contribs = list(zip(feature_names, shap_row, instance))
-    shap_contribs.sort(key=lambda x: abs(x[1]), reverse=True)
-    top_pos = [f for f in shap_contribs if f[1] > 0][:top_n]
-    top_neg = [f for f in shap_contribs if f[1] < 0][:top_n]
+def explain_shap_row(shap_row, feature_row, top_n=3):
+    contribs = list(zip(shap_row.index, shap_row.values, feature_row.values))
+    contribs.sort(key=lambda x: abs(x[1]), reverse=True)
+    top_pos = [f for f in contribs if f[1] > 0][:top_n]
+    top_neg = [f for f in contribs if f[1] < 0][:top_n]
     return top_pos, top_neg
 
-# Smarter NLG generator
 def generate_nlg_summary(top_pos, top_neg):
-    phrases = []
+    summary_parts = []
 
     if top_pos:
-        reasons = []
-        for name, _, val in top_pos:
-            reasons.append(f"{name} being elevated ({val})")
-        phrases.append("The prediction indicates a higher risk of preventable readmission, likely due to " +
-                       ", ".join(reasons) + ".")
+        reasons = [f"{name} being elevated ({val})" for name, _, val in top_pos]
+        summary_parts.append("This patient's predicted risk of readmission is high, primarily due to " +
+                             ", ".join(reasons) + ".")
 
     if top_neg:
-        protectors = []
-        for name, _, val in top_neg:
-            protectors.append(f"{name} being relatively low ({val})")
-        phrases.append("However, there are protective factors such as " +
-                       ", ".join(protectors) + " that lower the overall risk.")
+        protectors = [f"{name} being relatively low ({val})" for name, _, val in top_neg]
+        summary_parts.append("However, protective factors such as " +
+                             ", ".join(protectors) + " may mitigate the risk.")
 
-    if not phrases:
-        return "No strong predictors were identified for this case."
+    if not summary_parts:
+        return "No dominant factors were identified for this prediction."
 
-    return " ".join(phrases)
+    return " ".join(summary_parts)
 
-# Apply to each row
+# Main loop
 summaries = []
-for i in range(len(X)):
-    top_pos, top_neg = explain_shap_values(shap_values[i], X.columns, X.iloc[i])
+for i in range(len(shap_df)):
+    top_pos, top_neg = explain_shap_row(shap_df.iloc[i], X.iloc[i])
     summary = generate_nlg_summary(top_pos, top_neg)
     summaries.append(summary)
 
-# Add to DataFrame
+# Add to original DataFrame
+X = X.copy()
 X['readmission_nlg_summary'] = summaries
 
-# Optional: Save output
-X.to_csv("readmission_with_smart_summary.csv", index=False)
+# Optional: Save
+# X.to_csv("with_shap_summaries.csv", index=False)
