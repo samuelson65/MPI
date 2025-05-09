@@ -1,80 +1,67 @@
 import pandas as pd
-import numpy as np
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+import networkx as nx
+import matplotlib.pyplot as plt
 
-# ========== SHAP Explanation Helpers ==========
-def explain_shap_row(shap_row, feature_row, top_n=3):
-    contribs = list(zip(shap_row.index, shap_row.values, feature_row.values))
-    contribs.sort(key=lambda x: abs(x[1]), reverse=True)
-    top_pos = [f for f in contribs if f[1] > 0][:top_n]
-    top_neg = [f for f in contribs if f[1] < 0][:top_n]
-    return top_pos, top_neg
+# Step 1: Sample diagnosis code data
+sample_data = {
+    'diagnosis_codes': [
+        "E11.9,I10,J45.909",      # Diabetes, Hypertension, Asthma
+        "E11.9,I10",              # Diabetes, Hypertension
+        "I10,J45.909",            # Hypertension, Asthma
+        "E11.9,I10",              # Diabetes, Hypertension
+        "J45.909",                # Asthma
+        "E11.9",                  # Diabetes
+        "I10",                    # Hypertension
+        "E11.9,I10,J45.909",      # All three again
+        "E11.9,J45.909",          # Diabetes, Asthma
+        "I10,J45.909"             # Hypertension, Asthma
+    ]
+}
 
-def format_feature_phrases(features, direction="elevated", plain=False):
-    phrases = []
-    for name, _, val in features:
-        name_clean = name.replace('_', ' ').capitalize()
-        if plain:
-            phr = f"{name_clean} is {direction} (value: {val})"
-        else:
-            phr = f"{name.replace('_', ' ')} being {direction} ({val})"
-        phrases.append(phr)
-    return phrases
+# Step 2: Create DataFrame
+df = pd.DataFrame(sample_data)
 
-# ========== Summary Generators ==========
-def generate_clinical_summary(top_pos, top_neg, pred_prob, threshold=0.5):
-    summary = []
-    if pred_prob >= threshold + 0.1:
-        summary.append(f"High readmission risk (p={pred_prob:.2f}).")
-    elif pred_prob <= threshold - 0.1:
-        summary.append(f"Low readmission risk (p={pred_prob:.2f}).")
-    else:
-        summary.append(f"Moderate readmission risk (p={pred_prob:.2f}).")
-    if top_pos:
-        summary.append("Top contributors: " + ", ".join(format_feature_phrases(top_pos, "elevated")) + ".")
-    if top_neg:
-        summary.append("Protective factors: " + ", ".join(format_feature_phrases(top_neg, "low")) + ".")
-    return " ".join(summary)
+# Step 3: Split diagnosis codes into list per row
+transactions = df['diagnosis_codes'].apply(lambda x: x.split(',')).tolist()
 
-def generate_layman_summary(top_pos, top_neg, pred_prob, threshold=0.5):
-    summary = []
-    if pred_prob >= threshold + 0.1:
-        summary.append(f"Your risk of being readmitted to the hospital is high (estimated chance: {int(pred_prob * 100)}%).")
-    elif pred_prob <= threshold - 0.1:
-        summary.append(f"Your chance of being readmitted is low (about {int(pred_prob * 100)}%).")
-    else:
-        summary.append(f"You have a moderate chance of readmission (around {int(pred_prob * 100)}%).")
-    if top_pos:
-        summary.append("This is mainly due to " + ", ".join(format_feature_phrases(top_pos, "high", plain=True)) + ".")
-    if top_neg:
-        summary.append("On the positive side, factors like " + ", ".join(format_feature_phrases(top_neg, "low", plain=True)) + " may reduce your risk.")
-    return " ".join(summary)
+# Step 4: One-hot encoding
+te = TransactionEncoder()
+te_data = te.fit_transform(transactions)
+df_encoded = pd.DataFrame(te_data, columns=te.columns_)
 
-# ========== Main Processor ==========
-def generate_shap_summaries_dual(shap_df, X, pred_proba, threshold=0.5, top_n=3):
-    clinical_summaries = []
-    patient_summaries = []
+# Step 5: Frequent itemsets
+frequent_itemsets = apriori(df_encoded, min_support=0.3, use_colnames=True)
 
-    for i in range(len(X)):
-        shap_row = shap_df.iloc[i]
-        feature_row = X.iloc[i]
-        prob = pred_proba[i]
-        top_pos, top_neg = explain_shap_row(shap_row, feature_row, top_n=top_n)
+# Step 6: Association rules
+rules = association_rules(frequent_itemsets, metric="lift", min_threshold=1.0)
 
-        clinical = generate_clinical_summary(top_pos, top_neg, prob, threshold)
-        patient = generate_layman_summary(top_pos, top_neg, prob, threshold)
+# Show top rules
+print("Top Association Rules:\n")
+print(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
 
-        clinical_summaries.append(clinical)
-        patient_summaries.append(patient)
+# Step 7: Visualize with NetworkX
+# Filter rules for clarity
+filtered_rules = rules[(rules['confidence'] > 0.6) & (rules['lift'] > 1.0)]
 
-    X = X.copy()
-    X['clinical_summary'] = clinical_summaries
-    X['patient_summary'] = patient_summaries
-    return X
+# Create graph
+G = nx.DiGraph()
 
-# ========== Example Usage ==========
-# shap_df = pd.read_csv("shap_values.csv")     # SHAP values: one row per patient
-# X = pd.read_csv("original_features.csv")     # Feature values
-# pred_proba = model.predict_proba(X)[:, 1]    # Predicted readmission probabilities
+# Add edges
+for _, row in filtered_rules.iterrows():
+    for antecedent in row['antecedents']:
+        for consequent in row['consequents']:
+            G.add_edge(antecedent, consequent, weight=row['lift'], confidence=row['confidence'])
 
-# result_df = generate_shap_summaries_dual(shap_df, X, pred_proba)
-# result_df.to_csv("readmission_with_summaries.csv", index=False)
+# Layout and draw
+plt.figure(figsize=(12, 8))
+pos = nx.spring_layout(G, k=0.5)
+
+# Draw nodes and edges
+nx.draw(G, pos, with_labels=True, node_size=3000, node_color='skyblue', font_size=10, arrows=True)
+edge_labels = { (u,v): f"lift={d['weight']:.2f}" for u,v,d in G.edges(data=True) }
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+
+plt.title("Diagnosis Code Association Rules (Network Graph)")
+plt.show()
