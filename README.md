@@ -1,44 +1,53 @@
--- Step 1: Explode all combinations into claim pairs
-WITH base_data AS (
-  SELECT
-    readmission_id,
-    initial_claim_id,
-    readmission_claim_id,
-    initial_dos,
-    readmission_dos
-  FROM claims_table
-),
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.cluster import AgglomerativeClustering
+from rulefit import RuleFit
+import shap
 
--- Step 2: Join base with itself to find intermediate claims
-intermediate_flags AS (
-  SELECT
-    a.readmission_id,
-    a.initial_claim_id AS claim_A,
-    a.readmission_claim_id AS claim_C,
-    a.initial_dos AS dos_A,
-    a.readmission_dos AS dos_C,
-    b.readmission_claim_id AS claim_B
-  FROM base_data a
-  JOIN base_data b
-    ON a.readmission_id = b.readmission_id
-    AND a.initial_claim_id = b.initial_claim_id
-    AND a.readmission_claim_id != b.readmission_claim_id
-    AND b.readmission_dos > a.initial_dos
-    AND b.readmission_dos < a.readmission_dos
-),
+# 1. Create sample DRG dataset
+data = {
+    'age': [65, 72, 58, 80, 45, 50, 77, 68, 59, 83],
+    'sex': [1, 0, 1, 0, 1, 0, 1, 1, 0, 0],  # 1=Male, 0=Female
+    'primary_diagnosis_code': [101, 102, 103, 101, 104, 105, 102, 103, 104, 101],
+    'num_secondary_diagnoses': [2, 5, 1, 3, 0, 4, 3, 2, 1, 6],
+    'num_procedures': [1, 3, 0, 2, 1, 0, 4, 2, 1, 3],
+    'length_of_stay': [5, 14, 3, 10, 2, 4, 12, 7, 3, 15],
+    'severity_of_illness': [3, 4, 2, 4, 1, 2, 4, 3, 2, 5],  # scale 1-5
+    'label': [1, 1, 0, 1, 0, 0, 1, 0, 0, 1]  # 1 = High resource DRG, 0 = Low resource DRG
+}
+df = pd.DataFrame(data)
 
--- Step 3: Final flag
-flagged_data AS (
-  SELECT DISTINCT
-    concat(claim_A, '_', claim_C) AS pk,
-    1 AS has_intermediate_flag
-  FROM intermediate_flags
-)
+# Features and target
+X = df.drop(columns=['label'])
+y = df['label']
 
--- Step 4: Merge with original
-SELECT
-  c.*,
-  COALESCE(f.has_intermediate_flag, 0) AS has_intermediate_flag
-FROM claims_table c
-LEFT JOIN flagged_data f
-  ON c.pk = f.pk;
+# 2. Train Random Forest classifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X, y)
+
+# 3. Compute SHAP values
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X)[1]  # SHAP values for class 1
+
+# 4. Cluster SHAP values to find subgroups
+cluster_model = AgglomerativeClustering(n_clusters=2)
+clusters = cluster_model.fit_predict(shap_values)
+df['shap_cluster'] = clusters
+
+# Add cluster as a feature for RuleFit
+X['shap_cluster'] = clusters
+
+# 5. Fit RuleFit model to extract interpretable rules
+rf = RuleFit(tree_size=4, sample_fract='default', max_rules=10, memory_par=0.01, random_state=42)
+rf.fit(X.values, y.values, feature_names=X.columns)
+
+# 6. Extract and print important rules (conditional queries)
+rules = rf.get_rules()
+rules = rules[(rules.coef != 0) & (rules.type == 'rule')].sort_values(by='support', ascending=False)
+
+print("\n=== Extracted Conditional Queries (Rules) ===")
+for _, row in rules.iterrows():
+    print(f"Rule: {row['rule']}")
+    print(f"  Coefficient: {row['coef']:.3f}")
+    print(f"  Support: {row['support']:.3f}\n")
