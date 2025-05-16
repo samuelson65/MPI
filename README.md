@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from imodels import RuleFitClassifier
+from imodels.rule_sets.rulefit import RuleFit
 from sklearn.tree import export_graphviz
 import graphviz
 
-# 1. Create sample categorical data
+# Create categorical dataset
 np.random.seed(42)
 n = 500
 df = pd.DataFrame({
@@ -16,35 +16,31 @@ df = pd.DataFrame({
     'AGE_GROUP': np.random.choice(['0-17', '18-34', '35-49', '50-64', '65+'], size=n)
 })
 
-# 2. Create binary label
+# Generate target
 df['OVERPAID'] = (
     (df['DRG'].isin(['194', '470'])) &
     (df['PDX_MDC'] != df['PROC_MDC']) &
     (df['AGE_GROUP'].isin(['65+', '50-64']))
 ).astype(int)
 
-# 3. Encode features
+# Prepare features
 X = pd.get_dummies(df.drop(columns='OVERPAID'), drop_first=True)
 y = df['OVERPAID']
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
-# 4. Train RuleFit model
-model = RuleFitClassifier(max_rules=10)
-model.fit(X_train, y_train)
+# Train RuleFit model
+model = RuleFit(max_rules=10)
+model.fit(X_train.values, y_train.values, feature_names=X.columns)
 
-# 5. Get and display top rules
+# Get and print rules
 rules_df = model.get_rules()
-rules_df = rules_df[rules_df['coefficient'] != 0].sort_values(by='importance', ascending=False)
-print("Top rules:\n", rules_df[['rule', 'support', 'importance']].head())
+rules_df = rules_df[rules_df.coef != 0].sort_values(by='support', ascending=False)
+print(rules_df[['rule', 'coef', 'support']].head())
 
-# 6. Visualize one source decision tree used by RuleFit (if available)
-# NOTE: RuleFit uses trees from sklearn.ensemble.RandomForestRegressor by default
-tree_model = model.model  # this is the underlying RandomForestRegressor
-first_tree = tree_model.estimators_[0]
-
-# Generate tree graph
+# Visualize first decision tree used to create rules
+base_tree = model.tree_generator.estimators_[0]
 dot_data = export_graphviz(
-    first_tree,
+    base_tree,
     feature_names=X.columns,
     class_names=['Not Overpaid', 'Overpaid'],
     filled=True,
