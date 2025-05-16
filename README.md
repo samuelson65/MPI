@@ -1,53 +1,46 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.cluster import AgglomerativeClustering
-from rulefit import RuleFit
-import shap
+from sklearn.model_selection import train_test_split
+from imodels import RuleFitClassifier
+from sklearn.tree import export_graphviz
+import graphviz
 
-# 1. Create sample DRG dataset
-data = {
-    'age': [65, 72, 58, 80, 45, 50, 77, 68, 59, 83],
-    'sex': [1, 0, 1, 0, 1, 0, 1, 1, 0, 0],  # 1=Male, 0=Female
-    'primary_diagnosis_code': [101, 102, 103, 101, 104, 105, 102, 103, 104, 101],
-    'num_secondary_diagnoses': [2, 5, 1, 3, 0, 4, 3, 2, 1, 6],
-    'num_procedures': [1, 3, 0, 2, 1, 0, 4, 2, 1, 3],
-    'length_of_stay': [5, 14, 3, 10, 2, 4, 12, 7, 3, 15],
-    'severity_of_illness': [3, 4, 2, 4, 1, 2, 4, 3, 2, 5],  # scale 1-5
-    'label': [1, 1, 0, 1, 0, 0, 1, 0, 0, 1]  # 1 = High resource DRG, 0 = Low resource DRG
-}
-df = pd.DataFrame(data)
+# Step 1: Create Categorical-Only DataFrame
+np.random.seed(42)
+n = 500
+df = pd.DataFrame({
+    'DRG': np.random.choice(['194', '470', '329', '870'], size=n),
+    'PDX_MDC': np.random.choice(['01', '05', '08', '10'], size=n),
+    'PROC_MDC': np.random.choice(['01', '05', '08', '10'], size=n),
+    'SEX': np.random.choice(['M', 'F'], size=n),
+    'AGE_GROUP': np.random.choice(['0-17', '18-34', '35-49', '50-64', '65+'], size=n)
+})
 
-# Features and target
-X = df.drop(columns=['label'])
-y = df['label']
+# Step 2: Generate Binary Label
+df['OVERPAID'] = (
+    (df['DRG'].isin(['194', '470'])) &
+    (df['PDX_MDC'] != df['PROC_MDC']) &
+    (df['AGE_GROUP'].isin(['65+', '50-64']))
+).astype(int)
 
-# 2. Train Random Forest classifier
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X, y)
+# Step 3: Encode categorical features
+X = pd.get_dummies(df.drop('OVERPAID', axis=1), drop_first=True)
+y = df['OVERPAID']
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
-# 3. Compute SHAP values
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X)[1]  # SHAP values for class 1
+# Step 4: Train RuleFit Model
+model = RuleFitClassifier(max_rules=10)
+model.fit(X_train, y_train)
 
-# 4. Cluster SHAP values to find subgroups
-cluster_model = AgglomerativeClustering(n_clusters=2)
-clusters = cluster_model.fit_predict(shap_values)
-df['shap_cluster'] = clusters
-
-# Add cluster as a feature for RuleFit
-X['shap_cluster'] = clusters
-
-# 5. Fit RuleFit model to extract interpretable rules
-rf = RuleFit(tree_size=4, sample_fract='default', max_rules=10, memory_par=0.01, random_state=42)
-rf.fit(X.values, y.values, feature_names=X.columns)
-
-# 6. Extract and print important rules (conditional queries)
-rules = rf.get_rules()
-rules = rules[(rules.coef != 0) & (rules.type == 'rule')].sort_values(by='support', ascending=False)
-
-print("\n=== Extracted Conditional Queries (Rules) ===")
-for _, row in rules.iterrows():
-    print(f"Rule: {row['rule']}")
-    print(f"  Coefficient: {row['coef']:.3f}")
-    print(f"  Support: {row['support']:.3f}\n")
+# Step 5: Visualize one base decision tree
+tree = model.rule_ensemble_.estimators_[0]
+dot_data = export_graphviz(
+    tree,
+    feature_names=X.columns,
+    filled=True,
+    rounded=True,
+    out_file=None
+)
+graph = graphviz.Source(dot_data)
+graph.render("rulefit_tree", format="png", cleanup=True)
+graph.view("rulefit_tree")
