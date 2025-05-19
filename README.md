@@ -28,7 +28,6 @@ final_model.fit(pool)
 
 # Export the first tree to dot format
 dot_string = final_model.plot_tree(tree_idx=0, pool=pool, plot=False)
-# plot_tree with plot=False returns the dot source string
 
 # Use graphviz to render and view the tree
 graph = graphviz.Source(dot_string)
