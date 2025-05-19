@@ -1,44 +1,36 @@
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier, export_graphviz
+from catboost import CatBoostClassifier, Pool
 import graphviz
 
-# Step 1: Create categorical dataset
-np.random.seed(42)
-n = 500
-df = pd.DataFrame({
-    'DRG': np.random.choice(['194', '470', '329', '870'], size=n),
-    'PDX_MDC': np.random.choice(['01', '05', '08', '10'], size=n),
-    'PROC_MDC': np.random.choice(['01', '05', '08', '10'], size=n),
-    'SEX': np.random.choice(['M', 'F'], size=n),
-    'AGE_GROUP': np.random.choice(['0-17', '18-34', '35-49', '50-64', '65+'], size=n)
-})
+# Sample data
+data = {
+    'Provider_Type': ['Hospital', 'Clinic', 'Hospital', 'Private', 'Clinic'],
+    'Procedure_Code': ['A100', 'B200', 'A100', 'C300', 'B200'],
+    'Claim_Amount': [5000, 1200, 7500, 3000, 1500],
+    'Patient_Age': [45, 32, 67, 29, 55],
+    'Overpayment': [1, 0, 1, 0, 1]
+}
+df = pd.DataFrame(data)
+X = df.drop(columns=['Overpayment'])
+y = df['Overpayment']
 
-# Step 2: Create label
-df['OVERPAID'] = (
-    (df['DRG'].isin(['194', '470'])) &
-    (df['PDX_MDC'] != df['PROC_MDC']) &
-    (df['AGE_GROUP'].isin(['65+', '50-64']))
-).astype(int)
+cat_features = ['Provider_Type', 'Procedure_Code']
+pool = Pool(X, y, cat_features=cat_features, feature_names=list(X.columns))
 
-# Step 3: Encode features
-X = pd.get_dummies(df.drop(columns='OVERPAID'), drop_first=True)
-y = df['OVERPAID']
-
-# Step 4: Train Decision Tree
-clf = DecisionTreeClassifier(max_depth=4, random_state=42)
-clf.fit(X, y)
-
-# Step 5: Visualize the tree
-dot_data = export_graphviz(
-    clf,
-    feature_names=X.columns,
-    class_names=["Not Overpaid", "Overpaid"],
-    filled=True,
-    rounded=True,
-    out_file=None
+# Train CatBoost model
+final_model = CatBoostClassifier(
+    iterations=10,
+    depth=3,
+    cat_features=cat_features,
+    verbose=0
 )
-graph = graphviz.Source(dot_data)
+final_model.fit(pool)
+
+# Export the first tree to dot format
+dot_string = final_model.plot_tree(tree_idx=0, pool=pool, plot=False)
+# plot_tree with plot=False returns the dot source string
+
+# Use graphviz to render and view the tree
+graph = graphviz.Source(dot_string)
 graph.render("decision_tree", format="png", cleanup=True)
 graph.view("decision_tree")
