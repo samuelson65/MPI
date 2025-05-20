@@ -93,9 +93,6 @@ model_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
                                  ('classifier', DecisionTreeClassifier(random_state=42))])
 
 # Define a broader parameter grid for tuning
-# NOTE: For very large datasets, max_depth=None might lead to huge trees.
-# Consider setting a reasonable upper bound for max_depth (e.g., 15-25)
-# to make the tree interpretable while still allowing complexity.
 param_grid = {
     'classifier__max_depth': [7, 10, 15, 20], # Test different max depths
     'classifier__min_samples_split': [5, 10, 20], # Minimum samples required to split a node
@@ -183,7 +180,7 @@ print("--- Actionable Overpayment Concepts (Derived from Decision Tree Rules) --
 print("="*50)
 
 # Function to extract rules from the decision tree
-def get_tree_rules(tree_model, feature_names, class_names):
+def get_tree_rules(tree_model, feature_names, class_names, categorical_original_features):
     tree_ = tree_model.tree_
     feature_name = [
         feature_names[i] if i != -2 else "UNDEFINED"
@@ -197,24 +194,25 @@ def get_tree_rules(tree_model, feature_names, class_names):
             threshold = tree_.threshold[node]
 
             # Left child (True condition)
-            left_condition = f"{name} <= {threshold:.2f}"
-            left_samples = tree_.n_node_samples[tree_.children_left[node]]
-            recurse(tree_.children_left[node], path_conditions + [left_condition], left_samples)
+            left_condition = (name, '<=', threshold)
+            recurse(tree_.children_left[node], path_conditions + [left_condition], tree_.n_node_samples[tree_.children_left[node]])
 
             # Right child (False condition)
-            right_condition = f"{name} > {threshold:.2f}"
-            right_samples = tree_.n_node_samples[tree_.children_right[node]]
-            recurse(tree_.children_right[node], path_conditions + [right_condition], right_samples)
+            right_condition = (name, '>', threshold)
+            recurse(tree_.children_right[node], path_conditions + [right_condition], tree_.n_node_samples[tree_.children_right[node]])
         else: # Leaf node
             # Check if this leaf predicts 'Overpayment' (class_id = 1)
             # The value array is [samples_class_0, samples_class_1]
             if np.argmax(tree_.value[node]) == 1: # If the majority class is 'Overpayment'
                 num_overpayment_samples = tree_.value[node][0][1] # Get count of overpayment samples at this leaf
                 total_samples_at_leaf = tree_.n_node_samples[node]
-                # Filter out rules with very few samples or low purity if desired
-                if num_overpayment_samples > 0 and total_samples_at_leaf > 0: # Ensure it's not an empty or highly impure leaf
+                
+                # Only consider rules that lead to a "pure enough" overpayment leaf
+                # and cover a reasonable number of samples to be actionable.
+                # Adjust these thresholds as needed for your data.
+                if num_overpayment_samples > 0 and total_samples_at_leaf >= 5: # At least 5 samples at leaf
                     purity = num_overpayment_samples / total_samples_at_leaf
-                    if purity >= 0.7: # Only consider rules that lead to a "pure enough" overpayment leaf
+                    if purity >= 0.7: # At least 70% of samples at this leaf are overpayments
                         rules.append({
                             'conditions': path_conditions,
                             'predicted_class': class_names[np.argmax(tree_.value[node])],
@@ -226,59 +224,68 @@ def get_tree_rules(tree_model, feature_names, class_names):
     recurse(0, [], tree_.n_node_samples[0]) # Start recursion from the root node (node 0)
     return rules
 
-def interpret_condition(condition_str):
+def interpret_condition_for_concept(feature, operator, value, categorical_original_features):
     # This function translates numerical conditions involving one-hot encoded features
     # back into more readable categorical statements.
-    parts = condition_str.split(' ')
-    feature = parts[0]
-    operator = parts[1]
-    value = float(parts[2])
 
-    # Handle one-hot encoded features (e.g., 'DRG_Code_292')
-    if '_' in feature and any(f.startswith(feature.split('_')[0]) for f in categorical_features):
-        original_feature = feature.rsplit('_', 1)[0]
-        category_value = feature.rsplit('_', 1)[1]
-        if operator == '<=' and value < 0.5: # e.g., DRG_Code_292 <= 0.5 means DRG_Code is NOT 292
-             return f"{original_feature} is NOT '{category_value}'"
-        elif operator == '>' and value > 0.5: # e.g., DRG_Code_292 > 0.5 means DRG_Code IS 292
-             return f"{original_feature} IS '{category_value}'"
+    is_one_hot_feature = False
+    original_feature_name = None
+    category_value = None
+
+    # Check if the feature name starts with any of the original categorical feature names
+    for orig_cat_feat in categorical_original_features:
+        if feature.startswith(f"{orig_cat_feat}_"):
+            is_one_hot_feature = True
+            original_feature_name = orig_cat_feat
+            category_value = feature[len(f"{orig_cat_feat}_"):]
+            break
+
+    if is_one_hot_feature:
+        # For one-hot encoded features, a value > 0.5 means the category is present (True)
+        # and value <= 0.5 means the category is absent (False).
+        if operator == '>' and value > 0.5:
+             return f"**{original_feature_name}** IS '{category_value}'"
+        elif operator == '<=' and value < 0.5:
+             return f"**{original_feature_name}** is NOT '{category_value}'"
         else:
-            return condition_str # Fallback for complex numerical interpretations of one-hot
+            # This case should ideally not be hit with binary one-hot features in a typical tree
+            return f"{feature} {operator} {value:.2f}"
+    else:
+        # For numerical features
+        if operator == '<=':
+            return f"**{feature}** is less than or equal to {value:.2f}"
+        elif operator == '>':
+            return f"**{feature}** is greater than {value:.2f}"
+        return f"**{feature}** {operator} {value:.2f}" # Fallback, should not happen
 
-    # Handle numerical features
-    if operator == '<=':
-        return f"{feature} is less than or equal to {value:.2f}"
-    elif operator == '>':
-        return f"{feature} is greater than {value:.2f}"
-    return condition_str # Default
-
-def generate_actionable_concepts(rules):
+def generate_actionable_concepts(rules, categorical_original_features):
     concepts = []
     for i, rule in enumerate(rules):
         translated_conditions = []
-        for cond in rule['conditions']:
-            translated_conditions.append(interpret_condition(cond))
+        for feature, operator, value in rule['conditions']:
+            translated_conditions.append(interpret_condition_for_concept(feature, operator, value, categorical_original_features))
 
-        # Basic concept
-        concept_str = f"Concept {i+1}: If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
+        # Basic concept string
+        concept_str = f"If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
         
         # Add context about samples and purity
-        concept_str += f" (Based on {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf, Purity: {rule['purity']:.1%})"
+        concept_str += f" (Covers {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf; Purity: {rule['purity']:.1%})"
         
         concepts.append({
             'concept_text': concept_str,
             'overpayment_samples': rule['overpayment_samples'],
             'total_samples_at_leaf': rule['total_samples_at_leaf'],
             'purity': rule['purity'],
-            'conditions': rule['conditions'] # Keep original conditions for SQL generation
+            'conditions_raw': rule['conditions'] # Keep original raw conditions for SQL generation
         })
-    return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True) # Prioritize concepts by samples
+    # Prioritize concepts by the number of overpayment samples they cover
+    return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True)
 
 # Get rules from the best trained decision tree model
-overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'])
+overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'], list(categorical_features))
 
 # Generate and print actionable concepts
-actionable_concepts = generate_actionable_concepts(overpayment_rules)
+actionable_concepts = generate_actionable_concepts(overpayment_rules, list(categorical_features))
 
 if actionable_concepts:
     print("\nHere are the top actionable concepts/rules identified by the Decision Tree:")
@@ -286,26 +293,32 @@ if actionable_concepts:
         print(f"\n--- Concept {i+1} ---")
         print(concept_data['concept_text'])
         print("\n**Corresponding SQL Query Pattern:**")
-        # Generate simple SQL for each concept
+        
+        # Generate SQL for each concept based on raw conditions
         sql_conditions = []
-        for cond_str in concept_data['conditions']:
-            parts = cond_str.split(' ')
-            feature = parts[0]
-            operator = parts[1]
-            value = parts[2]
+        for feature, operator, value in concept_data['conditions_raw']:
+            is_one_hot_feature = False
+            original_feature_name = None
+            category_value = None
 
-            # Handle one-hot encoded features
-            if '_' in feature and any(f.startswith(feature.split('_')[0]) for f in categorical_features):
-                original_feature = feature.rsplit('_', 1)[0]
-                category_value = feature.rsplit('_', 1)[1]
-                if operator == '>' and float(value) > 0.5: # Is this category
-                    sql_conditions.append(f"{original_feature} = '{category_value}'")
-                elif operator == '<=' and float(value) < 0.5: # Is NOT this category
-                    sql_conditions.append(f"{original_feature} != '{category_value}'")
+            for orig_cat_feat in categorical_features:
+                if feature.startswith(f"{orig_cat_feat}_"):
+                    is_one_hot_feature = True
+                    original_feature_name = orig_cat_feat
+                    category_value = feature[len(f"{orig_cat_feat}_"):]
+                    break
+
+            if is_one_hot_feature:
+                if operator == '>' and value > 0.5: # Is this category
+                    sql_conditions.append(f"{original_feature_name} = '{category_value.replace('_', ' ')}'") # Replace _ with space for readability
+                elif operator == '<=' and value < 0.5: # Is NOT this category
+                    sql_conditions.append(f"{original_feature_name} != '{category_value.replace('_', ' ')}'")
+                # Else case (value between 0.5 and -0.5) implies the tree uses a numerical split on the one-hot encoding which is unusual for a pure category check
+                # We'll just pass it through as is, but it should ideally not occur for clear categorical checks.
                 else:
-                    sql_conditions.append(f"({feature} {operator} {value})") # Fallback
+                    sql_conditions.append(f"({feature} {operator} {value:.2f})")
             else: # Numerical feature
-                sql_conditions.append(f"{feature} {operator} {value}")
+                sql_conditions.append(f"{feature} {operator} {value:.2f}")
 
         print("```sql")
         print("SELECT *")
@@ -313,8 +326,8 @@ if actionable_concepts:
         print("WHERE " + "\n  AND ".join(sql_conditions) + ";")
         print("```")
 else:
-    print("\nNo strong 'Overpayment' concepts could be extracted from the tree with the current purity threshold.")
-    print("Consider adjusting `purity >= 0.7` in `get_tree_rules` or `max_depth` in `param_grid` if you expect more rules.")
+    print("\nNo strong 'Overpayment' concepts could be extracted from the tree with the current purity and sample thresholds.")
+    print("Consider adjusting `purity >= 0.7` or `total_samples_at_leaf >= 5` in `get_tree_rules` or `max_depth` in `param_grid` if you expect more rules.")
 
 print("\n" + "="*50)
 print("\n**How to Use These Actionable Concepts:**")
