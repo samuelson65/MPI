@@ -19,38 +19,33 @@ df = pd.DataFrame(data)
 X_train = df[['age', 'diagnosis', 'procedure_code']]
 y_train = df['drg']
 
-# === Identify column types ===
+# === Preprocessing ===
 categorical_cols = ['diagnosis', 'procedure_code']
 numerical_cols = ['age']
 
-# === Preprocessing: OneHotEncode categorical, pass through numeric ===
 preprocessor = ColumnTransformer([
     ('cat', OneHotEncoder(sparse=False, handle_unknown='ignore'), categorical_cols),
     ('num', 'passthrough', numerical_cols)
 ])
 
-# === Create Pipeline ===
 pipeline = Pipeline([
     ('preprocessor', preprocessor),
     ('classifier', DecisionTreeClassifier(max_depth=4, random_state=42))
 ])
 
-# === Train the pipeline ===
+# === Train ===
 pipeline.fit(X_train, y_train)
-
-# === Extract fitted classifier and transformed data ===
 clf = pipeline.named_steps['classifier']
 X_encoded = pipeline.named_steps['preprocessor'].transform(X_train)
 
-# === Get feature names for dtreeviz ===
+# === Feature Names ===
 ohe = pipeline.named_steps['preprocessor'].named_transformers_['cat']
 cat_feature_names = ohe.get_feature_names_out(categorical_cols)
 feature_names = list(cat_feature_names) + numerical_cols
 
-# === Convert transformed data to DataFrame ===
+# === DTreeViz visualization ===
 X_encoded_df = pd.DataFrame(X_encoded, columns=feature_names)
 
-# === Visualize using dtreeviz v2.x ===
 viz = model(clf,
             X_train=X_encoded_df,
             y_train=y_train,
@@ -58,9 +53,11 @@ viz = model(clf,
             class_names=clf.classes_,
             target_name="DRG")
 
-viz.save("drg_decision_tree.svg")
-print("Interactive tree saved as 'drg_decision_tree.svg'. Open in your browser.")
+viz_obj = viz.view()
+viz_obj.save("drg_decision_tree.svg")  # Correct method in dtreeviz v2.x
 
-# === Optional: Print human-readable rules ===
-print("\n===== DECISION TREE RULES (for SME) =====\n")
+print("SVG saved as 'drg_decision_tree.svg'.")
+
+# === Optional: Text-based Rules ===
+print("\n===== DECISION RULES (for SME) =====")
 print(export_text(clf, feature_names=feature_names))
