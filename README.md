@@ -7,47 +7,56 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix, precision_score, recall_score, f1_score
 import graphviz
 import os
-import numpy as np # For numerical operations
+import numpy as np
 
 # --- 1. Create Dummy Data (REPLACE WITH YOUR ACTUAL X_train and y_train) ---
-# In a real-world scenario, you would load your pre-split X_train and y_train here.
-# For demonstration purposes, let's create a larger, more complex synthetic dataset
-# that resembles DRG Medicare data with a bit more variety and potential for deeper splits.
-# We'll also introduce some imbalance, as overpayment cases are typically rarer.
-
 np.random.seed(42) # For reproducibility of dummy data
 
-num_samples = 500 # Increased number of samples for a more complex tree
+num_samples = 1000 # Increased number of samples for a more complex tree
 
-drg_codes = ['291', '292', '871', '872', '313', '470']
-provider_types = ['Hospital', 'Skilled Nursing Facility', 'Ambulatory Surgical Center']
-diagnosis_groups = ['Heart Failure', 'Pneumonia', 'Stroke', 'Diabetes', 'Kidney Failure', 'Cancer']
+drg_codes = ['291', '292', '871', '872', '313', '470', '601', '789']
+provider_types = ['Hospital', 'Skilled Nursing Facility', 'Ambulatory Surgical Center', 'Rehab Center']
+diagnosis_groups = ['Heart Failure', 'Pneumonia', 'Stroke', 'Diabetes', 'Kidney Failure', 'Cancer', 'Fracture', 'Sepsis']
+patient_age_groups = ['Child', 'Young Adult', 'Adult', 'Senior']
+payer_types = ['Medicare', 'Medicaid', 'Commercial', 'Self-Pay']
 
 data = {
     'DRG_Code': np.random.choice(drg_codes, num_samples),
     'Provider_Type': np.random.choice(provider_types, num_samples),
-    'Length_of_Stay': np.random.randint(1, 30, num_samples), # Days
-    'Total_Charges': np.random.randint(5000, 100000, num_samples), # USD
+    'Length_of_Stay': np.random.randint(1, 40, num_samples), # Days
+    'Total_Charges': np.random.randint(5000, 150000, num_samples), # USD
     'Diagnosis_Group': np.random.choice(diagnosis_groups, num_samples),
-    'Number_of_Procedures': np.random.randint(0, 5, num_samples),
-    'Patient_Age_Group': np.random.choice(['Child', 'Adult', 'Senior'], num_samples),
-    'Readmission_Flag': np.random.choice([0, 1], num_samples, p=[0.9, 0.1]), # 10% readmission
+    'Number_of_Procedures': np.random.randint(0, 7, num_samples),
+    'Patient_Age_Group': np.random.choice(patient_age_groups, num_samples),
+    'Readmission_Flag': np.random.choice([0, 1], num_samples, p=[0.95, 0.05]), # 5% readmission
+    'Payer_Type': np.random.choice(payer_types, num_samples),
+    'Comorbidity_Index': np.random.randint(0, 5, num_samples) # Example of a numerical index
 }
 df = pd.DataFrame(data)
 
-# Introduce some patterns for 'Overpayment' to make the target learnable
-# This is a simplified logic for dummy data; real patterns would be more complex
+# Introduce more complex patterns for 'Overpayment' to make the target learnable and diverse
 df['Overpayment'] = 0
-df.loc[(df['DRG_Code'] == '292') & (df['Length_of_Stay'] > 15) & (df['Total_Charges'] > 40000), 'Overpayment'] = 1
-df.loc[(df['Provider_Type'] == 'Skilled Nursing Facility') & (df['Length_of_Stay'] > 20) & (df['Number_of_Procedures'] < 1), 'Overpayment'] = 1
-df.loc[(df['Diagnosis_Group'] == 'Stroke') & (df['Total_Charges'] > 80000) & (df['Patient_Age_Group'] == 'Child'), 'Overpayment'] = 1
-df.loc[df['Overpayment'] == 0, 'Overpayment'] = np.random.choice([0, 1], sum(df['Overpayment'] == 0), p=[0.98, 0.02]) # Add some random noise for complexity
+# Pattern 1: High charges, short stay for specific DRG
+df.loc[(df['DRG_Code'] == '292') & (df['Length_of_Stay'] < 5) & (df['Total_Charges'] > 70000), 'Overpayment'] = 1
+# Pattern 2: Very long stay, low procedures for certain provider type
+df.loc[(df['Provider_Type'] == 'Skilled Nursing Facility') & (df['Length_of_Stay'] > 30) & (df['Number_of_Procedures'] < 2), 'Overpayment'] = 1
+# Pattern 3: Specific diagnosis with high charges for seniors
+df.loc[(df['Diagnosis_Group'] == 'Stroke') & (df['Total_Charges'] > 100000) & (df['Patient_Age_Group'] == 'Senior'), 'Overpayment'] = 1
+# Pattern 4: High comorbidity index with very low charges (might indicate under-billing in some cases, but could be over for others due to miscoding)
+df.loc[(df['Comorbidity_Index'] > 3) & (df['Total_Charges'] < 10000), 'Overpayment'] = 1
+# Pattern 5: Readmission with high charges for specific DRG
+df.loc[(df['Readmission_Flag'] == 1) & (df['DRG_Code'] == '470') & (df['Total_Charges'] > 50000), 'Overpayment'] = 1
 
-# Ensure a minimum number of overpayment cases for demonstration
-if df['Overpayment'].sum() < 20:
-    # Force some more overpayments if the random generation was too sparse
-    overpayment_indices = np.random.choice(df.index, 20 - df['Overpayment'].sum(), replace=False)
-    df.loc[overpayment_indices, 'Overpayment'] = 1
+# Add some random noise for complexity, keeping the target imbalanced
+df.loc[df['Overpayment'] == 0, 'Overpayment'] = np.random.choice([0, 1], sum(df['Overpayment'] == 0), p=[0.97, 0.03])
+
+# Ensure a minimum number of overpayment cases for demonstration purposes
+if df['Overpayment'].sum() < 30: # Aim for at least 30 overpayment cases
+    missing_overpayments = 30 - df['Overpayment'].sum()
+    if missing_overpayments > 0:
+        overpayment_indices = np.random.choice(df.index[df['Overpayment'] == 0], missing_overpayments, replace=False)
+        df.loc[overpayment_indices, 'Overpayment'] = 1
+
 
 print(f"Generated dummy data with {len(df)} samples. Overpayment cases: {df['Overpayment'].sum()}")
 print(df.head())
@@ -56,8 +65,8 @@ print(df.head())
 X = df.drop('Overpayment', axis=1)
 y = df['Overpayment']
 
-# Split the data into training and testing sets. This is crucial for evaluating model generalization.
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y) # stratify=y preserves class balance
+# Split the data into training and testing sets. Stratify to preserve class balance.
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
 
 print(f"\nTraining set size: {len(X_train)} samples")
 print(f"Test set size: {len(X_test)} samples")
@@ -73,45 +82,34 @@ print(f"\nCategorical features: {list(categorical_features)}")
 print(f"Numerical features: {list(numerical_features)}")
 
 # --- 3. Preprocessing Pipeline for Categorical Variables (One-Hot Encoding) ---
-# Create a column transformer to apply OneHotEncoder to categorical features.
-# 'handle_unknown='ignore'' is important for robust deployment, handling categories not seen in training.
 preprocessor = ColumnTransformer(
     transformers=[
         ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)],
-    remainder='passthrough' # Keep numerical features as they are.
+    remainder='passthrough'
 )
 
 # --- 4. Build and Train the Decision Tree Classifier with Hyperparameter Tuning ---
-# Create a pipeline that first preprocesses the data and then trains the model.
-# We'll use GridSearchCV to find the best hyperparameters.
-
-# Initial pipeline for GridSearchCV
 model_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
                                  ('classifier', DecisionTreeClassifier(random_state=42))])
 
 # Define a broader parameter grid for tuning
-# These ranges can be adjusted based on the size of your real dataset and initial experiments.
+# NOTE: For very large datasets, max_depth=None might lead to huge trees.
+# Consider setting a reasonable upper bound for max_depth (e.g., 15-25)
+# to make the tree interpretable while still allowing complexity.
 param_grid = {
-    'classifier__max_depth': [5, 7, 10, 15, 20, None], # Max depth of the tree
-    'classifier__min_samples_split': [2, 5, 10, 20], # Minimum samples required to split a node
-    'classifier__min_samples_leaf': [1, 2, 5, 10],   # Minimum samples required at a leaf node
+    'classifier__max_depth': [7, 10, 15, 20], # Test different max depths
+    'classifier__min_samples_split': [5, 10, 20], # Minimum samples required to split a node
+    'classifier__min_samples_leaf': [3, 5, 10],   # Minimum samples required at a leaf node
     'classifier__max_features': [None, 'sqrt', 'log2'], # Number of features to consider for best split
     'classifier__class_weight': [None, 'balanced'] # Handles imbalanced datasets by weighting classes
 }
 
-# Create GridSearchCV object
-# cv=5 for 5-fold cross-validation.
-# scoring='roc_auc' is often preferred for imbalanced classification.
-# n_jobs=-1 uses all available CPU cores, speeding up the search.
-# verbose=1 shows progress.
 print("\nStarting Grid Search for best Decision Tree hyperparameters with 5-fold Cross-Validation...")
 grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, scoring='roc_auc', n_jobs=-1, verbose=1)
 
-# Fit GridSearchCV to the training data
 grid_search.fit(X_train, y_train)
 print("Grid Search complete.")
 
-# Get the best model found by GridSearchCV
 best_model_pipeline = grid_search.best_estimator_
 best_decision_tree_model = best_model_pipeline.named_steps['classifier']
 
@@ -119,14 +117,11 @@ print(f"\nBest parameters found: {grid_search.best_params_}")
 print(f"Best ROC AUC score (on training folds): {grid_search.best_score_:.4f}")
 
 # Get feature names after one-hot encoding for visualization and importance
-# Fit the preprocessor on X_train to ensure it's ready for feature name extraction
 preprocessor.fit(X_train)
 encoded_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
-# Combine one-hot encoded names with numerical feature names
 all_feature_names = list(encoded_feature_names) + list(numerical_features)
 
 # --- 5. Visualize the Best Decision Tree ---
-# Export the best decision tree to a DOT file
 dot_data = export_graphviz(best_decision_tree_model,
                            out_file=None,
                            feature_names=all_feature_names,
@@ -134,7 +129,6 @@ dot_data = export_graphviz(best_decision_tree_model,
                            filled=True, rounded=True,
                            special_characters=True)
 
-# Render the DOT file to a PDF
 output_file_name = "drg_overpayment_decision_tree_tuned"
 try:
     graph = graphviz.Source(dot_data)
@@ -151,11 +145,9 @@ print("\n" + "="*50)
 print("--- Model Evaluation on Test Set ---")
 print("="*50)
 
-# Make predictions on the unseen test data using the best model
 y_pred = best_model_pipeline.predict(X_test)
-y_pred_proba = best_model_pipeline.predict_proba(X_test)[:, 1] # Probability of 'Overpayment' class
+y_pred_proba = best_model_pipeline.predict_proba(X_test)[:, 1]
 
-# Calculate and print various evaluation metrics
 conf_matrix = confusion_matrix(y_test, y_pred)
 print("Confusion Matrix:")
 print(conf_matrix)
@@ -168,64 +160,168 @@ print("\nClassification Report (Precision, Recall, F1-Score):")
 print(classification_report(y_test, y_pred, target_names=['No Overpayment', 'Overpayment']))
 
 print(f"\nROC AUC Score: {roc_auc_score(y_test, y_pred_proba):.4f}")
-print(f"Precision (Overpayment): {precision_score(y_test, y_pred):.4f}") # How many predicted overpayments were correct
-print(f"Recall (Overpayment): {recall_score(y_test, y_pred):.4f}")     # How many actual overpayments were found
-print(f"F1-Score (Overpayment): {f1_score(y_test, y_pred):.4f}")       # Balance between precision and recall
+print(f"Precision (Overpayment): {precision_score(y_test, y_pred):.4f}")
+print(f"Recall (Overpayment): {recall_score(y_test, y_pred):.4f}")
+print(f"F1-Score (Overpayment): {f1_score(y_test, y_pred):.4f}")
 
 # --- 7. Feature Importance ---
 print("\n" + "="*50)
 print("--- Feature Importances ---")
 print("="*50)
 
-# Get feature importances from the best trained classifier
 importances = best_decision_tree_model.feature_importances_
-
-# Create a DataFrame for better readability and sort by importance
 feature_importance_df = pd.DataFrame({
     'feature': all_feature_names,
     'importance': importances
 }).sort_values(by='importance', ascending=False)
 
 print(feature_importance_df)
-print("\nThese importances indicate which features the decision tree found most useful for making predictions.")
 
-# --- 8. Guidance for Subject Matter Experts (SMEs) ---
+# --- 8. Actionable Concept Generation ---
 print("\n" + "="*50)
-print("--- Guidance for Subject Matter Experts (SMEs) ---")
+print("--- Actionable Overpayment Concepts (Derived from Decision Tree Rules) ---")
 print("="*50)
-print("\nThe generated PDF file ('drg_overpayment_decision_tree_tuned.pdf') now shows a more optimized and potentially deeper decision tree.")
-print("This tree was built using the best set of hyperparameters found through cross-validation, aiming for better generalization.")
 
-print("\n### How to Interpret and Develop Concepts/Queries (Advanced Considerations):")
-print("1.  **Analyze the Deeper Paths**: With a potentially larger tree, you'll find more nuanced rules. Focus on paths leading to 'Overpayment' leaves.")
-print("    * **Complex Rule Example**: `IF DRG_Code_292 = 1 AND Length_of_Stay > 15.5 AND Total_Charges > 45000 AND Number_of_Procedures < 2 THEN Overpayment`.")
-print("    * **Node Purity**: Observe the `value` array `[no_overpayment_count, overpayment_count]` in each node. A leaf node with a very skewed `value` towards `[0, N]` (meaning N overpayment cases and 0 no-overpayment cases) represents a 'purer' and stronger rule.")
+# Function to extract rules from the decision tree
+def get_tree_rules(tree_model, feature_names, class_names):
+    tree_ = tree_model.tree_
+    feature_name = [
+        feature_names[i] if i != -2 else "UNDEFINED"
+        for i in tree_.feature
+    ]
+    rules = []
 
-print("\n2.  **Utilize Feature Importances**: The 'Feature Importances' table helps prioritize your investigation. Features with higher importance are more critical for identifying overpayments.")
-print("    * Focus on the top-ranked features. Do these align with your domain expertise? Do they suggest new areas for investigation?")
+    def recurse(node, path_conditions, current_samples):
+        if tree_.feature[node] != -2: # Not a leaf node
+            name = feature_name[node]
+            threshold = tree_.threshold[node]
 
-print("\n3.  **Cross-Reference with Evaluation Metrics**:")
-print("    * **Recall (Overpayment)**: If high, the model is good at catching actual overpayments. The rules derived from the tree are likely capturing many true cases.")
-print("    * **Precision (Overpayment)**: If high, then when the model *predicts* overpayment, it's usually correct. This means the rules derived are quite specific and lead to fewer false alarms.")
-print("    * **False Positives (Type I Error)**: These are cases where the model flags an overpayment, but it wasn't one. The associated tree paths might need further scrutiny or refinement by SMEs.")
-print("    * **False Negatives (Type II Error)**: These are actual overpayments the model missed. Investigate these cases in your data to see if there are missing features or patterns the model couldn't capture, which could lead to further feature engineering.")
+            # Left child (True condition)
+            left_condition = f"{name} <= {threshold:.2f}"
+            left_samples = tree_.n_node_samples[tree_.children_left[node]]
+            recurse(tree_.children_left[node], path_conditions + [left_condition], left_samples)
 
-print("\n4.  **Refine SQL Queries for Auditing**: The more specific the tree rules, the more precise your SQL queries can be. This allows for highly targeted audits.")
-print("    * **Example SQL with additional conditions from a deeper tree**:")
-print("        ```sql")
-print("        SELECT *")
-print("        FROM Your_DRG_Medicare_Data")
-print("        WHERE DRG_Code = '292'")
-print("          AND Length_of_Stay > 15.5")
-print("          AND Total_Charges > 45000")
-print("          AND Number_of_Procedures < 2;")
-print("        ```")
+            # Right child (False condition)
+            right_condition = f"{name} > {threshold:.2f}"
+            right_samples = tree_.n_node_samples[tree_.children_right[node]]
+            recurse(tree_.children_right[node], path_conditions + [right_condition], right_samples)
+        else: # Leaf node
+            # Check if this leaf predicts 'Overpayment' (class_id = 1)
+            # The value array is [samples_class_0, samples_class_1]
+            if np.argmax(tree_.value[node]) == 1: # If the majority class is 'Overpayment'
+                num_overpayment_samples = tree_.value[node][0][1] # Get count of overpayment samples at this leaf
+                total_samples_at_leaf = tree_.n_node_samples[node]
+                # Filter out rules with very few samples or low purity if desired
+                if num_overpayment_samples > 0 and total_samples_at_leaf > 0: # Ensure it's not an empty or highly impure leaf
+                    purity = num_overpayment_samples / total_samples_at_leaf
+                    if purity >= 0.7: # Only consider rules that lead to a "pure enough" overpayment leaf
+                        rules.append({
+                            'conditions': path_conditions,
+                            'predicted_class': class_names[np.argmax(tree_.value[node])],
+                            'overpayment_samples': int(num_overpayment_samples),
+                            'total_samples_at_leaf': int(total_samples_at_leaf),
+                            'purity': purity
+                        })
 
-print("\n5.  **Develop Actionable Concepts**: Translate the quantitative rules into qualitative concepts for policy makers and auditors.")
-print("    * **Concept**: \"Anomalously long stays (e.g., >15 days) for DRG 292 (Pneumonia) combined with high charges (e.g., >$45,000) and unusually few procedures (e.g., <2) are strong indicators of potential overpayment, possibly suggesting inflated billing or unnecessary services.\"\n")
-print("    * This concept can then guide investigations and policy updates.")
+    recurse(0, [], tree_.n_node_samples[0]) # Start recursion from the root node (node 0)
+    return rules
 
-print("\nBy iteratively analyzing the tree, evaluating its performance, and leveraging your domain knowledge, you can build a powerful system for identifying and preventing DRG Medicare overpayments.")
-print("\nTo view the PDF, open 'drg_overpayment_decision_tree_tuned.pdf' in a PDF viewer.")
+def interpret_condition(condition_str):
+    # This function translates numerical conditions involving one-hot encoded features
+    # back into more readable categorical statements.
+    parts = condition_str.split(' ')
+    feature = parts[0]
+    operator = parts[1]
+    value = float(parts[2])
+
+    # Handle one-hot encoded features (e.g., 'DRG_Code_292')
+    if '_' in feature and any(f.startswith(feature.split('_')[0]) for f in categorical_features):
+        original_feature = feature.rsplit('_', 1)[0]
+        category_value = feature.rsplit('_', 1)[1]
+        if operator == '<=' and value < 0.5: # e.g., DRG_Code_292 <= 0.5 means DRG_Code is NOT 292
+             return f"{original_feature} is NOT '{category_value}'"
+        elif operator == '>' and value > 0.5: # e.g., DRG_Code_292 > 0.5 means DRG_Code IS 292
+             return f"{original_feature} IS '{category_value}'"
+        else:
+            return condition_str # Fallback for complex numerical interpretations of one-hot
+
+    # Handle numerical features
+    if operator == '<=':
+        return f"{feature} is less than or equal to {value:.2f}"
+    elif operator == '>':
+        return f"{feature} is greater than {value:.2f}"
+    return condition_str # Default
+
+def generate_actionable_concepts(rules):
+    concepts = []
+    for i, rule in enumerate(rules):
+        translated_conditions = []
+        for cond in rule['conditions']:
+            translated_conditions.append(interpret_condition(cond))
+
+        # Basic concept
+        concept_str = f"Concept {i+1}: If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
+        
+        # Add context about samples and purity
+        concept_str += f" (Based on {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf, Purity: {rule['purity']:.1%})"
+        
+        concepts.append({
+            'concept_text': concept_str,
+            'overpayment_samples': rule['overpayment_samples'],
+            'total_samples_at_leaf': rule['total_samples_at_leaf'],
+            'purity': rule['purity'],
+            'conditions': rule['conditions'] # Keep original conditions for SQL generation
+        })
+    return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True) # Prioritize concepts by samples
+
+# Get rules from the best trained decision tree model
+overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'])
+
+# Generate and print actionable concepts
+actionable_concepts = generate_actionable_concepts(overpayment_rules)
+
+if actionable_concepts:
+    print("\nHere are the top actionable concepts/rules identified by the Decision Tree:")
+    for i, concept_data in enumerate(actionable_concepts):
+        print(f"\n--- Concept {i+1} ---")
+        print(concept_data['concept_text'])
+        print("\n**Corresponding SQL Query Pattern:**")
+        # Generate simple SQL for each concept
+        sql_conditions = []
+        for cond_str in concept_data['conditions']:
+            parts = cond_str.split(' ')
+            feature = parts[0]
+            operator = parts[1]
+            value = parts[2]
+
+            # Handle one-hot encoded features
+            if '_' in feature and any(f.startswith(feature.split('_')[0]) for f in categorical_features):
+                original_feature = feature.rsplit('_', 1)[0]
+                category_value = feature.rsplit('_', 1)[1]
+                if operator == '>' and float(value) > 0.5: # Is this category
+                    sql_conditions.append(f"{original_feature} = '{category_value}'")
+                elif operator == '<=' and float(value) < 0.5: # Is NOT this category
+                    sql_conditions.append(f"{original_feature} != '{category_value}'")
+                else:
+                    sql_conditions.append(f"({feature} {operator} {value})") # Fallback
+            else: # Numerical feature
+                sql_conditions.append(f"{feature} {operator} {value}")
+
+        print("```sql")
+        print("SELECT *")
+        print("FROM Your_DRG_Medicare_Table")
+        print("WHERE " + "\n  AND ".join(sql_conditions) + ";")
+        print("```")
+else:
+    print("\nNo strong 'Overpayment' concepts could be extracted from the tree with the current purity threshold.")
+    print("Consider adjusting `purity >= 0.7` in `get_tree_rules` or `max_depth` in `param_grid` if you expect more rules.")
+
 print("\n" + "="*50)
-
+print("\n**How to Use These Actionable Concepts:**")
+print("1.  **Direct Auditing**: Use the generated SQL queries to pull specific cases from your database for immediate review by auditors.")
+print("2.  **Rule Development**: These concepts can be formalized into automated flagging rules in your existing fraud/abuse detection systems.")
+print("3.  **Policy Review**: Patterns revealed might indicate gaps or ambiguities in current billing/reimbursement policies that need to be addressed.")
+print("4.  **Provider Education**: If patterns consistently point to specific providers or types of providers, targeted education or intervention programs can be designed.")
+print("5.  **Risk Scoring**: Integrate these rules into a risk scoring model, where cases matching multiple overpayment concepts receive a higher risk score.")
+print("\nRemember to combine these automated concepts with your profound subject matter expertise for the most effective outcome.")
+print("\n" + "="*50)
