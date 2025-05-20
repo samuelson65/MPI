@@ -3,9 +3,9 @@ from sklearn.tree import DecisionTreeClassifier, export_text
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from dtreeviz import dtreeviz
+from dtreeviz import model
 
-# === Example Input Data ===
+# === Example Data ===
 data = {
     'age': [70, 55, 80, 45],
     'diagnosis': ['pneumonia', 'stroke', 'pneumonia', 'diabetes'],
@@ -16,37 +16,24 @@ df = pd.DataFrame(data)
 X_train = df[['age', 'diagnosis', 'procedure_code']]
 y_train = df['drg']
 
-# === Step 1: Preprocessing for model training ===
-categorical_cols = X_train.select_dtypes(include=['object']).columns.tolist()
-numerical_cols = X_train.select_dtypes(include=['number']).columns.tolist()
+# === Step 1: Fit classifier ===
+clf = DecisionTreeClassifier(max_depth=4, random_state=42)
+clf.fit(X_train[['age']], y_train)  # dtreeviz needs numeric data
 
-preprocessor = ColumnTransformer([
-    ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols),
-    ('num', 'passthrough', numerical_cols)
-])
+# === Step 2: dtreeviz v2.x model visualization ===
+viz = model(clf,
+            X_train=X_train[['age']],  # only numeric features supported directly
+            y_train=y_train,
+            feature_names=['age'],
+            class_names=list(clf.classes_),
+            target_name="DRG")
 
-pipeline = Pipeline(steps=[
-    ('preprocessor', preprocessor),
-    ('classifier', DecisionTreeClassifier(max_depth=4, random_state=42))
-])
+# === Step 3: Render view ===
+viz.view()  # This opens in your default browser
 
-# === Step 2: Train pipeline ===
-pipeline.fit(X_train, y_train)
-
-# === Step 3: Access classifier from pipeline ===
-clf = pipeline.named_steps['classifier']
-
-# === Step 4: Visualize with dtreeviz using RAW X_train ===
-viz = dtreeviz(clf,
-               X_train=X_train,
-               y_train=y_train,
-               feature_names=X_train.columns,
-               class_names=list(clf.classes_),
-               target_name="DRG")
-
+# === Optional: Save SVG ===
 viz.save("drg_decision_tree.svg")
-print("Interactive tree saved as 'drg_decision_tree.svg'. Open it in a browser.")
 
-# === Step 5: Print rules ===
-print("\n===== DECISION RULES FOR SME UNDERSTANDING =====\n")
-print(export_text(clf, feature_names=list(X_train.columns)))
+# === Step 4: Rules in text ===
+print("\n===== DECISION RULES =====")
+print(export_text(clf, feature_names=['age']))
