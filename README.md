@@ -180,33 +180,28 @@ print("--- Actionable Overpayment Concepts (Derived from Decision Tree Rules) --
 print("="*50)
 
 # Function to extract rules from the decision tree
-def get_tree_rules(tree_model, feature_names, class_names, categorical_original_features):
+# Now stores feature_idx, operator_type (left/right split), and threshold
+def get_tree_rules(tree_model, feature_names, class_names):
     tree_ = tree_model.tree_
-    feature_name = [
-        feature_names[i] if i != -2 else "UNDEFINED"
-        for i in tree_.feature
-    ]
     rules = []
 
-    def recurse(node, path_conditions, current_samples):
+    def recurse(node, path_conditions):
         if tree_.feature[node] != -2: # Not a leaf node
-            name = feature_name[node]
+            feature_idx = tree_.feature[node]
             threshold = tree_.threshold[node]
 
-            # Left child (True condition)
-            left_condition = (name, '<=', threshold)
-            recurse(tree_.children_left[node], path_conditions + [left_condition], tree_.n_node_samples[tree_.children_left[node]])
+            # Left child (True condition: feature <= threshold)
+            recurse(tree_.children_left[node], path_conditions + [(feature_idx, '<=', threshold)])
 
-            # Right child (False condition)
-            right_condition = (name, '>', threshold)
-            recurse(tree_.children_right[node], path_conditions + [right_condition], tree_.n_node_samples[tree_.children_right[node]])
+            # Right child (False condition: feature > threshold)
+            recurse(tree_.children_right[node], path_conditions + [(feature_idx, '>', threshold)])
         else: # Leaf node
             # Check if this leaf predicts 'Overpayment' (class_id = 1)
             # The value array is [samples_class_0, samples_class_1]
             if np.argmax(tree_.value[node]) == 1: # If the majority class is 'Overpayment'
                 num_overpayment_samples = tree_.value[node][0][1] # Get count of overpayment samples at this leaf
                 total_samples_at_leaf = tree_.n_node_samples[node]
-                
+
                 # Only consider rules that lead to a "pure enough" overpayment leaf
                 # and cover a reasonable number of samples to be actionable.
                 # Adjust these thresholds as needed for your data.
@@ -214,26 +209,28 @@ def get_tree_rules(tree_model, feature_names, class_names, categorical_original_
                     purity = num_overpayment_samples / total_samples_at_leaf
                     if purity >= 0.7: # At least 70% of samples at this leaf are overpayments
                         rules.append({
-                            'conditions': path_conditions,
+                            'conditions': path_conditions, # Store as (feature_idx, operator, threshold)
                             'predicted_class': class_names[np.argmax(tree_.value[node])],
                             'overpayment_samples': int(num_overpayment_samples),
                             'total_samples_at_leaf': int(total_samples_at_leaf),
                             'purity': purity
                         })
 
-    recurse(0, [], tree_.n_node_samples[0]) # Start recursion from the root node (node 0)
+    recurse(0, []) # Start recursion from the root node (node 0)
     return rules
 
-def interpret_condition_for_concept(feature, operator, value, categorical_original_features):
+def interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list):
     # This function translates numerical conditions involving one-hot encoded features
     # back into more readable categorical statements.
+
+    feature = feature_names[feature_idx]
 
     is_one_hot_feature = False
     original_feature_name = None
     category_value = None
 
-    # Check if the feature name starts with any of the original categorical feature names
-    for orig_cat_feat in categorical_original_features:
+    # Determine if it's a one-hot encoded feature
+    for orig_cat_feat in original_categorical_features_list:
         if feature.startswith(f"{orig_cat_feat}_"):
             is_one_hot_feature = True
             original_feature_name = orig_cat_feat
@@ -241,15 +238,16 @@ def interpret_condition_for_concept(feature, operator, value, categorical_origin
             break
 
     if is_one_hot_feature:
-        # For one-hot encoded features, a value > 0.5 means the category is present (True)
+        # For one-hot encoded features, a value > 0.5 typically means the category is present (True)
         # and value <= 0.5 means the category is absent (False).
         if operator == '>' and value > 0.5:
-             return f"**{original_feature_name}** IS '{category_value}'"
+             return f"**{original_feature_name}** IS '{category_value.replace('_', ' ')}'" # Replace underscore in category name for readability
         elif operator == '<=' and value < 0.5:
-             return f"**{original_feature_name}** is NOT '{category_value}'"
+             return f"**{original_feature_name}** is NOT '{category_value.replace('_', ' ')}'"
         else:
-            # This case should ideally not be hit with binary one-hot features in a typical tree
-            return f"{feature} {operator} {value:.2f}"
+            # This handles cases where a split might occur at 0.5 for a true binary feature
+            # or if the tree oddly splits on a one-hot feature.
+            return f"**{feature}** {operator} {value:.2f}"
     else:
         # For numerical features
         if operator == '<=':
@@ -258,19 +256,19 @@ def interpret_condition_for_concept(feature, operator, value, categorical_origin
             return f"**{feature}** is greater than {value:.2f}"
         return f"**{feature}** {operator} {value:.2f}" # Fallback, should not happen
 
-def generate_actionable_concepts(rules, categorical_original_features):
+def generate_actionable_concepts(rules, feature_names, original_categorical_features_list):
     concepts = []
     for i, rule in enumerate(rules):
         translated_conditions = []
-        for feature, operator, value in rule['conditions']:
-            translated_conditions.append(interpret_condition_for_concept(feature, operator, value, categorical_original_features))
+        for feature_idx, operator, value in rule['conditions']:
+            translated_conditions.append(interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list))
 
         # Basic concept string
         concept_str = f"If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
-        
+
         # Add context about samples and purity
         concept_str += f" (Covers {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf; Purity: {rule['purity']:.1%})"
-        
+
         concepts.append({
             'concept_text': concept_str,
             'overpayment_samples': rule['overpayment_samples'],
@@ -282,10 +280,10 @@ def generate_actionable_concepts(rules, categorical_original_features):
     return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True)
 
 # Get rules from the best trained decision tree model
-overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'], list(categorical_features))
+overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'])
 
 # Generate and print actionable concepts
-actionable_concepts = generate_actionable_concepts(overpayment_rules, list(categorical_features))
+actionable_concepts = generate_actionable_concepts(overpayment_rules, all_feature_names, list(categorical_features))
 
 if actionable_concepts:
     print("\nHere are the top actionable concepts/rules identified by the Decision Tree:")
@@ -293,32 +291,33 @@ if actionable_concepts:
         print(f"\n--- Concept {i+1} ---")
         print(concept_data['concept_text'])
         print("\n**Corresponding SQL Query Pattern:**")
-        
+
         # Generate SQL for each concept based on raw conditions
         sql_conditions = []
-        for feature, operator, value in concept_data['conditions_raw']:
+        for feature_idx, operator, value in concept_data['conditions_raw']:
+            feature_name_in_sql = all_feature_names[feature_idx]
+
             is_one_hot_feature = False
             original_feature_name = None
             category_value = None
 
             for orig_cat_feat in categorical_features:
-                if feature.startswith(f"{orig_cat_feat}_"):
+                if feature_name_in_sql.startswith(f"{orig_cat_feat}_"):
                     is_one_hot_feature = True
                     original_feature_name = orig_cat_feat
-                    category_value = feature[len(f"{orig_cat_feat}_"):]
+                    category_value = feature_name_in_sql[len(f"{orig_cat_feat}_"):]
                     break
 
             if is_one_hot_feature:
                 if operator == '>' and value > 0.5: # Is this category
-                    sql_conditions.append(f"{original_feature_name} = '{category_value.replace('_', ' ')}'") # Replace _ with space for readability
+                    sql_conditions.append(f"{original_feature_name} = '{category_value.replace('_', ' ')}'")
                 elif operator == '<=' and value < 0.5: # Is NOT this category
                     sql_conditions.append(f"{original_feature_name} != '{category_value.replace('_', ' ')}'")
-                # Else case (value between 0.5 and -0.5) implies the tree uses a numerical split on the one-hot encoding which is unusual for a pure category check
-                # We'll just pass it through as is, but it should ideally not occur for clear categorical checks.
                 else:
-                    sql_conditions.append(f"({feature} {operator} {value:.2f})")
+                    # This case should ideally not be hit for clear categorical checks
+                    sql_conditions.append(f"({feature_name_in_sql} {operator} {value:.2f})")
             else: # Numerical feature
-                sql_conditions.append(f"{feature} {operator} {value:.2f}")
+                sql_conditions.append(f"{feature_name_in_sql} {operator} {value:.2f}")
 
         print("```sql")
         print("SELECT *")
@@ -338,3 +337,4 @@ print("4.  **Provider Education**: If patterns consistently point to specific pr
 print("5.  **Risk Scoring**: Integrate these rules into a risk scoring model, where cases matching multiple overpayment concepts receive a higher risk score.")
 print("\nRemember to combine these automated concepts with your profound subject matter expertise for the most effective outcome.")
 print("\n" + "="*50)
+
