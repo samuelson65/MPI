@@ -10,42 +10,54 @@ import os
 import numpy as np
 
 # --- 1. Create Dummy Data (REPLACE WITH YOUR ACTUAL X_train and y_train) ---
+# This section has been updated to reflect YOUR specified features.
+# You will replace this with loading your actual dataset.
+
 np.random.seed(42) # For reproducibility of dummy data
 
-num_samples = 1000 # Increased number of samples for a more complex tree
+num_samples = 1000 # Number of synthetic data points
 
-drg_codes = ['291', '292', '871', '872', '313', '470', '601', '789']
-provider_types = ['Hospital', 'Skilled Nursing Facility', 'Ambulatory Surgical Center', 'Rehab Center']
-diagnosis_groups = ['Heart Failure', 'Pneumonia', 'Stroke', 'Diabetes', 'Kidney Failure', 'Cancer', 'Fracture', 'Sepsis']
-patient_age_groups = ['Child', 'Young Adult', 'Adult', 'Senior']
-payer_types = ['Medicare', 'Medicaid', 'Commercial', 'Self-Pay']
+# Define plausible ranges/categories for your features
+# 1. length of stay (numerical)
+# 2. discharge status (categorical)
+# 3. procedure count (numerical)
+# 4. diff between proc performed date (numerical - assuming days)
+# 5. mcc count (numerical - Major Complication/Comorbidity)
+# 6. Cc count (numerical - Complication/Comorbidity)
+# 7. Is catheter present (categorical - binary)
+# 8. Is stent present (categorical - binary)
+
+discharge_statuses = ['Discharged Home', 'Transferred to SNF', 'Died', 'Discharged Against Medical Advice', 'Transferred to Acute Care']
+is_present_options = ['Yes', 'No'] # Using strings for categorical binary
 
 data = {
-    'DRG_Code': np.random.choice(drg_codes, num_samples),
-    'Provider_Type': np.random.choice(provider_types, num_samples),
-    'Length_of_Stay': np.random.randint(1, 40, num_samples), # Days
-    'Total_Charges': np.random.randint(5000, 150000, num_samples), # USD
-    'Diagnosis_Group': np.random.choice(diagnosis_groups, num_samples),
-    'Number_of_Procedures': np.random.randint(0, 7, num_samples),
-    'Patient_Age_Group': np.random.choice(patient_age_groups, num_samples),
-    'Readmission_Flag': np.random.choice([0, 1], num_samples, p=[0.95, 0.05]), # 5% readmission
-    'Payer_Type': np.random.choice(payer_types, num_samples),
-    'Comorbidity_Index': np.random.randint(0, 5, num_samples) # Example of a numerical index
+    'Length_of_Stay': np.random.randint(1, 60, num_samples), # Days
+    'Discharge_Status': np.random.choice(discharge_statuses, num_samples, p=[0.6, 0.2, 0.05, 0.05, 0.1]),
+    'Procedure_Count': np.random.randint(0, 10, num_samples),
+    'Diff_Between_Proc_Performed_Date': np.random.randint(0, 30, num_samples), # Days difference
+    'MCC_Count': np.random.randint(0, 5, num_samples), # Major Complication/Comorbidity Count
+    'CC_Count': np.random.randint(0, 8, num_samples), # Complication/Comorbidity Count
+    'Is_Catheter_Present': np.random.choice(is_present_options, num_samples, p=[0.2, 0.8]), # 20% have catheter
+    'Is_Stent_Present': np.random.choice(is_present_options, num_samples, p=[0.15, 0.85]), # 15% have stent
 }
 df = pd.DataFrame(data)
 
-# Introduce more complex patterns for 'Overpayment' to make the target learnable and diverse
+# Introduce patterns for 'Overpayment' based on these specific features
 df['Overpayment'] = 0
-# Pattern 1: High charges, short stay for specific DRG
-df.loc[(df['DRG_Code'] == '292') & (df['Length_of_Stay'] < 5) & (df['Total_Charges'] > 70000), 'Overpayment'] = 1
-# Pattern 2: Very long stay, low procedures for certain provider type
-df.loc[(df['Provider_Type'] == 'Skilled Nursing Facility') & (df['Length_of_Stay'] > 30) & (df['Number_of_Procedures'] < 2), 'Overpayment'] = 1
-# Pattern 3: Specific diagnosis with high charges for seniors
-df.loc[(df['Diagnosis_Group'] == 'Stroke') & (df['Total_Charges'] > 100000) & (df['Patient_Age_Group'] == 'Senior'), 'Overpayment'] = 1
-# Pattern 4: High comorbidity index with very low charges (might indicate under-billing in some cases, but could be over for others due to miscoding)
-df.loc[(df['Comorbidity_Index'] > 3) & (df['Total_Charges'] < 10000), 'Overpayment'] = 1
-# Pattern 5: Readmission with high charges for specific DRG
-df.loc[(df['Readmission_Flag'] == 1) & (df['DRG_Code'] == '470') & (df['Total_Charges'] > 50000), 'Overpayment'] = 1
+
+# Pattern 1: Very long stay with low procedure count for discharge to SNF
+df.loc[(df['Length_of_Stay'] > 45) & (df['Procedure_Count'] < 2) & (df['Discharge_Status'] == 'Transferred to SNF'), 'Overpayment'] = 1
+
+# Pattern 2: High charges (implied by overpayment), high MCC/CC count, but very short stay
+# (Simulating inappropriate high-complexity billing for quick turnaround)
+df.loc[(df['Length_of_Stay'] < 5) & (df['MCC_Count'] >= 3) & (df['CC_Count'] >= 5), 'Overpayment'] = 1
+
+# Pattern 3: Catheter or stent present with unusually high diff_between_proc_performed_date
+# (Might indicate extended billing related to device complications/follow-up)
+df.loc[((df['Is_Catheter_Present'] == 'Yes') | (df['Is_Stent_Present'] == 'Yes')) & (df['Diff_Between_Proc_Performed_Date'] > 20), 'Overpayment'] = 1
+
+# Pattern 4: No procedures, but very high MCC/CC counts (might be indicative of upcoding without intervention)
+df.loc[(df['Procedure_Count'] == 0) & (df['MCC_Count'] >= 4) & (df['CC_Count'] >= 6), 'Overpayment'] = 1
 
 # Add some random noise for complexity, keeping the target imbalanced
 df.loc[df['Overpayment'] == 0, 'Overpayment'] = np.random.choice([0, 1], sum(df['Overpayment'] == 0), p=[0.97, 0.03])
@@ -75,8 +87,9 @@ print(f"Overpayment in test set: {y_test.sum()} ({y_test.mean():.2%})")
 
 
 # --- 2. Identify Categorical and Numerical Features ---
-categorical_features = X_train.select_dtypes(include=['object', 'category']).columns
-numerical_features = X_train.select_dtypes(include=['int64', 'float64']).columns
+# This section has been updated to reflect YOUR specified features.
+categorical_features = ['Discharge_Status', 'Is_Catheter_Present', 'Is_Stent_Present']
+numerical_features = ['Length_of_Stay', 'Procedure_Count', 'Diff_Between_Proc_Performed_Date', 'MCC_Count', 'CC_Count']
 
 print(f"\nCategorical features: {list(categorical_features)}")
 print(f"Numerical features: {list(numerical_features)}")
@@ -180,7 +193,6 @@ print("--- Actionable Overpayment Concepts (Derived from Decision Tree Rules) --
 print("="*50)
 
 # Function to extract rules from the decision tree
-# Now stores feature_idx, operator_type (left/right split), and threshold
 def get_tree_rules(tree_model, feature_names, class_names):
     tree_ = tree_model.tree_
     rules = []
@@ -204,7 +216,6 @@ def get_tree_rules(tree_model, feature_names, class_names):
 
                 # Only consider rules that lead to a "pure enough" overpayment leaf
                 # and cover a reasonable number of samples to be actionable.
-                # Adjust these thresholds as needed for your data.
                 if num_overpayment_samples > 0 and total_samples_at_leaf >= 5: # At least 5 samples at leaf
                     purity = num_overpayment_samples / total_samples_at_leaf
                     if purity >= 0.7: # At least 70% of samples at this leaf are overpayments
@@ -220,9 +231,6 @@ def get_tree_rules(tree_model, feature_names, class_names):
     return rules
 
 def interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list):
-    # This function translates numerical conditions involving one-hot encoded features
-    # back into more readable categorical statements.
-
     feature = feature_names[feature_idx]
 
     is_one_hot_feature = False
@@ -238,23 +246,18 @@ def interpret_condition_for_concept(feature_idx, operator, value, feature_names,
             break
 
     if is_one_hot_feature:
-        # For one-hot encoded features, a value > 0.5 typically means the category is present (True)
-        # and value <= 0.5 means the category is absent (False).
         if operator == '>' and value > 0.5:
-             return f"**{original_feature_name}** IS '{category_value.replace('_', ' ')}'" # Replace underscore in category name for readability
+             return f"**{original_feature_name}** IS '{category_value.replace('_', ' ')}'"
         elif operator == '<=' and value < 0.5:
              return f"**{original_feature_name}** is NOT '{category_value.replace('_', ' ')}'"
         else:
-            # This handles cases where a split might occur at 0.5 for a true binary feature
-            # or if the tree oddly splits on a one-hot feature.
-            return f"**{feature}** {operator} {value:.2f}"
+            return f"**{feature}** {operator} {value:.2f}" # Fallback
     else:
-        # For numerical features
         if operator == '<=':
             return f"**{feature}** is less than or equal to {value:.2f}"
         elif operator == '>':
             return f"**{feature}** is greater than {value:.2f}"
-        return f"**{feature}** {operator} {value:.2f}" # Fallback, should not happen
+        return f"**{feature}** {operator} {value:.2f}" # Fallback
 
 def generate_actionable_concepts(rules, feature_names, original_categorical_features_list):
     concepts = []
@@ -263,10 +266,8 @@ def generate_actionable_concepts(rules, feature_names, original_categorical_feat
         for feature_idx, operator, value in rule['conditions']:
             translated_conditions.append(interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list))
 
-        # Basic concept string
         concept_str = f"If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
 
-        # Add context about samples and purity
         concept_str += f" (Covers {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf; Purity: {rule['purity']:.1%})"
 
         concepts.append({
@@ -274,9 +275,8 @@ def generate_actionable_concepts(rules, feature_names, original_categorical_feat
             'overpayment_samples': rule['overpayment_samples'],
             'total_samples_at_leaf': rule['total_samples_at_leaf'],
             'purity': rule['purity'],
-            'conditions_raw': rule['conditions'] # Keep original raw conditions for SQL generation
+            'conditions_raw': rule['conditions']
         })
-    # Prioritize concepts by the number of overpayment samples they cover
     return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True)
 
 # Get rules from the best trained decision tree model
@@ -292,7 +292,6 @@ if actionable_concepts:
         print(concept_data['concept_text'])
         print("\n**Corresponding SQL Query Pattern:**")
 
-        # Generate SQL for each concept based on raw conditions
         sql_conditions = []
         for feature_idx, operator, value in concept_data['conditions_raw']:
             feature_name_in_sql = all_feature_names[feature_idx]
@@ -309,14 +308,13 @@ if actionable_concepts:
                     break
 
             if is_one_hot_feature:
-                if operator == '>' and value > 0.5: # Is this category
+                if operator == '>' and value > 0.5:
                     sql_conditions.append(f"{original_feature_name} = '{category_value.replace('_', ' ')}'")
-                elif operator == '<=' and value < 0.5: # Is NOT this category
+                elif operator == '<=' and value < 0.5:
                     sql_conditions.append(f"{original_feature_name} != '{category_value.replace('_', ' ')}'")
                 else:
-                    # This case should ideally not be hit for clear categorical checks
                     sql_conditions.append(f"({feature_name_in_sql} {operator} {value:.2f})")
-            else: # Numerical feature
+            else:
                 sql_conditions.append(f"{feature_name_in_sql} {operator} {value:.2f}")
 
         print("```sql")
