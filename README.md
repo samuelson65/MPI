@@ -211,7 +211,11 @@ def get_tree_rules(tree_model, feature_names, class_names):
             # Check if this leaf predicts 'Overpayment' (class_id = 1)
             # The value array is [samples_class_0, samples_class_1]
             if np.argmax(tree_.value[node]) == 1: # If the majority class is 'Overpayment'
-                num_overpayment_samples = tree_.value[node][0][1] # Get count of overpayment samples at this leaf
+                # --- FIX APPLIED HERE ---
+                # Access the count for class 1 (Overpayment) directly
+                num_overpayment_samples = tree_.value[node][0, 1]
+                # --- END FIX ---
+
                 total_samples_at_leaf = tree_.n_node_samples[node]
 
                 # Only consider rules that lead to a "pure enough" overpayment leaf
@@ -242,14 +246,15 @@ def interpret_condition_for_concept(feature_idx, operator, value, feature_names,
         if feature.startswith(f"{orig_cat_feat}_"):
             is_one_hot_feature = True
             original_feature_name = orig_cat_feat
-            category_value = feature[len(f"{orig_cat_feat}_"):]
+            # Special handling for spaces in category names if they appear after one-hot encoding
+            category_value = feature[len(f"{orig_cat_feat}_"):].replace('_', ' ')
             break
 
     if is_one_hot_feature:
         if operator == '>' and value > 0.5:
-             return f"**{original_feature_name}** IS '{category_value.replace('_', ' ')}'"
+             return f"**{original_feature_name}** IS '{category_value}'"
         elif operator == '<=' and value < 0.5:
-             return f"**{original_feature_name}** is NOT '{category_value.replace('_', ' ')}'"
+             return f"**{original_feature_name}** is NOT '{category_value}'"
         else:
             return f"**{feature}** {operator} {value:.2f}" # Fallback
     else:
@@ -304,14 +309,15 @@ if actionable_concepts:
                 if feature_name_in_sql.startswith(f"{orig_cat_feat}_"):
                     is_one_hot_feature = True
                     original_feature_name = orig_cat_feat
-                    category_value = feature_name_in_sql[len(f"{orig_cat_feat}_"):]
+                    # Handle category values with spaces or underscores correctly in SQL
+                    category_value = feature_name_in_sql[len(f"{orig_cat_feat}_"):].replace('_', ' ')
                     break
 
             if is_one_hot_feature:
                 if operator == '>' and value > 0.5:
-                    sql_conditions.append(f"{original_feature_name} = '{category_value.replace('_', ' ')}'")
+                    sql_conditions.append(f"{original_feature_name} = '{category_value}'")
                 elif operator == '<=' and value < 0.5:
-                    sql_conditions.append(f"{original_feature_name} != '{category_value.replace('_', ' ')}'")
+                    sql_conditions.append(f"{original_feature_name} != '{category_value}'")
                 else:
                     sql_conditions.append(f"({feature_name_in_sql} {operator} {value:.2f})")
             else:
@@ -335,4 +341,3 @@ print("4.  **Provider Education**: If patterns consistently point to specific pr
 print("5.  **Risk Scoring**: Integrate these rules into a risk scoring model, where cases matching multiple overpayment concepts receive a higher risk score.")
 print("\nRemember to combine these automated concepts with your profound subject matter expertise for the most effective outcome.")
 print("\n" + "="*50)
-
