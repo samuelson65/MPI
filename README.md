@@ -1,311 +1,305 @@
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier, export_graphviz
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix, precision_score, recall_score, f1_score
-import graphviz
-import os
-import numpy as np
 
-# --- 1. Create Dummy Data (REPLACE WITH YOUR ACTUAL X_train and y_train) ---
-np.random.seed(42)
+# --- 1. Initialize the Knowledge Graph Data Structure ---
+kg_nodes = {}  # {node_id: {'labels': [], 'properties': {}}}
+kg_edges = []  # [(source_id, relationship_type, target_id)]
 
-num_samples = 1000
+# Helper to add a node and ensure uniqueness by ID
+def add_node(node_id, labels, properties=None):
+    if node_id not in kg_nodes:
+        kg_nodes[node_id] = {'labels': labels if isinstance(labels, list) else [labels], 'properties': properties if properties else {}}
+    else:
+        # If node exists, merge labels and properties
+        existing_labels = kg_nodes[node_id]['labels']
+        for label in (labels if isinstance(labels, list) else [labels]):
+            if label not in existing_labels:
+                existing_labels.append(label)
+        if properties:
+            kg_nodes[node_id]['properties'].update(properties)
+    return node_id
 
-discharge_statuses = ['Discharged Home', 'Transferred to SNF', 'Died', 'Discharged Against Medical Advice', 'Transferred to Acute Care']
-is_present_options = ['Yes', 'No']
+# Helper to add an edge
+def add_edge(source_id, relationship_type, target_id):
+    kg_edges.append((source_id, relationship_type, target_id))
 
-data = {
-    'Length_of_Stay': np.random.randint(1, 60, num_samples),
-    'Discharge_Status': np.random.choice(discharge_statuses, num_samples, p=[0.6, 0.2, 0.05, 0.05, 0.1]),
-    'Procedure_Count': np.random.randint(0, 10, num_samples),
-    'Diff_Between_Proc_Performed_Date': np.random.randint(0, 30, num_samples),
-    'MCC_Count': np.random.randint(0, 5, num_samples),
-    'CC_Count': np.random.randint(0, 8, num_samples),
-    'Is_Catheter_Present': np.random.choice(is_present_options, num_samples, p=[0.2, 0.8]),
-    'Is_Stent_Present': np.random.choice(is_present_options, num_samples, p=[0.15, 0.85]),
-}
-df = pd.DataFrame(data)
+# --- 2. Sample Data Ingestion ---
 
-df['Overpayment'] = 0
-df.loc[(df['Length_of_Stay'] > 45) & (df['Procedure_Count'] < 2) & (df['Discharge_Status'] == 'Transferred to SNF'), 'Overpayment'] = 1
-df.loc[(df['Length_of_Stay'] < 5) & (df['MCC_Count'] >= 3) & (df['CC_Count'] >= 5), 'Overpayment'] = 1
-df.loc[((df['Is_Catheter_Present'] == 'Yes') | (df['Is_Stent_Present'] == 'Yes')) & (df['Diff_Between_Proc_Performed_Date'] > 20), 'Overpayment'] = 1
-df.loc[(df['Procedure_Count'] == 0) & (df['MCC_Count'] >= 4) & (df['CC_Count'] >= 6), 'Overpayment'] = 1
+# a) Sample Claims Data
+claims_data = [
+    {"claim_id": "C1001", "patient_id": "P001", "drg_code": "DRG-100", "los": 15,
+     "principal_diagnosis": "I10", "secondary_diagnoses": ["E11.9"],
+     "procedures": ["Z98.89"], "provider_id": "PRV001", "discharge_disposition": "Home"},
+    {"claim_id": "C1002", "patient_id": "P002", "drg_code": "DRG-100", "los": 5, # Suspiciously low LOS
+     "principal_diagnosis": "I10", "secondary_diagnoses": [],
+     "procedures": ["Z98.89"], "provider_id": "PRV001", "discharge_disposition": "Home"},
+    {"claim_id": "C1003", "patient_id": "P003", "drg_code": "DRG-200", "los": 7,
+     "principal_diagnosis": "J18.9", "secondary_diagnoses": [],
+     "procedures": [], "provider_id": "PRV002", "discharge_disposition": "SNF"},
+    {"claim_id": "C1004", "patient_id": "P004", "drg_code": "DRG-100", "los": 30, # High LOS
+     "principal_diagnosis": "I10", "secondary_diagnoses": ["J45.9"], # Asthma as secondary
+     "procedures": ["Z98.89"], "provider_id": "PRV001", "discharge_disposition": "Home"}
+]
 
-df.loc[df['Overpayment'] == 0, 'Overpayment'] = np.random.choice([0, 1], sum(df['Overpayment'] == 0), p=[0.97, 0.03])
-
-if df['Overpayment'].sum() < 30:
-    missing_overpayments = 30 - df['Overpayment'].sum()
-    if missing_overpayments > 0:
-        overpayment_indices = np.random.choice(df.index[df['Overpayment'] == 0], missing_overpayments, replace=False)
-        df.loc[overpayment_indices, 'Overpayment'] = 1
-
-print(f"Generated dummy data with {len(df)} samples. Overpayment cases: {df['Overpayment'].sum()}")
-print(df.head())
-
-X = df.drop('Overpayment', axis=1)
-y = df['Overpayment']
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
-
-print(f"\nTraining set size: {len(X_train)} samples")
-print(f"Test set size: {len(X_test)} samples")
-print(f"Overpayment in training set: {y_train.sum()} ({y_train.mean():.2%})")
-print(f"Overpayment in test set: {y_test.sum()} ({y_test.mean():.2%})")
-
-
-# --- 2. Identify Categorical and Numerical Features ---
-categorical_features = ['Discharge_Status', 'Is_Catheter_Present', 'Is_Stent_Present']
-numerical_features = ['Length_of_Stay', 'Procedure_Count', 'Diff_Between_Proc_Performed_Date', 'MCC_Count', 'CC_Count']
-
-print(f"\nCategorical features: {list(categorical_features)}")
-print(f"Numerical features: {list(numerical_features)}")
-
-# --- 3. Preprocessing Pipeline for Categorical Variables (One-Hot Encoding) ---
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)],
-    remainder='passthrough'
-)
-
-# --- 4. Build and Train the Decision Tree Classifier with Hyperparameter Tuning ---
-model_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
-                                 ('classifier', DecisionTreeClassifier(random_state=42))])
-
-param_grid = {
-    'classifier__max_depth': [7, 10, 15, 20],
-    'classifier__min_samples_split': [5, 10, 20],
-    'classifier__min_samples_leaf': [3, 5, 10],
-    'classifier__max_features': [None, 'sqrt', 'log2'],
-    'classifier__class_weight': [None, 'balanced']
+# b) Sample DRG Typical Values
+drg_definitions = {
+    "DRG-100": {"typical_los_min": 10, "typical_los_max": 20, "typical_procedures": ["Z98.89"]},
+    "DRG-200": {"typical_los_min": 5, "typical_los_max": 12, "typical_procedures": []}
 }
 
-print("\nStarting Grid Search for best Decision Tree hyperparameters with 5-fold Cross-Validation...")
-grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, scoring='roc_auc', n_jobs=-1, verbose=1)
+# c) Sample SME and Policy Data
+sme_data = {"SME001": "Dr. Sarah Lee"}
+policy_data = {"POLICY001": "CMS Chapter 3 - Inpatient Payment"}
 
-grid_search.fit(X_train, y_train)
-print("Grid Search complete.")
+# d) Pre-existing SME-defined concepts/rules
+sme_rules = [
+    {"rule_id": "RULE_LOS_DRG100_Short", "drg_code": "DRG-100", "los_threshold": 8,
+     "description": "DRG-100 with LOS less than 8 typically indicates overpayment unless specific complications.",
+     "defined_by": "SME001", "based_on": "POLICY001"}
+]
 
-best_model_pipeline = grid_search.best_estimator_
-best_decision_tree_model = best_model_pipeline.named_steps['classifier']
+print("Ingesting data into the conceptual Knowledge Graph...")
 
-print(f"\nBest parameters found: {grid_search.best_params_}")
-print(f"Best ROC AUC score (on training folds): {grid_search.best_score_:.4f}")
+# Ingest DRG nodes and their typical values
+for drg_code, props in drg_definitions.items():
+    add_node(f"DRG_{drg_code}", "DRG", properties={
+        "code": drg_code,
+        "typical_los_min": props["typical_los_min"],
+        "typical_los_max": props["typical_los_max"]
+    })
+    for proc_code in props["typical_procedures"]:
+        add_node(f"PROC_{proc_code}", "Procedure", {"code": proc_code})
+        add_edge(f"DRG_{drg_code}", "TYPICALLY_INCLUDES_PROCEDURE", f"PROC_{proc_code}")
 
-preprocessor.fit(X_train)
-encoded_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
-all_feature_names = list(encoded_feature_names) + list(numerical_features)
+# Ingest Claims and related entities
+for claim_dict in claims_data:
+    claim_id = f"CLAIM_{claim_dict['claim_id']}"
+    patient_id = f"PATIENT_{claim_dict['patient_id']}"
+    drg_id = f"DRG_{claim_dict['drg_code']}"
+    provider_id = f"PROVIDER_{claim_dict['provider_id']}"
+    discharge_disposition_id = f"DISP_{claim_dict['discharge_disposition'].replace(' ', '_')}"
+    principal_diag_id = f"DIAG_{claim_dict['principal_diagnosis']}"
 
-# --- 5. Visualize the Best Decision Tree ---
-dot_data = export_graphviz(best_decision_tree_model,
-                           out_file=None,
-                           feature_names=all_feature_names,
-                           class_names=['No Overpayment', 'Overpayment'],
-                           filled=True, rounded=True,
-                           special_characters=True)
+    # Add nodes
+    add_node(claim_id, "Claim", {"id": claim_dict["claim_id"], "los": claim_dict["los"]})
+    add_node(patient_id, "Patient", {"id": claim_dict["patient_id"]})
+    add_node(drg_id, "DRG", {"code": claim_dict["drg_code"]}) # Ensures DRG node exists even if not in definitions
+    add_node(provider_id, "Provider", {"id": claim_dict["provider_id"]})
+    add_node(discharge_disposition_id, "DischargeDisposition", {"type": claim_dict["discharge_disposition"]})
+    add_node(principal_diag_id, "Diagnosis", {"code": claim_dict["principal_diagnosis"]})
 
-output_file_name = "drg_overpayment_decision_tree_tuned"
-try:
-    graph = graphviz.Source(dot_data)
-    graph.render(output_file_name, format='pdf', view=False)
-    print(f"\nDecision tree visualization saved to {output_file_name}.pdf")
-except Exception as e:
-    print(f"\nError rendering the decision tree visualization: {e}")
-    print("Please ensure Graphviz is installed on your system and its executable is in your PATH.")
-    print("You can download it from: https://graphviz.org/download/")
-    print("And install the Python library: pip install graphviz")
+    # Add relationships for principal claim data
+    add_edge(claim_id, "HAS_PATIENT", patient_id)
+    add_edge(claim_id, "ASSIGNED_TO_DRG", drg_id)
+    add_edge(claim_id, "BILLED_BY", provider_id)
+    add_edge(claim_id, "HAS_DISCHARGE_DISPOSITION", discharge_disposition_id)
+    add_edge(claim_id, "HAS_PRINCIPAL_DIAGNOSIS", principal_diag_id)
 
-# --- 6. Model Evaluation on the Test Set ---
-print("\n" + "="*50)
-print("--- Model Evaluation on Test Set ---")
-print("="*50)
+    # Add secondary diagnoses
+    for sec_diag_code in claim_dict.get("secondary_diagnoses", []):
+        sec_diag_id = f"DIAG_{sec_diag_code}"
+        add_node(sec_diag_id, "Diagnosis", {"code": sec_diag_code})
+        add_edge(claim_id, "HAS_SECONDARY_DIAGNOSIS", sec_diag_id)
 
-y_pred = best_model_pipeline.predict(X_test)
-y_pred_proba = best_model_pipeline.predict_proba(X_test)[:, 1]
+    # Add procedures
+    for proc_code in claim_dict.get("procedures", []):
+        proc_id = f"PROC_{proc_code}"
+        add_node(proc_id, "Procedure", {"code": proc_code})
+        add_edge(claim_id, "HAS_PROCEDURE", proc_id)
 
-conf_matrix = confusion_matrix(y_test, y_pred)
-print("Confusion Matrix:")
-print(conf_matrix)
-print(f"  True Negative (Predicted No Overpayment, Actual No Overpayment): {conf_matrix[0, 0]}")
-print(f"  False Positive (Predicted Overpayment, Actual No Overpayment): {conf_matrix[0, 1]} (Type I Error - False Alert)")
-print(f"  False Negative (Predicted No Overpayment, Actual Overpayment): {conf_matrix[1, 0]} (Type II Error - Missed Overpayment)")
-print(f"  True Positive (Predicted Overpayment, Actual Overpayment): {conf_matrix[1, 1]}")
+# Ingest SME and Policy nodes and rules
+for sme_id, sme_name in sme_data.items():
+    add_node(f"SME_{sme_id}", "SME", {"id": sme_id, "name": sme_name})
 
-print("\nClassification Report (Precision, Recall, F1-Score):")
-print(classification_report(y_test, y_pred, target_names=['No Overpayment', 'Overpayment']))
+for policy_id, policy_name in policy_data.items():
+    add_node(f"POLICY_{policy_id}", "Policy", {"id": policy_id, "name": policy_name})
 
-print(f"\nROC AUC Score: {roc_auc_score(y_test, y_pred_proba):.4f}")
-print(f"Precision (Overpayment): {precision_score(y_test, y_pred):.4f}")
-print(f"Recall (Overpayment): {recall_score(y_test, y_pred):.4f}")
-print(f"F1-Score (Overpayment): {f1_score(y_test, y_pred):.4f}")
+for rule_dict in sme_rules:
+    rule_id = f"RULE_{rule_dict['rule_id']}"
+    drg_id = f"DRG_{rule_dict['drg_code']}"
+    sme_id = f"SME_{rule_dict['defined_by']}"
+    policy_id = f"POLICY_{rule_dict['based_on']}"
 
-# --- 7. Feature Importance ---
-print("\n" + "="*50)
-print("--- Feature Importances ---")
-print("="*50)
+    add_node(rule_id, "Rule", {
+        "id": rule_dict["rule_id"],
+        "description": rule_dict["description"],
+        "los_threshold": rule_dict["los_threshold"]
+    })
+    add_edge(rule_id, "APPLIES_TO_DRG", drg_id)
+    add_edge(rule_id, "DEFINED_BY_SME", sme_id)
+    add_edge(rule_id, "IS_BASED_ON_POLICY", policy_id)
 
-importances = best_decision_tree_model.feature_importances_
-feature_importance_df = pd.DataFrame({
-    'feature': all_feature_names,
-    'importance': importances
-}).sort_values(by='importance', ascending=False)
+print("Data ingestion complete.")
+print(f"Total nodes: {len(kg_nodes)}")
+print(f"Total edges: {len(kg_edges)}")
 
-print(feature_importance_df)
+# --- 3. Simulating Graph Queries ---
 
-# --- 8. Actionable Concept Generation ---
-print("\n" + "="*50)
-print("--- Actionable Overpayment Concepts (Derived from Decision Tree Rules) ---")
-print("="*50)
-
-# Function to extract rules from the decision tree
-def get_tree_rules(tree_model, feature_names, class_names):
-    tree_ = tree_model.tree_
-    rules = []
-    
-    # Assuming 'Overpayment' is class 1
-    overpayment_class_id = class_names.index('Overpayment') if 'Overpayment' in class_names else 1 # Default to 1
-
-    def recurse(node, path_conditions):
-        if tree_.feature[node] != -2: # Not a leaf node
-            feature_idx = tree_.feature[node]
-            threshold = tree_.threshold[node]
-
-            # Left child (True condition: feature <= threshold)
-            recurse(tree_.children_left[node], path_conditions + [(feature_idx, '<=', threshold)])
-
-            # Right child (False condition: feature > threshold)
-            recurse(tree_.children_right[node], path_conditions + [(feature_idx, '>', threshold)])
-        else: # Leaf node
-            total_samples_at_leaf = tree_.n_node_samples[node]
-            
-            # Safely get the count for the 'Overpayment' class
-            # tree_.value[node] is typically [[count_class_0, count_class_1, ...]]
-            # We want the count for the 'Overpayment' class (class_id 1 by default)
-            num_overpayment_samples = tree_.value[node][0, overpayment_class_id]
-
-            # Ensure total_samples_at_leaf is not zero to avoid division by zero
-            # And ensure num_overpayment_samples doesn't exceed total_samples_at_leaf (should not happen if correctly extracted)
-            if total_samples_at_leaf > 0:
-                purity = num_overpayment_samples / total_samples_at_leaf
+# Helper function to find connected nodes via a relationship type
+def get_connected_nodes(source_id, relationship_type, target_label=None):
+    results = []
+    for s, r_type, t in kg_edges:
+        if s == source_id and r_type == relationship_type:
+            if target_label:
+                if target_label in kg_nodes[t]['labels']:
+                    results.append(kg_nodes[t])
             else:
-                purity = 0.0 # No samples, so 0 purity for overpayment
-            
-            # Only consider rules if the leaf strongly predicts 'Overpayment' and covers enough samples
-            if num_overpayment_samples > 0 and total_samples_at_leaf >= 5 and purity >= 0.7:
-                rules.append({
-                    'conditions': path_conditions,
-                    'predicted_class': class_names[overpayment_class_id],
-                    'overpayment_samples': int(num_overpayment_samples),
-                    'total_samples_at_leaf': int(total_samples_at_leaf),
-                    'purity': purity
-                })
+                results.append(kg_nodes[t])
+    return results
 
-    recurse(0, [])
-    return rules
+# Helper function to find sources connected to a target via a relationship type
+def get_sources_connected_to(target_id, relationship_type, source_label=None):
+    results = []
+    for s, r_type, t in kg_edges:
+        if t == target_id and r_type == relationship_type:
+            if source_label:
+                if source_label in kg_nodes[s]['labels']:
+                    results.append(kg_nodes[s])
+            else:
+                results.append(kg_nodes[s])
+    return results
 
-def interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list):
-    feature = feature_names[feature_idx]
+print("\n--- Simulating Queries ---")
 
-    is_one_hot_feature = False
-    original_feature_name = None
-    category_value = None
+# --- Query 1: SME-driven concept (direct rule application) ---
+# Find claims violating the SME-defined short LOS rule for DRG-100
+print("\nQuery 1: Claims violating SME-defined rule (DRG-100, LOS < 8)")
+# Find the rule node
+rule_node_id = "RULE_RULE_LOS_DRG100_Short"
+rule_props = kg_nodes.get(rule_node_id, {}).get('properties', {})
+los_threshold = rule_props.get('los_threshold')
+rule_description = rule_props.get('description')
 
-    for orig_cat_feat in original_categorical_features_list:
-        if feature.startswith(f"{orig_cat_feat}_"):
-            is_one_hot_feature = True
-            original_feature_name = orig_cat_feat
-            category_value = feature[len(f"{orig_cat_feat}_"):].replace('_', ' ')
+matching_claims_q1 = []
+if los_threshold is not None:
+    # Find DRG-100 node
+    drg100_node = None
+    for node_id, node_data in kg_nodes.items():
+        if 'DRG' in node_data['labels'] and node_data['properties'].get('code') == 'DRG-100':
+            drg100_node = node_id
             break
 
-    if is_one_hot_feature:
-        if operator == '>' and value > 0.5:
-             return f"**{original_feature_name}** IS '{category_value}'"
-        elif operator == '<=' and value < 0.5:
-             return f"**{original_feature_name}** is NOT '{category_value}'"
-        else:
-            return f"**{feature}** {operator} {value:.2f}"
-    else:
-        if operator == '<=':
-            return f"**{feature}** is less than or equal to {value:.2f}"
-        elif operator == '>':
-            return f"**{feature}** is greater than {value:.2f}"
-        return f"**{feature}** {operator} {value:.2f}"
+    if drg100_node:
+        # Find claims assigned to DRG-100
+        for s_id, r_type, t_id in kg_edges:
+            if r_type == "ASSIGNED_TO_DRG" and t_id == drg100_node and 'Claim' in kg_nodes[s_id]['labels']:
+                claim_node = kg_nodes[s_id]
+                if claim_node['properties'].get('los') < los_threshold:
+                    matching_claims_q1.append({
+                        "ClaimID": claim_node['properties']['id'],
+                        "LOS": claim_node['properties']['los'],
+                        "DRG": kg_nodes[drg100_node]['properties']['code'],
+                        "RuleDescription": rule_description
+                    })
 
-def generate_actionable_concepts(rules, feature_names, original_categorical_features_list):
-    concepts = []
-    for i, rule in enumerate(rules):
-        translated_conditions = []
-        for feature_idx, operator, value in rule['conditions']:
-            translated_conditions.append(interpret_condition_for_concept(feature_idx, operator, value, feature_names, original_categorical_features_list))
-
-        concept_str = f"If " + " AND ".join(translated_conditions) + ", then it is a **HIGH LIKELIHOOD of Overpayment**."
-
-        concept_str += f" (Covers {rule['overpayment_samples']} 'Overpayment' cases out of {rule['total_samples_at_leaf']} total cases at this rule's leaf; Purity: {rule['purity']:.1%})"
-
-        concepts.append({
-            'concept_text': concept_str,
-            'overpayment_samples': rule['overpayment_samples'],
-            'total_samples_at_leaf': rule['total_samples_at_leaf'],
-            'purity': rule['purity'],
-            'conditions_raw': rule['conditions']
-        })
-    return sorted(concepts, key=lambda x: x['overpayment_samples'], reverse=True)
-
-overpayment_rules = get_tree_rules(best_decision_tree_model, all_feature_names, ['No Overpayment', 'Overpayment'])
-
-actionable_concepts = generate_actionable_concepts(overpayment_rules, all_feature_names, list(categorical_features))
-
-if actionable_concepts:
-    print("\nHere are the top actionable concepts/rules identified by the Decision Tree:")
-    for i, concept_data in enumerate(actionable_concepts):
-        print(f"\n--- Concept {i+1} ---")
-        print(concept_data['concept_text'])
-        print("\n**Corresponding SQL Query Pattern:**")
-
-        sql_conditions = []
-        for feature_idx, operator, value in concept_data['conditions_raw']:
-            feature_name_in_sql = all_feature_names[feature_idx]
-
-            is_one_hot_feature = False
-            original_feature_name = None
-            category_value = None
-
-            for orig_cat_feat in categorical_features:
-                if feature_name_in_sql.startswith(f"{orig_cat_feat}_"):
-                    is_one_hot_feature = True
-                    original_feature_name = orig_cat_feat
-                    category_value = feature_name_in_sql[len(f"{orig_cat_feat}_"):].replace('_', ' ')
-                    break
-
-            if is_one_hot_feature:
-                if operator == '>' and value > 0.5:
-                    sql_conditions.append(f"{original_feature_name} = '{category_value}'")
-                elif operator == '<=' and value < 0.5:
-                    sql_conditions.append(f"{original_feature_name} != '{category_value}'")
-                else:
-                    sql_conditions.append(f"({feature_name_in_sql} {operator} {value:.2f})")
-            else:
-                sql_conditions.append(f"{feature_name_in_sql} {operator} {value:.2f}")
-
-        print("```sql")
-        print("SELECT *")
-        print("FROM Your_DRG_Medicare_Table")
-        print("WHERE " + "\n  AND ".join(sql_conditions) + ";")
-        print("```")
+if matching_claims_q1:
+    print(pd.DataFrame(matching_claims_q1))
 else:
-    print("\nNo strong 'Overpayment' concepts could be extracted from the tree with the current purity and sample thresholds.")
-    print("Consider adjusting `purity >= 0.7` or `total_samples_at_leaf >= 5` in `get_tree_rules` or `max_depth` in `param_grid` if you expect more rules.")
+    print("No claims found matching this rule.")
 
-print("\n" + "="*50)
-print("\n**How to Use These Actionable Concepts:**")
-print("1.  **Direct Auditing**: Use the generated SQL queries to pull specific cases from your database for immediate review by auditors.")
-print("2.  **Rule Development**: These concepts can be formalized into automated flagging rules in your existing fraud/abuse detection systems.")
-print("3.  **Policy Review**: Patterns revealed might indicate gaps or ambiguities in current billing/reimbursement policies that need to be addressed.")
-print("4.  **Provider Education**: If patterns consistently point to specific providers or types of providers, targeted education or intervention programs can be designed.")
-print("5.  **Risk Scoring**: Integrate these rules into a risk scoring model, where cases matching multiple overpayment concepts receive a higher risk score.")
-print("\nRemember to combine these automated concepts with your profound subject matter expertise for the most effective outcome.")
-print("\n" + "="*50)
+# --- Query 2: Data-driven concept discovery (finding anomalies based on typical values) ---
+# Find DRG-100 claims where LOS is significantly outside the typical range,
+# AND no secondary diagnoses or specific procedures are present.
+print("\nQuery 2: Claims where DRG-100 LOS is unusually low (below typical_los_min) without secondary diagnoses/procedures")
 
+matching_claims_q2 = []
+drg100_node_id = None
+for node_id, node_data in kg_nodes.items():
+    if 'DRG' in node_data['labels'] and node_data['properties'].get('code') == 'DRG-100':
+        drg100_node_id = node_id
+        break
+
+if drg100_node_id:
+    drg100_props = kg_nodes[drg100_node_id]['properties']
+    typical_los_min = drg100_props.get('typical_los_min')
+
+    if typical_los_min is not None:
+        for s_id, r_type, t_id in kg_edges:
+            if r_type == "ASSIGNED_TO_DRG" and t_id == drg100_node_id and 'Claim' in kg_nodes[s_id]['labels']:
+                claim_node = kg_nodes[s_id]
+                claim_los = claim_node['properties'].get('los')
+
+                if claim_los is not None and claim_los < typical_los_min:
+                    # Check for secondary diagnoses
+                    has_secondary_diag = False
+                    for edge_s, edge_r, edge_t in kg_edges:
+                        if edge_s == s_id and edge_r == "HAS_SECONDARY_DIAGNOSIS":
+                            has_secondary_diag = True
+                            break
+
+                    # Check for procedures
+                    has_procedure = False
+                    for edge_s, edge_r, edge_t in kg_edges:
+                        if edge_s == s_id and edge_r == "HAS_PROCEDURE":
+                            has_procedure = True
+                            break
+
+                    if not has_secondary_diag and not has_procedure:
+                        matching_claims_q2.append({
+                            "ClaimID": claim_node['properties']['id'],
+                            "LOS": claim_los,
+                            "DRG": drg100_props['code'],
+                            "TypicalLOSMin": typical_los_min
+                        })
+
+df_result_2 = pd.DataFrame(matching_claims_q2)
+if not df_result_2.empty:
+    print(df_result_2)
+    print("\nPROPOSED NEW CONCEPT:")
+    print("  'DRG-100 claims with LOS < Typical_Min_LOS (e.g., 10) AND no secondary diagnoses AND no procedures.'")
+    print("  This pattern was detected from data anomaly relative to DRG definitions.")
+else:
+    print("No claims found matching this anomalous pattern.")
+
+# --- Query 3: Explain why CatBoost might flag C1002 as overpayment (using KG details) ---
+print("\nQuery 3: Explain why CatBoost might flag C1002 as overpayment (using KG details)")
+target_claim_id = "CLAIM_C1002"
+claim_details = {}
+
+if target_claim_id in kg_nodes:
+    claim_node = kg_nodes[target_claim_id]
+    claim_details['ClaimID'] = claim_node['properties']['id']
+    claim_details['LOS'] = claim_node['properties']['los']
+
+    # Get DRG details
+    connected_drgs = get_connected_nodes(target_claim_id, "ASSIGNED_TO_DRG", "DRG")
+    if connected_drgs:
+        drg_props = connected_drgs[0]['properties']
+        claim_details['DRG'] = drg_props.get('code')
+        claim_details['TypicalDRGLOSMin'] = drg_props.get('typical_los_min')
+
+    # Get Principal Diagnosis
+    principal_diag = get_connected_nodes(target_claim_id, "HAS_PRINCIPAL_DIAGNOSIS", "Diagnosis")
+    if principal_diag:
+        claim_details['PrincipalDiagnosis'] = principal_diag[0]['properties']['code']
+
+    # Get Secondary Diagnoses
+    secondary_diagnoses = get_connected_nodes(target_claim_id, "HAS_SECONDARY_DIAGNOSIS", "Diagnosis")
+    claim_details['SecondaryDiagnoses'] = [d['properties']['code'] for d in secondary_diagnoses]
+
+    # Get Procedures
+    procedures = get_connected_nodes(target_claim_id, "HAS_PROCEDURE", "Procedure")
+    claim_details['Procedures'] = [p['properties']['code'] for p in procedures]
+
+    # Get Provider
+    provider = get_connected_nodes(target_claim_id, "BILLED_BY", "Provider")
+    if provider:
+        claim_details['ProviderID'] = provider[0]['properties']['id']
+
+    if claim_details:
+        print(f"Claim {claim_details['ClaimID']} details:")
+        print(f"  LOS: {claim_details.get('LOS')} (Typical DRG {claim_details.get('DRG')} LOS Min: {claim_details.get('TypicalDRGLOSMin')})")
+        print(f"  Principal Diagnosis: {claim_details.get('PrincipalDiagnosis')}")
+        print(f"  Secondary Diagnoses: {claim_details.get('SecondaryDiagnoses')}")
+        print(f"  Procedures: {claim_details.get('Procedures')}")
+        print(f"  Billed by Provider: {claim_details.get('ProviderID')}")
+
+        # Inferential step (manual in this script, but could be automated)
+        if claim_details.get('LOS', 0) < claim_details.get('TypicalDRGLOSMin', 0) and not claim_details['SecondaryDiagnoses']:
+            print("\nKG Inference/Explanation: This claim's LOS is below the typical minimum for its DRG, and it lacks secondary diagnoses that might justify a longer stay or additional complexity, making it suspicious for overpayment due to short stay.")
+    else:
+        print("Claim C1002 found, but details incomplete.")
+else:
+    print("Claim C1002 not found in the KG.")
+
+
+print("\nScript finished.")
