@@ -87,17 +87,17 @@ if G.has_node(yes_finding_node):
     # Iterate over all edges to find the 'LEADS_TO_FINDING_STATUS' edges
     # Correct unpacking: source_node, target_node, edge_attributes_dict
     for source_node, target_node, edge_attributes in G.edges(data=True):
+        # Line 90 was here in the previous version, now updated:
         if edge_attributes.get('relation') == 'LEADS_TO_FINDING_STATUS':
             # Check if this edge points to the 'Yes' finding node
             if target_node == yes_finding_node:
                 # The source_node here is the 'Combo_' node
                 problematic_combos[source_node] += 1
-            
+
             # Count total occurrences of this combo node (regardless of finding status)
-            # We need to make sure we only count each unique (combo_node -> finding_node) edge once
-            # The 'claim_id' on the edge makes each link unique for a given claim.
+            # This logic assumes each edge from Combo_node to Finding_node represents one claim
             total_combo_counts[source_node] += 1
-            
+
     print("\nCombinations most associated with 'Yes' Findings:")
     combo_analysis = {}
     for combo_node_id, yes_count in problematic_combos.items():
@@ -151,7 +151,7 @@ for claim_node in G.nodes():
                 current_provider_node = neighbor_node
             elif G.nodes[neighbor_node].get('type') == 'FindingStatus' and G.nodes[neighbor_node].get('status') == 'Yes':
                 has_yes_finding = True
-        
+
         # Check if this claim matches a high-risk combo AND has a 'Yes' finding
         if current_diag and current_proc and current_drg and current_provider_node and has_yes_finding:
             claim_combo_str = f"{current_diag}_{current_proc}_DRG_{current_drg}"
