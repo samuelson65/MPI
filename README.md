@@ -1,34 +1,35 @@
 import pandas as pd
-import networkx as nx
-from collections import defaultdict
+from mlxtend.frequent_patterns import apriori, association_rules
+import time
 import re
-import time # For measuring execution time
 
 # --- Configuration ---
-MIN_TOTAL_CLAIMS_DEFAULT = 10 # Default minimum sample size for patterns
-MIN_PROBABILITY_DEFAULT = 50 # Default minimum probability for patterns (in percent)
+# These thresholds are crucial for ARM and will heavily influence the output.
+# Adjust based on your data volume and desired specificity/generality of rules.
+MIN_SUPPORT_PERCENT = 0.01 # Minimum support as a fraction (e.g., 0.01 = 1% of claims)
+MIN_CONFIDENCE = 0.50      # Minimum confidence (e.g., 0.50 = 50% confident)
+MIN_LIFT = 1.0             # Minimum lift (typically > 1 for positive association)
 
-# --- 1. Create a Dummy DataFrame with more data for testing performance ---
-# Increased data size significantly to simulate larger datasets and observe performance
-num_claims = 10000 # Increased from 20 to 10000
+# For interactive query
+DEFAULT_QUERY_MIN_SUPPORT_PERCENT = 0.01
+DEFAULT_QUERY_MIN_CONFIDENCE = 0.60 # Slightly higher default for query for stricter rules
+
+# --- 1. Create a Dummy DataFrame with more data ---
+num_claims = 10000
 data = {
     'claim_id': [f'C{i:05d}' for i in range(num_claims)],
     'diagnosis_code': ['I10-E11', 'J45', 'I10', 'E11-K21', 'J45', 'K21', 'I10-J45', 'J45', 'E11', 'I10'] * (num_claims // 10),
     'procedure_code': ['99213-71045', '99214', '99213', '99215-81000', '99214', '99213', '99213-74018', '99214', '99215', '99213'] * (num_claims // 10),
     'drg_code': [287, 204, 287, 637, 204, 287, 287, 204, 637, 287] * (num_claims // 10),
-    'provider_id': [f'P{i % 10 + 1}' for i in range(num_claims)], # More providers
+    'provider_id': [f'P{i % 10 + 1}' for i in range(num_claims)],
     'finding': ['Yes', 'No', 'No', 'Yes', 'Yes', 'No', 'Yes', 'No', 'Yes', 'No'] * (num_claims // 10)
 }
-
-# Ensure data matches num_claims size (handle remainder if not perfectly divisible)
 for col in data:
     data[col] = data[col][:num_claims]
-
 df = pd.DataFrame(data)
 
 print("Original DataFrame (simulated large data):")
 print(f"Number of claims: {len(df)}")
-# print(df.head()) # Don't print full df for large data
 print("-" * 30)
 
 # --- Helper function to split codes ---
@@ -38,219 +39,189 @@ def split_codes(code_string, delimiter='-'):
         return [c.strip() for c in code_string.split(delimiter) if c.strip()]
     return []
 
-# --- 2. Initialize Knowledge Graph ---
-G = nx.DiGraph()
-
-# --- Data structures for pre-calculation ---
-# These will store counts directly during graph population
-pre_problematic_signatures = defaultdict(int)
-pre_total_signature_counts = defaultdict(int)
-
-# --- 3. Populate the Knowledge Graph (with pre-calculation) ---
+# --- 2. Data Transformation for ARM (One-Hot Encoding) ---
 start_time = time.time()
 
-# Define node prefixes for clarity
-NODE_PREFIXES = {
-    'claim': 'Claim_',
-    'diag': 'Diagnosis_',
-    'proc': 'Procedure_',
-    'drg': 'DRG_',
-    'provider': 'Provider_',
-    'finding': 'Finding_'
-}
-
-# Identify the 'Yes' finding node string once
-yes_finding_node_str = f"{NODE_PREFIXES['finding']}Yes"
+# Create a list of lists, where each inner list represents the items in a claim
+# We'll prefix items to differentiate them (e.g., 'diag:I10', 'proc:99213', 'drg:287', 'finding:Yes')
+transactions = []
+all_unique_items = set()
 
 for index, row in df.iterrows():
-    claim_node = f"{NODE_PREFIXES['claim']}{row['claim_id']}"
-    drg_node = f"{NODE_PREFIXES['drg']}{row['drg_code']}"
-    provider_node = f"{NODE_PREFIXES['provider']}{row['provider_id']}"
-    finding_node = f"{NODE_PREFIXES['finding']}{row['finding']}"
+    current_transaction_items = []
 
-    G.add_node(claim_node, type='Claim', claim_id=row['claim_id'])
-    G.add_node(drg_node, type='DRGCode', code=row['drg_code'])
-    G.add_node(provider_node, type='Provider', id=row['provider_id'])
-    G.add_node(finding_node, type='FindingStatus', status=row['finding'])
+    # Add diagnosis codes
+    for diag_code in split_codes(row['diagnosis_code']):
+        item = f"diag:{diag_code}"
+        current_transaction_items.append(item)
+        all_unique_items.add(item)
 
-    G.add_edge(claim_node, drg_node, relation='ASSIGNED_DRG')
-    G.add_edge(claim_node, provider_node, relation='BILLED_BY')
-    G.add_edge(claim_node, finding_node, relation='HAS_FINDING_STATUS')
+    # Add procedure codes
+    for proc_code in split_codes(row['procedure_code']):
+        item = f"proc:{proc_code}"
+        current_transaction_items.append(item)
+        all_unique_items.add(item)
 
-    individual_diag_codes = split_codes(row['diagnosis_code'])
-    for diag_code in individual_diag_codes:
-        diag_node = f"{NODE_PREFIXES['diag']}{diag_code}"
-        G.add_node(diag_node, type='DiagnosisCode', code=diag_code)
-        G.add_edge(claim_node, diag_node, relation='HAS_DIAGNOSIS')
+    # Add DRG code
+    item = f"drg:{row['drg_code']}"
+    current_transaction_items.append(item)
+    all_unique_items.add(item)
 
-    individual_proc_codes = split_codes(row['procedure_code'])
-    for proc_code in individual_proc_codes:
-        proc_node = f"{NODE_PREFIXES['proc']}{proc_code}"
-        G.add_node(proc_node, type='ProcedureCode', code=proc_code)
-        G.add_edge(claim_node, proc_node, relation='INCLUDES_PROCEDURE')
+    # Add Finding status
+    item = f"finding:{row['finding']}"
+    current_transaction_items.append(item)
+    all_unique_items.add(item)
 
-    original_diag_str = str(row['diagnosis_code'])
-    original_proc_str = str(row['procedure_code'])
-    combo_label = f"{original_diag_str}_{original_proc_str}_DRG_{row['drg_code']}"
-    combo_node = f"Combo_{combo_label}"
-    G.add_node(combo_node, type='CodeCombination',
-               raw_diag_codes=original_diag_str,
-               raw_proc_codes=original_proc_str,
-               drg=row['drg_code'])
-    G.add_edge(claim_node, combo_node, relation='REPRESENTS_CLAIM_SIGNATURE')
-    G.add_edge(combo_node, finding_node, relation='LEADS_TO_FINDING_STATUS', claim_id=row['claim_id'])
+    transactions.append(current_transaction_items)
 
-    # --- Pre-calculation for problematic signatures ---
-    # We are directly updating the counts here, avoiding a separate graph traversal later
-    pre_total_signature_counts[combo_node] += 1
-    if row['finding'] == 'Yes':
-        pre_problematic_signatures[combo_node] += 1
+# Create a one-hot encoded DataFrame
+oht = pd.DataFrame(transactions)
+oht = oht.stack().str.get_dummies().sum(level=0) # Sum for claims with multiple codes in one field
+oht = oht.astype(bool) # Convert to boolean for apriori efficiency
 
 end_time = time.time()
-print(f"\nKnowledge Graph created with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges in {end_time - start_time:.2f} seconds.")
+print(f"Data transformation for ARM completed in {end_time - start_time:.2f} seconds.")
+print(f"One-Hot Encoded DataFrame shape: {oht.shape}")
+print(f"First 5 rows of OHT DataFrame:\n{oht.head()}")
 print("-" * 30)
 
-# --- 4. Core Analysis Function (Now uses pre-calculated counts) ---
+# --- 3. Apply Apriori Algorithm to find frequent itemsets ---
+start_apriori_time = time.time()
 
-def analyze_problematic_signatures_optimized(graph, finding_node_prefix,
-                                             pre_problematic_counts, pre_total_counts,
-                                             min_total_claims_overall):
-    """
-    Analyzes the graph to find all claim signatures associated with 'Yes' findings,
-    using pre-calculated counts and applying a minimum sample size threshold.
-    Returns a sorted list of (signature_string, details_dict).
-    """
-    yes_finding_node = f"{finding_node_prefix}Yes"
-    if not graph.has_node(yes_finding_node):
-        # This case should ideally not happen if 'Yes' findings exist in data
-        print(f"'{yes_finding_node}' node not found in the graph. Cannot analyze problematic signatures.")
-        return []
+# min_support is a fraction of total transactions
+frequent_itemsets = apriori(oht, min_support=MIN_SUPPORT_PERCENT, use_colnames=True)
 
-    signature_analysis = {}
-    for combo_node_id, total_count in pre_total_counts.items():
-        # Apply the overall minimum sample size threshold here
-        if total_count >= min_total_claims_overall:
-            yes_count = pre_problematic_counts.get(combo_node_id, 0)
-            percentage_yes = (yes_count / total_count) * 100
-            signature_details = graph.nodes[combo_node_id] # Still need to get node properties from G
+end_apriori_time = time.time()
+print(f"Apriori algorithm completed in {end_apriori_time - start_apriori_time:.2f} seconds.")
+print(f"Found {len(frequent_itemsets)} frequent itemsets (min_support={MIN_SUPPORT_PERCENT}).")
+# print(frequent_itemsets.head())
+print("-" * 30)
 
-            original_signature_str = (
-                f"{signature_details.get('raw_diag_codes', 'N/A')}_"
-                f"{signature_details.get('raw_proc_codes', 'N/A')}_DRG_{signature_details.get('drg', 'N/A')}"
-            )
-            signature_analysis[original_signature_str] = {
-                'yes_findings': yes_count,
-                'total_claims': total_count,
-                'percentage_yes': f"{percentage_yes:.2f}%"
-            }
+# --- 4. Generate Association Rules ---
+start_rules_time = time.time()
 
-    sorted_signatures = sorted(signature_analysis.items(), key=lambda item: (float(item[1]['percentage_yes'].strip('%')), item[1]['total_claims']), reverse=True)
-    # Sort by percentage_yes (desc), then total_claims (desc) for patterns with same percentage
-    return sorted_signatures
+# Generate rules based on confidence and lift
+rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=MIN_CONFIDENCE)
+rules = rules[rules['lift'] >= MIN_LIFT] # Filter by lift as well
 
-# Run the initial analysis once to get all sorted problematic signatures
-# Now uses the pre-calculated dictionaries and the default min_total_claims
-start_analysis_time = time.time()
-all_sorted_signatures = analyze_problematic_signatures_optimized(
-    G,
-    NODE_PREFIXES['finding'],
-    pre_problematic_signatures,
-    pre_total_signature_counts,
-    min_total_claims_overall=MIN_TOTAL_CLAIMS_DEFAULT # Use the global default
+end_rules_time = time.time()
+print(f"Association rules generation completed in {end_rules_time - start_rules_time:.2f} seconds.")
+print(f"Found {len(rules)} association rules (min_confidence={MIN_CONFIDENCE}, min_lift={MIN_LIFT}).")
+# print(rules.head())
+print("-" * 30)
+
+# --- 5. Filter for Overpayment Rules and Pre-process for faster querying ---
+start_filter_time = time.time()
+
+overpayment_rules = rules[rules['consequents'].apply(lambda x: 'finding:Yes' in x)].copy()
+overpayment_rules = overpayment_rules.sort_values(by=['confidence', 'support'], ascending=False)
+
+# Add a DRG column to the rules for easy filtering later
+overpayment_rules['antecedent_drg'] = overpayment_rules['antecedents'].apply(
+    lambda x: next((item.split(':')[1] for item in x if item.startswith('drg:')), None)
 )
-end_analysis_time = time.time()
-print(f"Initial pattern analysis completed in {end_analysis_time - start_analysis_time:.2f} seconds.")
 
-if not all_sorted_signatures:
-    print(f"No problematic signatures found in the initial analysis meeting min_total_claims={MIN_TOTAL_CLAIMS_DEFAULT}. Interactive mode will have no results.")
+end_filter_time = time.time()
+print(f"Filtered {len(overpayment_rules)} overpayment rules in {end_filter_time - start_filter_time:.2f} seconds.")
+# print(overpayment_rules.head())
+print("-" * 30)
 
-# --- 5. Interactive Query Function ---
+# --- 6. Interactive Query Function ---
 
-def get_high_probability_patterns_for_drg(drg_input, all_sorted_signatures,
-                                           probability_threshold=MIN_PROBABILITY_DEFAULT,
-                                           min_total_claims=MIN_TOTAL_CLAIMS_DEFAULT):
+def query_overpayment_rules_by_drg(drg_code, all_rules_df, min_support_pct, min_confidence_val):
     """
-    Filters high probability patterns for a given DRG code, applying both
-    a probability threshold and a minimum sample size threshold.
+    Queries the pre-computed overpayment rules for a specific DRG code,
+    applying minimum support and confidence thresholds.
 
     Args:
-        drg_input (str or int): The DRG code to filter by.
-        all_sorted_signatures (list): The pre-computed list of all sorted problematic signatures.
-        probability_threshold (int): The minimum percentage of 'Yes' findings.
-        min_total_claims (int): The minimum number of occurrences (sample size).
+        drg_code (str or int): The DRG code to filter by.
+        all_rules_df (pd.DataFrame): The DataFrame of all pre-computed overpayment rules.
+        min_support_pct (float): Minimum support as a percentage (e.g., 0.01 for 1%).
+        min_confidence_val (float): Minimum confidence (e.g., 0.50 for 50%).
 
     Returns:
-        list: A list of (signature_string, details_dict) for the given DRG that meet the thresholds.
+        pd.DataFrame: Filtered rules.
     """
-    drg_str_match = f"DRG_{drg_input}"
-    filtered_patterns = []
+    target_drg_str = str(drg_code)
+    
+    # Filter by DRG, then by support and confidence
+    filtered_rules = all_rules_df[
+        (all_rules_df['antecedent_drg'] == target_drg_str) &
+        (all_rules_df['support'] >= min_support_pct) &
+        (all_rules_df['confidence'] >= min_confidence_val)
+    ].copy()
 
-    print(f"\nSearching for high probability patterns for DRG: {drg_input} (Prob. Threshold: {probability_threshold}%, Sample Size: {min_total_claims})")
+    # Format antecedents for display
+    filtered_rules['antecedents_formatted'] = filtered_rules['antecedents'].apply(
+        lambda x: ', '.join(sorted([item for item in x if item != f'drg:{target_drg_str}']))
+    )
+    
+    return filtered_rules.sort_values(by=['confidence', 'support'], ascending=False)
 
-    for signature_str, details in all_sorted_signatures:
-        # Check if the signature string contains the DRG code
-        # AND meets the probability threshold
-        # AND meets the minimum total claims threshold
-        if (drg_str_match in signature_str and
-            float(details['percentage_yes'].strip('%')) >= probability_threshold and
-            details['total_claims'] >= min_total_claims):
-            filtered_patterns.append((signature_str, details))
+# --- 7. Interactive User Interface ---
 
-    return filtered_patterns
-
-# --- 6. Interactive User Interface ---
-
-print("\n--- Interactive DRG Pattern Finder ---")
-print("Enter a DRG code to find high probability overpayment patterns.")
-print(f"Default thresholds: Minimum Claims = {MIN_TOTAL_CLAIMS_DEFAULT}, Minimum Probability = {MIN_PROBABILITY_DEFAULT}%")
-print("You can specify custom thresholds.")
-print("Format: <DRG_CODE> [MIN_CLAIMS] [MIN_PROBABILITY_PERCENT]")
-print(f"Examples: '287', '204 15', '637 {MIN_TOTAL_CLAIMS_DEFAULT} 75'")
-print("Type 'all' to see all high probability patterns, or 'exit' to quit.")
+print("\n--- Interactive Overpayment Rule Finder (Association Rule Mining) ---")
+print(f"Default thresholds: Min Support = {DEFAULT_QUERY_MIN_SUPPORT_PERCENT*100:.2f}%, Min Confidence = {DEFAULT_QUERY_MIN_CONFIDENCE*100:.2f}%")
+print("Enter DRG code to find overpayment patterns (rules).")
+print("You can also specify custom thresholds for support and confidence.")
+print("Format: <DRG_CODE> [MIN_SUPPORT_PERCENT] [MIN_CONFIDENCE]")
+print("Examples: '287', '204 0.02', '637 0.015 0.70'")
+print("Type 'all' to see all overpayment rules, or 'exit' to quit.")
 
 while True:
-    user_input_raw = input("\nEnter query (e.g., '287', '204 15', 'all', 'exit'): ").strip().upper()
+    user_input_raw = input("\nEnter query (e.g., '287', '204 0.02', 'all', 'exit'): ").strip().upper()
     parts = user_input_raw.split()
 
     if parts[0] == 'EXIT':
         print("Exiting interactive mode. Goodbye!")
         break
     elif parts[0] == 'ALL':
-        print(f"\n--- All High Probability Overpayment Patterns (Min Claims >= {MIN_TOTAL_CLAIMS_DEFAULT}, Prob. >= {MIN_PROBABILITY_DEFAULT}%) ---")
-        found_any = False
-        # 'all' command now uses the global default thresholds
-        for signature_str, details in all_sorted_signatures:
-            if (float(details['percentage_yes'].strip('%')) >= MIN_PROBABILITY_DEFAULT and
-                details['total_claims'] >= MIN_TOTAL_CLAIMS_DEFAULT):
-                print(f"- Signature: {signature_str}, Yes Findings: {details['yes_findings']}, Total Claims: {details['total_claims']}, % Yes: {details['percentage_yes']}")
-                found_any = True
-        if not found_any:
-            print("No high probability patterns found overall meeting the default thresholds.")
+        print(f"\n--- All Overpayment Rules (Min Support >= {DEFAULT_QUERY_MIN_SUPPORT_PERCENT*100:.2f}%, Min Confidence >= {DEFAULT_QUERY_MIN_CONFIDENCE*100:.2f}%) ---")
+        
+        # Filter all rules using default query thresholds
+        all_display_rules = overpayment_rules[
+            (overpayment_rules['support'] >= DEFAULT_QUERY_MIN_SUPPORT_PERCENT) &
+            (overpayment_rules['confidence'] >= DEFAULT_QUERY_MIN_CONFIDENCE)
+        ].copy()
+        
+        if not all_display_rules.empty:
+            all_display_rules['antecedents_formatted'] = all_display_rules['antecedents'].apply(lambda x: ', '.join(sorted(list(x))))
+            for _, rule in all_display_rules.iterrows():
+                print(f"Rule: {rule['antecedents_formatted']} => {list(rule['consequents'])[0]}")
+                print(f"  Support: {rule['support']:.4f} ({rule['support']*100:.2f}%), Confidence: {rule['confidence']:.4f} ({rule['confidence']*100:.2f}%), Lift: {rule['lift']:.2f}")
+        else:
+            print("No overpayment rules found overall meeting the default thresholds.")
     else:
         drg_code_query = None
-        min_claims_query = MIN_TOTAL_CLAIMS_DEFAULT     # Default from config
-        min_prob_query = MIN_PROBABILITY_DEFAULT      # Default from config
+        min_support_query = DEFAULT_QUERY_MIN_SUPPORT_PERCENT
+        min_confidence_query = DEFAULT_QUERY_MIN_CONFIDENCE
 
         try:
             drg_code_query = int(parts[0])
             if len(parts) > 1:
-                min_claims_query = int(parts[1])
+                min_support_query = float(parts[1])
+                if not (0 <= min_support_query <= 1):
+                    raise ValueError("Support must be a fraction between 0 and 1.")
             if len(parts) > 2:
-                min_prob_query = int(parts[2])
-                if not (0 <= min_prob_query <= 100):
-                    raise ValueError("Probability must be between 0 and 100.")
+                min_confidence_query = float(parts[2])
+                if not (0 <= min_confidence_query <= 1):
+                    raise ValueError("Confidence must be a fraction between 0 and 1.")
         except ValueError as e:
-            print(f"Invalid input: {e}. Please use format '<DRG> [MIN_CLAIMS] [MIN_PROBABILITY]' or 'all' or 'exit'.")
+            print(f"Invalid input: {e}. Please use format '<DRG> [MIN_SUPPORT] [MIN_CONFIDENCE]' or 'all' or 'exit'.")
             continue
 
-        relevant_patterns = get_high_probability_patterns_for_drg(drg_code_query, all_sorted_signatures,
-                                                                    probability_threshold=min_prob_query,
-                                                                    min_total_claims=min_claims_query)
+        relevant_rules = query_overpayment_rules_by_drg(
+            drg_code_query,
+            overpayment_rules, # Use the pre-filtered overpayment rules
+            min_support_query,
+            min_confidence_query
+        )
 
-        if relevant_patterns:
-            print(f"\n--- High Probability Overpayment Patterns for DRG {drg_code_query} (Sample Size >= {min_claims_query}, Prob. >= {min_prob_query}%) ---")
-            for signature_str, details in relevant_patterns:
-                print(f"- Signature: {signature_str}, Yes Findings: {details['yes_findings']}, Total Claims: {details['total_claims']}, % Yes: {details['percentage_yes']}")
+        if not relevant_rules.empty:
+            print(f"\n--- Overpayment Rules for DRG {drg_code_query} (Min Support >= {min_support_query*100:.2f}%, Min Confidence >= {min_confidence_query*100:.2f}%) ---")
+            for _, rule in relevant_rules.iterrows():
+                print(f"Rule: {{{rule['antecedents_formatted']}}} => {{finding:Yes}}")
+                print(f"  Support: {rule['support']:.4f} ({rule['support']*100:.2f}%), Confidence: {rule['confidence']:.4f} ({rule['confidence']*100:.2f}%), Lift: {rule['lift']:.2f}")
         else:
-            print(f"No high probability overpayment patterns found for DRG {drg_code_query} meeting the specified thresholds (Sample Size >= {min_claims_query}, Prob. >= {min_prob_query}%).")
+            print(f"No overpayment rules found for DRG {drg_code_query} meeting the specified thresholds.")
 
