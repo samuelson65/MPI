@@ -57,9 +57,7 @@ for index, row in df.iterrows():
     G.add_edge(claim_node, provider_node, relation='BILLED_BY')
     G.add_edge(claim_node, finding_node, relation='HAS_FINDING_STATUS')
 
-    # Optionally, add direct co-occurrence edges between codes for easier querying
-    # This creates a 'context' node for the specific combination which is useful
-    # for aggregating findings directly related to a pattern.
+    # Add direct co-occurrence edges between codes for easier querying
     combo_label = f"{row['diagnosis_code']}_{row['procedure_code']}_DRG_{row['drg_code']}"
     combo_node = f"Combo_{combo_label}"
     G.add_node(combo_node, type='CodeCombination', diag=row['diagnosis_code'], proc=row['procedure_code'], drg=row['drg_code'])
@@ -83,19 +81,23 @@ print("\n--- KG Query Results for Overpayment Identification ---")
 
 yes_finding_node = f"{NODE_PREFIXES['finding']}Yes"
 if G.has_node(yes_finding_node):
-    # Find all 'CodeCombination' nodes that lead to a 'Yes' finding
     problematic_combos = defaultdict(int) # Stores counts of how many times a combo led to 'Yes'
     total_combo_counts = defaultdict(int) # Stores total counts for each combo
 
-    for source, target in G.edges(data=True):
-        if target['relation'] == 'LEADS_TO_FINDING_STATUS' and target['target'] == yes_finding_node:
-            combo_node = source['source'] # The source of the LEADS_TO_FINDING_STATUS edge is the combo node
-            problematic_combos[combo_node] += 1
-
-        # Also count total occurrences of each combo (regardless of finding)
-        if G.nodes[source['source']]['type'] == 'CodeCombination' and target['relation'] == 'LEADS_TO_FINDING_STATUS':
-             total_combo_counts[source['source']] += 1
-
+    # Iterate over all edges to find the 'LEADS_TO_FINDING_STATUS' edges
+    # Correct unpacking: source_node, target_node, edge_attributes_dict
+    for source_node, target_node, edge_attributes in G.edges(data=True):
+        if edge_attributes.get('relation') == 'LEADS_TO_FINDING_STATUS':
+            # Check if this edge points to the 'Yes' finding node
+            if target_node == yes_finding_node:
+                # The source_node here is the 'Combo_' node
+                problematic_combos[source_node] += 1
+            
+            # Count total occurrences of this combo node (regardless of finding status)
+            # We need to make sure we only count each unique (combo_node -> finding_node) edge once
+            # The 'claim_id' on the edge makes each link unique for a given claim.
+            total_combo_counts[source_node] += 1
+            
     print("\nCombinations most associated with 'Yes' Findings:")
     combo_analysis = {}
     for combo_node_id, yes_count in problematic_combos.items():
@@ -126,41 +128,36 @@ else:
 print("\n--- Providers Associated with Problematic Combinations ---")
 problematic_providers_counts = defaultdict(int)
 
-for combo_str, details in sorted_combos:
-    if float(details['percentage_yes'].strip('%')) > 50: # Set a threshold for 'problematic'
-        target_diag = combo_str.split('_')[0]
-        target_proc = combo_str.split('_')[1]
-        target_drg = int(combo_str.split('_DRG_')[1])
+# Filter for combos with a high percentage of 'Yes' findings (e.g., > 50%)
+high_risk_combos = [combo_str for combo_str, details in sorted_combos if float(details['percentage_yes'].strip('%')) > 50]
 
-        # Find claims that match this problematic combo and have a 'Yes' finding
-        for claim_node in G.nodes():
-            if G.nodes[claim_node].get('type') == 'Claim':
-                # Check claim's relationships to match the combo and finding status
-                is_problematic_claim = False
-                current_diag = None
-                current_proc = None
-                current_drg = None
-                has_yes_finding = False
-                current_provider = None
+for claim_node in G.nodes():
+    if G.nodes[claim_node].get('type') == 'Claim':
+        current_diag = None
+        current_proc = None
+        current_drg = None
+        current_provider_node = None
+        has_yes_finding = False
 
-                for neighbor in G.successors(claim_node):
-                    if G.nodes[neighbor].get('type') == 'DiagnosisCode':
-                        current_diag = G.nodes[neighbor].get('code')
-                    elif G.nodes[neighbor].get('type') == 'ProcedureCode':
-                        current_proc = G.nodes[neighbor].get('code')
-                    elif G.nodes[neighbor].get('type') == 'DRGCode':
-                        current_drg = G.nodes[neighbor].get('code')
-                    elif G.nodes[neighbor].get('type') == 'FindingStatus' and G.nodes[neighbor].get('status') == 'Yes':
-                        has_yes_finding = True
-                    elif G.nodes[neighbor].get('type') == 'Provider':
-                        current_provider = neighbor # Store provider node directly
+        # Get relevant neighbors and their attributes
+        for neighbor_node in G.successors(claim_node):
+            if G.nodes[neighbor_node].get('type') == 'DiagnosisCode':
+                current_diag = G.nodes[neighbor_node].get('code')
+            elif G.nodes[neighbor_node].get('type') == 'ProcedureCode':
+                current_proc = G.nodes[neighbor_node].get('code')
+            elif G.nodes[neighbor_node].get('type') == 'DRGCode':
+                current_drg = G.nodes[neighbor_node].get('code')
+            elif G.nodes[neighbor_node].get('type') == 'Provider':
+                current_provider_node = neighbor_node
+            elif G.nodes[neighbor_node].get('type') == 'FindingStatus' and G.nodes[neighbor_node].get('status') == 'Yes':
+                has_yes_finding = True
+        
+        # Check if this claim matches a high-risk combo AND has a 'Yes' finding
+        if current_diag and current_proc and current_drg and current_provider_node and has_yes_finding:
+            claim_combo_str = f"{current_diag}_{current_proc}_DRG_{current_drg}"
+            if claim_combo_str in high_risk_combos:
+                problematic_providers_counts[current_provider_node] += 1
 
-                if (current_diag == target_diag and
-                    current_proc == target_proc and
-                    current_drg == target_drg and
-                    has_yes_finding and
-                    current_provider):
-                    problematic_providers_counts[current_provider] += 1
 
 # Display problematic providers
 if problematic_providers_counts:
