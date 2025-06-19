@@ -6,6 +6,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 import matplotlib.pyplot as plt
 import numpy as np
 import re # For parsing Decision Tree rules
+from sklearn.tree import _tree # <<<<<<<<<<<<<<<<<<<< CORRECTION HERE: Import _tree
 
 # --- 1. Sample Data ---
 data = {
@@ -127,7 +128,18 @@ X_dt = df_arm_base.drop(columns=['claim_id', 'IS_OVERPAYMENT'])
 # Add new columns for each 'best combo' identified by ARM
 arm_combo_feature_names = []
 for i, bc in enumerate(best_combos):
-    combo_name = f"ARM_COMBO_{i+1}_{'_'.join(bc['combo'][:3])}" # Generate a descriptive name
+    # Create a cleaner name for the combo feature
+    combo_items_short = [item.replace('DRG_', '').replace('LOS_', '').replace('P_DIAG_', '').replace('C_DIAG_', '').replace('PROC_', '') for item in bc['combo']]
+    combo_name = f"ARM_COMBO_{'_'.join(combo_items_short)}" # Generate a descriptive name
+    
+    # Ensure name is unique if same items appear in different combos
+    # This simple approach prefixes with index if name already exists
+    original_combo_name = combo_name
+    counter = 1
+    while combo_name in X_dt.columns:
+        combo_name = f"{original_combo_name}_{counter}"
+        counter += 1
+        
     X_dt[combo_name] = 0 # Initialize column
     arm_combo_feature_names.append(combo_name)
 
@@ -191,29 +203,30 @@ def parse_dt_rules_to_concepts(tree, feature_names, class_names, target_class_la
             name = feature_name[node]
             threshold = tree_.threshold[node]
             # Left child (True branch)
-            recurse(tree_.children_left[node], path + [(name, '<=', threshold)])
+            recurse(tree_.children_left[node], path + [(name, '<=', threshold)]) # <= threshold means feature value is 0 or less
             # Right child (False branch)
-            recurse(tree_.children_right[node], path + [(name, '>', threshold)])
+            recurse(tree_.children_right[node], path + [(name, '>', threshold)]) # > threshold means feature value is 1 or more
         else: # Leaf node
-            if np.argmax(tree_.value[node]) == class_names.index(int(target_class_label)): # Check if it's the target class
+            # Check if this leaf node represents the target class (overpayment)
+            # tree_.value[node] gives [num_samples_class0, num_samples_class1]
+            if np.argmax(tree_.value[node]) == class_names.index(int(target_class_label)): 
                 
-                # Convert numerical conditions back to original categorical meaning if possible
                 concept_conditions = []
                 for cond_feature, operator, value in path:
-                    # Handle binary features (like DRG_X, LOS_Short, ARM_COMBO_X)
-                    if cond_feature.startswith(('DRG_', 'DISCHARGE_', 'LOS_', 'P_DIAG_', 'C_DIAG_', 'PROC_', 'ARM_COMBO_')):
-                        if operator == '<=' and value == 0.5: # Feature == 0 (False)
-                             concept_conditions.append(f"NOT ({cond_feature.replace('_', ' ').strip()})")
-                        elif operator == '>' and value == 0.5: # Feature == 1 (True)
-                            concept_conditions.append(f"{cond_feature.replace('_', ' ').strip()}")
-                    else: # General numerical comparison (less common if all are binarized/categorized)
+                    # Special handling for binary features (which are the majority after binarization)
+                    # A condition like 'FEATURE <= 0.5' means FEATURE is 0 (False/Absent)
+                    # A condition like 'FEATURE > 0.5' means FEATURE is 1 (True/Present)
+                    if operator == '<=' and value == 0.5:
+                         concept_conditions.append(f"NOT ({cond_feature.replace('_', ' ').strip()})")
+                    elif operator == '>' and value == 0.5:
+                        concept_conditions.append(f"{cond_feature.replace('_', ' ').strip()}")
+                    else: # Fallback for non-binary (though less expected here)
                         concept_conditions.append(f"{cond_feature} {operator} {value:.2f}")
 
                 concept = " AND ".join(concept_conditions)
                 if concept:
                     overpayment_concepts.append(f"CONCEPT: IF ({concept}) THEN (POTENTIAL OVERPAYMENT)")
 
-    from sklearn.tree import _tree
     recurse(0, [])
     
     # Remove duplicates if any (e.g., from multiple paths leading to same leaf)
@@ -225,6 +238,8 @@ for concept in generated_concepts:
     print(concept)
 
 # --- Optional: Visualize the Decision Tree ---
+# This requires graphviz to be installed (pip install graphviz)
+# from sklearn.tree import plot_tree
 # plt.figure(figsize=(30, 15))
 # plot_tree(dt_classifier, feature_names=X_dt.columns, class_names=['Not Overpayment', 'Overpayment'],
 #           filled=True, rounded=True, fontsize=10, proportion=False)
