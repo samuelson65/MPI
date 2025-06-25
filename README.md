@@ -3,42 +3,44 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 # --- 1. Data Setup (Concatenated Diagnosis Codes) ---
-# Replace this with your actual concatenated diagnosis codes
-data_concatenated = {'diag': ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z-K']} # Added 'Z-K' for more missing
+# Replace this with your actual concatenated diagnosis codes DataFrame
+data_concatenated = {'diag': ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z-K']}
 concatenated_df = pd.DataFrame(data_concatenated)
 
 print("Concatenated DataFrame Head:")
 print(concatenated_df.head())
 
-# --- 2. Embeddings Data (from your dictionary) ---
-# This is a dummy example of your embeddings dictionary.
+# --- 2. Embeddings Data (from your dictionary - adjusted for array[[...]] format) ---
+# This is a dummy example of your embeddings dictionary with array[[...]] format.
 # REPLACE THIS WITH YOUR ACTUAL EMBEDDINGS DICTIONARY
 embeddings_dict = {
-    'A': np.random.rand(50), # 50 dimensions for diag code 'A'
-    'B': np.random.rand(50),
-    'C': np.random.rand(50),
-    'D': np.random.rand(50),
-    'E': np.random.rand(50),
-    'F': np.random.rand(50),
-    'G': np.random.rand(50),
-    'H': np.random.rand(50),
-    'I': np.random.rand(50),
-    'X': np.random.rand(50),
-    'Y': np.random.rand(50),
-    # Note: 'Z' and 'K' are in concatenated_df but not in embeddings_dict to demonstrate handling missing.
+    'A': np.array([np.random.rand(50)]), # Now correctly simulates array[[...]]
+    'B': np.array([np.random.rand(50)]),
+    'C': np.array([np.random.rand(50)]),
+    'D': np.array([np.random.rand(50)]),
+    'E': np.array([np.random.rand(50)]),
+    'F': np.array([np.random.rand(50)]),
+    'G': np.array([np.random.rand(50)]),
+    'H': np.array([np.random.rand(50)]),
+    'I': np.array([np.random.rand(50)]),
+    'X': np.array([np.random.rand(50)]),
+    'Y': np.array([np.random.rand(50)]),
+    # 'Z' and 'K' are intentionally missing to test handling of codes not in dictionary
 }
 
 # Convert the embeddings dictionary into a DataFrame
 embeddings_list = []
-for code, dims in embeddings_dict.items():
+for code, dims_array in embeddings_dict.items():
     row_dict = {'diag_code': code}
-    for i, dim_val in enumerate(dims):
+    # Flatten the 2D array to a 1D array before iterating over its dimensions
+    dims_flat = dims_array.flatten()
+    for i, dim_val in enumerate(dims_flat):
         row_dict[f'dim{i+1}'] = dim_val # Assuming dimensions are 1-indexed (dim1 to dim50)
     embeddings_list.append(row_dict)
 
 embeddings_df = pd.DataFrame(embeddings_list)
 
-print("\nEmbeddings DataFrame Head (created from dictionary):")
+print("\nEmbeddings DataFrame Head (created from dictionary with array[[...]] format):")
 print(embeddings_df.head())
 print(f"Shape of Embeddings DataFrame: {embeddings_df.shape}")
 
@@ -143,8 +145,6 @@ else:
     print(f"\nNumber of components to explain at least {target_variance*100}% variance: {num_components_for_target}")
 
     # Save the principal components to a CSV file
-    # This CSV will now include the 'individual_diag' column
     pc_df.to_csv('principal_components_with_diag_codes.csv', index=False)
 
     print("\nPrincipal components calculated and saved to 'principal_components_with_diag_codes.csv'")
-
