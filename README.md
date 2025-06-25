@@ -2,19 +2,23 @@ import pandas as pd
 from sklearn.decomposition import PCA
 import numpy as np
 
-# --- 1. Data Setup (Concatenated Diagnosis Codes) ---
-# Replace this with your actual concatenated diagnosis codes DataFrame
-data_concatenated = {'diag': ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z-K']}
+# --- 1. Data Setup (Concatenated Diagnosis Codes with Claim ID) ---
+# Your input DataFrame structure now includes 'claim_id'
+# REPLACE THIS WITH YOUR ACTUAL INPUT DATAFRAME
+data_concatenated = {
+    'claim_id': [101, 102, 103, 104, 105, 106],
+    'diag':     ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z-K'] # Z and K intentionally missing embeddings
+}
 concatenated_df = pd.DataFrame(data_concatenated)
 
-print("Concatenated DataFrame Head:")
+print("Concatenated DataFrame Head (with Claim ID):")
 print(concatenated_df.head())
 
 # --- 2. Embeddings Data (from your dictionary - adjusted for array[[...]] format) ---
 # This is a dummy example of your embeddings dictionary with array[[...]] format.
 # REPLACE THIS WITH YOUR ACTUAL EMBEDDINGS DICTIONARY
 embeddings_dict = {
-    'A': np.array([np.random.rand(50)]), # Now correctly simulates array[[...]]
+    'A': np.array([np.random.rand(50)]), # 50 dimensions for diag code 'A'
     'B': np.array([np.random.rand(50)]),
     'C': np.array([np.random.rand(50)]),
     'D': np.array([np.random.rand(50)]),
@@ -48,8 +52,8 @@ print(f"Shape of Embeddings DataFrame: {embeddings_df.shape}")
 # --- 3. Match Embeddings to Concatenated Codes ---
 
 # Explode the 'diag' column in concatenated_df to get individual diagnosis codes
-concatenated_df['individual_diag'] = concatenated_df['diag'].apply(lambda x: x.split('-'))
-exploded_df = concatenated_df.explode('individual_diag')
+# We need to keep 'claim_id' linked to each individual diagnosis code
+exploded_df = concatenated_df.assign(individual_diag=concatenated_df['diag'].apply(lambda x: x.split('-'))).explode('individual_diag')
 
 # Merge the exploded_df with the embeddings_df
 # Use 'left' merge to keep all individual diagnosis codes from your concatenated list.
@@ -71,26 +75,26 @@ if len(missing_diag_codes) > 0:
     print(f"These codes were found in your concatenated list but not in your embeddings dictionary:")
     for code in missing_diag_codes:
         print(f"- {code}")
-    print(f"These codes will be excluded from PCA.")
+    print(f"These codes will be excluded from PCA. (and thus not contribute to the claim-level PCA result for affected claims)")
 else:
     print("\nNo missing embeddings found for any diagnosis codes. All codes will be included in PCA.")
 
 # Prepare data for PCA: Select only rows with complete embeddings
-# First, create a temporary DataFrame that includes 'individual_diag'
-# along with the embedding columns, then drop NaNs from this.
-df_for_pca_prep = merged_df[['individual_diag'] + embedding_columns].copy()
-embeddings_for_pca = df_for_pca_prep.dropna(subset=embedding_columns) # Drop rows where embedding dims are NaN
+# We need to retain 'claim_id' and 'individual_diag' to link back later
+df_for_pca_prep = merged_df[['claim_id', 'individual_diag'] + embedding_columns].copy()
+embeddings_with_id_for_pca = df_for_pca_prep.dropna(subset=embedding_columns) # Drop rows where embedding dims are NaN
 
 initial_rows_for_pca = df_for_pca_prep.shape[0]
-rows_after_dropping_nan = embeddings_for_pca.shape[0]
+rows_after_dropping_nan = embeddings_with_id_for_pca.shape[0]
 
 if initial_rows_for_pca > rows_after_dropping_nan:
     print(f"\n{initial_rows_for_pca - rows_after_dropping_nan} out of {initial_rows_for_pca} individual diagnosis codes were dropped due to missing embeddings before PCA.")
 
 
-# Separate the individual_diag codes that will go into PCA, and the embedding values
-individual_diag_for_pca = embeddings_for_pca['individual_diag']
-embedding_values_for_pca = embeddings_for_pca[embedding_columns]
+# Separate the claim_id, individual_diag, and embedding values for PCA
+claim_id_for_pca_mapping = embeddings_with_id_for_pca['claim_id']
+individual_diag_for_pca = embeddings_with_id_for_pca['individual_diag']
+embedding_values_for_pca = embeddings_with_id_for_pca[embedding_columns]
 
 
 # --- 4. Perform PCA ---
@@ -101,15 +105,6 @@ else:
     n_samples, n_features = embedding_values_for_pca.shape
     n_components = min(n_samples, n_features)
 
-    # It's generally good practice to scale data before PCA, especially if dimensions have different scales.
-    # However, embeddings are often already in a normalized space, so scaling might not be strictly necessary
-    # depending on how your embeddings were generated. For robustness, you might consider StandardScaler.
-    # from sklearn.preprocessing import StandardScaler
-    # scaler = StandardScaler()
-    # scaled_embeddings = scaler.fit_transform(embedding_values_for_pca)
-    # pca = PCA(n_components=n_components)
-    # principal_components = pca.fit_transform(scaled_embeddings)
-
     pca = PCA(n_components=n_components)
     principal_components = pca.fit_transform(embedding_values_for_pca)
 
@@ -117,24 +112,23 @@ else:
     pc_column_names = [f'PC{i}' for i in range(1, n_components + 1)]
     pc_df = pd.DataFrame(data=principal_components, columns=pc_column_names)
 
-    # Add the individual_diag codes back to the PCA results DataFrame
+    # Add the claim_id and individual_diag codes back to the PCA results DataFrame
     pc_df.insert(0, 'individual_diag', individual_diag_for_pca.reset_index(drop=True))
+    pc_df.insert(0, 'claim_id', claim_id_for_pca_mapping.reset_index(drop=True))
+
 
     # --- 5. Identify the Best Principal Components ---
-
-    # Explained variance ratio for each component
+    # This step is still performed on individual diagnosis codes to understand variance contribution
     explained_variance_ratio = pca.explained_variance_ratio_
-    print("\nExplained variance ratio for each principal component:")
+    print("\nExplained variance ratio for each principal component (based on individual diag codes):")
     for i, ratio in enumerate(explained_variance_ratio):
         print(f"PC{i+1}: {ratio:.4f}")
 
-    # Cumulative explained variance
     cumulative_explained_variance = np.cumsum(explained_variance_ratio)
-    print("\nCumulative explained variance:")
+    print("\nCumulative explained variance (based on individual diag codes):")
     for i, cum_ratio in enumerate(cumulative_explained_variance):
         print(f"PC{i+1}: {cum_ratio:.4f}")
 
-    # Determine the number of components to explain a certain percentage of variance (e.g., 95%)
     target_variance = 0.95
     if cumulative_explained_variance[-1] < target_variance:
         print(f"\nWarning: Even with all components, only {cumulative_explained_variance[-1]*100:.2f}% of variance is explained. Target of {target_variance*100}% not reached.")
@@ -144,7 +138,17 @@ else:
 
     print(f"\nNumber of components to explain at least {target_variance*100}% variance: {num_components_for_target}")
 
-    # Save the principal components to a CSV file
-    pc_df.to_csv('principal_components_with_diag_codes.csv', index=False)
+    # --- 6. Aggregate PCA Results to Claim ID Level ---
+    # Group by 'claim_id' and take the mean of the principal components
+    # This will give you one row per claim_id, representing the average embedding in the PCA space
+    claim_level_pca_df = pc_df.groupby('claim_id')[pc_column_names].mean().reset_index()
 
-    print("\nPrincipal components calculated and saved to 'principal_components_with_diag_codes.csv'")
+    print("\nClaim-level PCA Results Head:")
+    print(claim_level_pca_df.head())
+    print(f"Shape of Claim-level PCA Results: {claim_level_pca_df.shape}")
+
+    # Save the aggregated principal components to a CSV file
+    claim_level_pca_df.to_csv('claim_level_principal_components.csv', index=False)
+
+    print("\nClaim-level principal components calculated and saved to 'claim_level_principal_components.csv'")
+
