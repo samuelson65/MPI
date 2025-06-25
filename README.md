@@ -3,8 +3,8 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 # --- 1. Data Setup (Concatenated Diagnosis Codes) ---
-# Assuming you have your concatenated diagnosis codes in a DataFrame like this:
-data_concatenated = {'diag': ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z']}
+# Replace this with your actual concatenated diagnosis codes
+data_concatenated = {'diag': ['A-B-C', 'D-E-F', 'A-D', 'G-H-I', 'X-Y', 'Z-K']} # Added 'Z-K' for more missing
 concatenated_df = pd.DataFrame(data_concatenated)
 
 print("Concatenated DataFrame Head:")
@@ -12,7 +12,7 @@ print(concatenated_df.head())
 
 # --- 2. Embeddings Data (from your dictionary) ---
 # This is a dummy example of your embeddings dictionary.
-# Replace this with your actual dictionary:
+# REPLACE THIS WITH YOUR ACTUAL EMBEDDINGS DICTIONARY
 embeddings_dict = {
     'A': np.random.rand(50), # 50 dimensions for diag code 'A'
     'B': np.random.rand(50),
@@ -23,13 +23,12 @@ embeddings_dict = {
     'G': np.random.rand(50),
     'H': np.random.rand(50),
     'I': np.random.rand(50),
-    'X': np.random.rand(50), # New codes from X-Y example
+    'X': np.random.rand(50),
     'Y': np.random.rand(50),
-    # Note: 'Z' is in concatenated_df but not in embeddings_dict to demonstrate handling missing.
+    # Note: 'Z' and 'K' are in concatenated_df but not in embeddings_dict to demonstrate handling missing.
 }
 
 # Convert the embeddings dictionary into a DataFrame
-# First, prepare a list of dictionaries, one for each diag_code
 embeddings_list = []
 for code, dims in embeddings_dict.items():
     row_dict = {'diag_code': code}
@@ -51,52 +50,73 @@ concatenated_df['individual_diag'] = concatenated_df['diag'].apply(lambda x: x.s
 exploded_df = concatenated_df.explode('individual_diag')
 
 # Merge the exploded_df with the embeddings_df
-# Use 'left' merge to keep all individual diagnosis codes from your concatenated list,
-# even if they don't have a matching embedding (will result in NaNs for embedding dimensions).
+# Use 'left' merge to keep all individual diagnosis codes from your concatenated list.
+# Codes without a match in embeddings_df will have NaN for their embedding dimensions.
 merged_df = pd.merge(exploded_df, embeddings_df, left_on='individual_diag', right_on='diag_code', how='left')
 
 # Drop the original 'diag' and 'diag_code' columns as they are no longer needed
 merged_df = merged_df.drop(columns=['diag', 'diag_code'])
 
-# Handle potential missing embeddings (e.g., if a diagnosis code in concatenated_df has no embedding)
-# If a diagnosis code was in 'concatenated_df' but not in 'embeddings_dict', its embedding dimensions will be NaN.
-# PCA cannot handle NaNs, so we need to decide how to handle them.
-# Common approaches:
-# 1. Drop rows with any missing embeddings (simple, but loses data)
-# 2. Impute missing values (e.g., with mean, median, or a specific value)
-# For this script, we'll drop them for simplicity, but consider imputation for larger datasets.
-initial_rows = merged_df.shape[0]
+# Identify and report diagnosis codes that don't have embeddings
 embedding_columns = [f'dim{i}' for i in range(1, 51)] # Assuming 50 dimensions
-embeddings_for_pca = merged_df[embedding_columns].copy() # Create a copy to avoid SettingWithCopyWarning
-embeddings_for_pca.dropna(inplace=True) # Drop rows where any embedding dimension is NaN
 
+# Find rows where any embedding dimension is NaN
+missing_embedding_rows = merged_df[merged_df[embedding_columns].isnull().any(axis=1)]
+missing_diag_codes = missing_embedding_rows['individual_diag'].unique()
+
+if len(missing_diag_codes) > 0:
+    print(f"\n--- Warning: Missing Embeddings for the following diagnosis codes ---")
+    print(f"These codes were found in your concatenated list but not in your embeddings dictionary:")
+    for code in missing_diag_codes:
+        print(f"- {code}")
+    print(f"These codes will be excluded from PCA.")
+else:
+    print("\nNo missing embeddings found for any diagnosis codes. All codes will be included in PCA.")
+
+# Prepare data for PCA: Select only rows with complete embeddings
+# First, create a temporary DataFrame that includes 'individual_diag'
+# along with the embedding columns, then drop NaNs from this.
+df_for_pca_prep = merged_df[['individual_diag'] + embedding_columns].copy()
+embeddings_for_pca = df_for_pca_prep.dropna(subset=embedding_columns) # Drop rows where embedding dims are NaN
+
+initial_rows_for_pca = df_for_pca_prep.shape[0]
 rows_after_dropping_nan = embeddings_for_pca.shape[0]
-print(f"\nTotal individual diagnosis codes before dropping NaNs: {initial_rows}")
-print(f"Total individual diagnosis codes after dropping NaNs: {rows_after_dropping_nan}")
-if initial_rows > rows_after_dropping_nan:
-    print(f"Warning: {initial_rows - rows_after_dropping_nan} rows were dropped due to missing embeddings.")
-    print("Consider imputing missing values if data loss is a concern.")
+
+if initial_rows_for_pca > rows_after_dropping_nan:
+    print(f"\n{initial_rows_for_pca - rows_after_dropping_nan} out of {initial_rows_for_pca} individual diagnosis codes were dropped due to missing embeddings before PCA.")
+
+
+# Separate the individual_diag codes that will go into PCA, and the embedding values
+individual_diag_for_pca = embeddings_for_pca['individual_diag']
+embedding_values_for_pca = embeddings_for_pca[embedding_columns]
 
 
 # --- 4. Perform PCA ---
-if embeddings_for_pca.empty:
+if embedding_values_for_pca.empty:
     print("\nError: No complete embeddings found for PCA after dropping missing values. Cannot perform PCA.")
 else:
     # Ensure n_components is not greater than the number of samples or features
-    n_samples, n_features = embeddings_for_pca.shape
+    n_samples, n_features = embedding_values_for_pca.shape
     n_components = min(n_samples, n_features)
 
-    # If all values are identical for a dimension, variance will be 0, which can cause issues.
-    # It's good practice to scale data before PCA, especially if dimensions have different scales or ranges,
-    # though with embeddings, they are often already in a normalized space.
-    # For simplicity, we're skipping explicit scaling here, assuming embeddings are pre-scaled.
+    # It's generally good practice to scale data before PCA, especially if dimensions have different scales.
+    # However, embeddings are often already in a normalized space, so scaling might not be strictly necessary
+    # depending on how your embeddings were generated. For robustness, you might consider StandardScaler.
+    # from sklearn.preprocessing import StandardScaler
+    # scaler = StandardScaler()
+    # scaled_embeddings = scaler.fit_transform(embedding_values_for_pca)
+    # pca = PCA(n_components=n_components)
+    # principal_components = pca.fit_transform(scaled_embeddings)
 
     pca = PCA(n_components=n_components)
-    principal_components = pca.fit_transform(embeddings_for_pca)
+    principal_components = pca.fit_transform(embedding_values_for_pca)
 
     # Create a DataFrame for principal components
     pc_column_names = [f'PC{i}' for i in range(1, n_components + 1)]
     pc_df = pd.DataFrame(data=principal_components, columns=pc_column_names)
+
+    # Add the individual_diag codes back to the PCA results DataFrame
+    pc_df.insert(0, 'individual_diag', individual_diag_for_pca.reset_index(drop=True))
 
     # --- 5. Identify the Best Principal Components ---
 
@@ -123,9 +143,8 @@ else:
     print(f"\nNumber of components to explain at least {target_variance*100}% variance: {num_components_for_target}")
 
     # Save the principal components to a CSV file
-    # Note: The principal_components.csv will contain a row for each diagnosis code
-    # that had a complete embedding, not necessarily original 'diag' row.
-    pc_df.to_csv('principal_components.csv', index=False)
+    # This CSV will now include the 'individual_diag' column
+    pc_df.to_csv('principal_components_with_diag_codes.csv', index=False)
 
-    print("\nPrincipal components calculated and saved to 'principal_components.csv'")
+    print("\nPrincipal components calculated and saved to 'principal_components_with_diag_codes.csv'")
 
