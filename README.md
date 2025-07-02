@@ -1,61 +1,71 @@
 import pandas as pd
 
-# --- Assume you have your DataFrame and DRG calculation function ---
-
-# Example DataFrame (replace with your actual data)
-data = {'diag_codes': [['D1', 'D2', 'D3']],
-        'proc_codes': [['A', 'B', 'C']]}
-df = pd.DataFrame(data)
-
-# Placeholder for your actual DRG calculation function
-# In reality, this would be a complex function based on DRG grouping logic
+# Assume you have your DRG calculation function
+# REPLACE THIS WITH YOUR ACTUAL DRG LOGIC
 def calculate_drg(diag_list, proc_list):
     """
     Simulates a DRG calculation function.
-    Replace this with your actual DRG logic.
+    In a real scenario, this would be your complex DRG grouping logic.
     """
-    if not proc_list: # If no proc codes, just a basic DRG based on diag
-        return f"DRG_Base_{'_'.join(diag_list)}"
+    if not proc_list and not diag_list:
+        return "DRG_NoCodes"
+    elif not proc_list:
+        return f"DRG_DiagOnly_{'_'.join(sorted(diag_list))}"
+    elif not diag_list:
+        return f"DRG_ProcOnly_{'_'.join(sorted(proc_list))}"
     else:
-        return f"DRG_{'_'.join(diag_list)}_Proc_{'_'.join(proc_list)}"
+        return f"DRG_Combined_{'_'.join(sorted(diag_list))}_P{'_'.join(sorted(proc_list))}"
 
-# --- Main Logic ---
+def generate_drg_on_proc_removal(row):
+    """
+    Generates a dictionary of DRGs after removing each procedure code.
+    Assumes 'diag_codes' and 'proc_codes' columns exist in the row.
+    """
+    original_diag_codes = row['diag_codes']
+    original_proc_codes = row['proc_codes']
 
-# Let's consider the first row of your DataFrame for this example
-# You might iterate through rows if you want to do this for multiple cases
-row_index = 0
-original_diag_codes = df.loc[row_index, 'diag_codes']
-original_proc_codes = df.loc[row_index, 'proc_codes']
+    # Initialize the dictionary to store results
+    drg_results = {}
 
-print(f"Original Diagnosis Codes: {original_diag_codes}")
-print(f"Original Procedure Codes: {original_proc_codes}\n")
+    # Handle the case where there are no procedure codes to remove
+    if not original_proc_codes:
+        # You might want to define a specific DRG for this scenario,
+        # or simply return an empty dict, or the DRG with no proc codes.
+        drg_results['No_Proc_Codes_Originally'] = calculate_drg(original_diag_codes, [])
+        return drg_results
 
-# Calculate the DRG with all original codes
-original_drg = calculate_drg(original_diag_codes, original_proc_codes)
-print(f"DRG with all original codes: {original_drg}\n")
+    # Iterate through each proc code to see the effect of its removal
+    for i, proc_code_to_remove in enumerate(original_proc_codes):
+        # Create a new list of proc codes, excluding the current one
+        modified_proc_codes = original_proc_codes[:i] + original_proc_codes[i+1:]
 
-print("Possible DRGs after removing one procedure code:")
-possible_drgs_after_removal = []
+        # Calculate the DRG with the modified proc codes
+        new_drg = calculate_drg(original_diag_codes, modified_proc_codes)
 
-# Iterate through each proc code to see the effect of its removal
-for i, proc_code_to_remove in enumerate(original_proc_codes):
-    # Create a new list of proc codes, excluding the current one
-    modified_proc_codes = original_proc_codes[:i] + original_proc_codes[i+1:]
+        # Add to the dictionary: key = removed proc code, value = new DRG
+        drg_results[proc_code_to_remove] = new_drg
 
-    # Calculate the DRG with the modified proc codes
-    new_drg = calculate_drg(original_diag_codes, modified_proc_codes)
+    return drg_results
 
-    possible_drgs_after_removal.append({
-        'removed_proc_code': proc_code_to_remove,
-        'remaining_proc_codes': modified_proc_codes,
-        'new_drg': new_drg
-    })
-    print(f"  - Removed '{proc_code_to_remove}': Remaining Procs: {modified_proc_codes}, New DRG: {new_drg}")
+# --- Example Usage ---
 
-print("\nSummary of possible DRGs after removal:")
-for result in possible_drgs_after_removal:
-    print(f"  Removed: {result['removed_proc_code']}, New DRG: {result['new_drg']}")
+# Create a sample DataFrame
+data = {
+    'patient_id': [1, 2, 3],
+    'diag_codes': [['D1', 'D2'], ['D3'], ['D4', 'D5', 'D6']],
+    'proc_codes': [['A', 'B', 'C'], ['X', 'Y'], []] # Example with empty proc list
+}
+df = pd.DataFrame(data)
 
-# If you want to store these results back into the DataFrame, you could do so
-# For example, add a new column with a list of these possibilities
-# df.loc[row_index, 'drg_possibilities_on_proc_removal'] = possible_drgs_after_removal
+print("Original DataFrame:")
+print(df)
+print("\n" + "="*50 + "\n")
+
+# Apply the function to create the new column
+df['drg_on_proc_removal'] = df.apply(generate_drg_on_proc_removal, axis=1)
+
+print("DataFrame with new 'drg_on_proc_removal' column:")
+print(df)
+
+# To inspect the content of the new column for a specific row:
+# print(f"\nDRG possibilities for patient 1:\n{df.loc[0, 'drg_on_proc_removal']}")
