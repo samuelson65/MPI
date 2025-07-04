@@ -1,139 +1,159 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime # To include current date/time for reporting
+from sklearn.preprocessing import MultiLabelBinarizer
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.optimizers import Adam
 
-# Assume drg_df_weights and drg_weight_map are available globally or passed
-# For demonstration, let's define them again here:
-drg_data = {
-    'DRG_Code': ["DRG_481", "DRG_482", "DRG_291", "DRG_101", "DRG_999", "DRG_500", "DRG_600",
-                 "DRG_NoCodes", "DRG_DiagOnly_D4_D5_D6", "DRG_Other_2_AB", "DRG_Other_1_A",
-                 "DRG_Other_1_C", "DRG_Other_0_NoP", "DRG_700"],
-    'Weight': [2.4819, 1.8000, 1.5000, 0.8000, 0.5000, 3.5000, 1.2000, 0.1000, 0.7000, 2.0000, 1.0000, 0.9000, 0.3000, 1.3000]
-}
-drg_df_weights = pd.DataFrame(drg_data)
-drg_weight_map = drg_df_weights.set_index('DRG_Code')['Weight'].to_dict()
-
-def get_drg_weight(drg_code, weight_map):
-    """Safely gets the weight for a DRG code from the map. Returns inf if not found."""
-    return weight_map.get(str(drg_code), float('inf'))
-
-def generate_nlg_summary_from_lower_weight_df(df, drg_weight_map):
+def generate_ae_features(df_claims, proc_col='proc_concat', ae_bottleneck_dim=64):
     """
-    Generates a crisp and effective natural language summary of DRG shift opportunities.
+    Generates autoencoder components (features) from a DataFrame
+    containing claim IDs and concatenated procedure codes.
 
     Args:
-        df (pd.DataFrame): The DataFrame with 'lower_weight_drgs_after_removal'
-                           and 'billed_drg' columns.
-        drg_weight_map (dict): A dictionary mapping DRG codes to their weights.
+        df_claims (pd.DataFrame): Input DataFrame with 'claim_id' and 'proc_concat' columns.
+                                  'proc_concat' should contain a string of comma-separated
+                                  procedure codes (e.g., "0JB,0HZ").
+        proc_col (str): The name of the column containing concatenated procedure codes.
+        ae_bottleneck_dim (int): The desired dimensionality of the autoencoder's
+                                 bottleneck layer (number of AE components).
 
     Returns:
-        str: A concise natural language summary.
+        pd.DataFrame: A DataFrame with 'claim_id' and the generated AE components.
+                      Returns None if no unique codes are found or AE training fails.
     """
-    report_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    summary_parts = [
-        f"--- DRG Optimization Opportunities Analysis | Report Date: {report_date} ---",
-        "\nThis report identifies potential DRG shifts resulting from the removal of specific procedure codes, highlighting opportunities for coding review and resource optimization."
-    ]
 
-    total_encounters = len(df)
-    opportunities_count = df['lower_weight_drgs_after_removal'].notna().sum()
-
-    if opportunities_count == 0:
-        summary_parts.append(
-            f"\nNo immediate DRG optimization opportunities were identified across {total_encounters} patient encounters based on single procedure removal. Current coding appears optimized, or further multi-procedure analysis may be beneficial."
-        )
-        return "\n".join(summary_parts)
-
-    summary_parts.append(
-        f"\n**Summary of Findings:**\n"
-        f"Out of {total_encounters} patient encounters analyzed, **{opportunities_count} cases** ({opportunities_count/total_encounters:.1%}) present opportunities where removing a single procedure could lead to a lower-weighted DRG. This suggests areas for focused review to ensure optimal DRG assignment."
+    print("Step 1: Parse and Collect Unique Codes")
+    # Split the concatenated string into lists of codes
+    # Handle potential NaNs or empty strings in proc_concat
+    df_claims['parsed_codes'] = df_claims[proc_col].apply(
+        lambda x: [code.strip() for code in str(x).split(',') if code.strip()] if pd.notna(x) and x.strip() else []
     )
 
-    # Prepare data for frequency analysis
-    shift_analysis = []
-    for _, row in df.iterrows():
-        potential_shifts = row['lower_weight_drgs_after_removal']
-        original_billed_drg = row['billed_drg']
+    # Get all unique codes to build the vocabulary
+    all_codes = set()
+    for codes_list in df_claims['parsed_codes']:
+        all_codes.update(codes_list)
 
-        if pd.notna(potential_shifts) and isinstance(potential_shifts, dict):
-            for removed_proc, new_drg in potential_shifts.items():
-                shift_analysis.append({
-                    'original_drg': original_billed_drg,
-                    'removed_proc': removed_proc,
-                    'new_drg': new_drg,
-                    'original_weight': get_drg_weight(original_billed_drg, drg_weight_map),
-                    'new_weight': get_drg_weight(new_drg, drg_weight_map)
-                })
+    if not all_codes:
+        print("Error: No unique procedure codes found in the 'proc_concat' column.")
+        return None
 
-    shift_df = pd.DataFrame(shift_analysis)
-    shift_df['weight_difference'] = shift_df['original_weight'] - shift_df['new_weight']
+    # Sort codes for consistent indexing
+    vocabulary = sorted(list(all_codes))
+    vocab_size = len(vocabulary)
+    print(f"Total unique codes (vocabulary size): {vocab_size}")
 
-    # Group by the proposed shift combination
-    grouped_shifts = shift_df.groupby(['original_drg', 'removed_proc', 'new_drg']).agg(
-        frequency=('original_drg', 'size'),
-        avg_weight_reduction=('weight_difference', 'mean') # Use mean for average impact
-    ).reset_index()
+    print("Step 2: Create Multi-Hot Encoded Input")
+    # MultiLabelBinarizer is perfect for converting lists of labels into multi-hot arrays
+    mlb = MultiLabelBinarizer(classes=vocabulary) # Ensure consistent column order
 
-    grouped_shifts = grouped_shifts.sort_values(
-        by=['frequency', 'avg_weight_reduction'],
-        ascending=[False, False]
+    # Transform the parsed codes into multi-hot encoded format
+    X_multi_hot = mlb.fit_transform(df_claims['parsed_codes'])
+    print(f"Shape of multi-hot encoded data: {X_multi_hot.shape}")
+
+    print("Step 3: Design and Train the Autoencoder")
+    # Define the Autoencoder architecture
+    input_dim = vocab_size
+    encoding_dim = ae_bottleneck_dim # The size of our AE components
+
+    # Encoder
+    input_layer = Input(shape=(input_dim,))
+    encoder = Dense(encoding_dim * 2, activation='relu')(input_layer) # Example hidden layer
+    encoder_output = Dense(encoding_dim, activation='relu', name='bottleneck_layer')(encoder)
+
+    # Decoder
+    decoder = Dense(encoding_dim * 2, activation='relu')(encoder_output) # Example hidden layer
+    decoder_output = Dense(input_dim, activation='sigmoid')(decoder) # Sigmoid for binary output
+
+    # Full autoencoder model
+    autoencoder = Model(inputs=input_layer, outputs=decoder_output)
+    autoencoder.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy')
+
+    print("Training autoencoder...")
+    history = autoencoder.fit(
+        X_multi_hot, X_multi_hot,
+        epochs=50,          # Adjust based on data size and convergence
+        batch_size=256,     # Adjust based on memory and data size
+        shuffle=True,
+        verbose=0           # Set to 1 or 2 for training progress
     )
+    print("Autoencoder training complete.")
+    # print(f"Final Autoencoder Reconstruction Loss: {history.history['loss'][-1]:.4f}")
 
-    summary_parts.append("\n**Key Shift Patterns:**")
-    top_shifts_to_display = min(5, len(grouped_shifts)) # Display up to 5, or fewer if less exist
 
-    for idx, row in grouped_shifts.head(top_shifts_to_display).iterrows():
-        original_drg = row['original_drg']
-        removed_proc = row['removed_proc']
-        new_drg = row['new_drg']
-        frequency = row['frequency']
-        avg_weight_diff = row['avg_weight_reduction']
+    print("Step 4: Extract the AE Components (Encoder Output)")
+    # Create a separate model for the encoder part
+    encoder_model = Model(inputs=input_layer, outputs=encoder_output)
 
-        summary_parts.append(
-            f"- **DRG `{original_drg}` → `{new_drg}`** (by removing `{removed_proc}`): Observed in **{frequency} cases** with an average weight reduction of **{avg_weight_diff:.3f}**."
-        )
+    # Get the AE components for each claim
+    ae_components = encoder_model.predict(X_multi_hot)
+    print(f"Shape of extracted AE components: {ae_components.shape}")
 
-    # 3. Streamlined Recommendations
-    summary_parts.append("\n**Recommendations:**")
-    summary_parts.append(
-        "1. **Prioritize Review:** Focus on cases matching the 'Key Shift Patterns' for clinical and coding review."
-    )
-    summary_parts.append(
-        "2. **Enhance Documentation:** Ensure clear and comprehensive documentation supports all billed procedures and their necessity."
-    )
-    summary_parts.append(
-        "3. **Refine Coding Practices:** Educate coders on the DRG impact of specific procedures and best practices for accurate assignment."
-    )
-    summary_parts.append(
-        "4. **Outcome Focus:** Aim for the most accurate DRG, reflecting true patient severity and resource use, rather than solely focusing on reimbursement."
-    )
+    print("Step 5: Prepare Output DataFrame")
+    # Create column names for the AE components
+    ae_column_names = [f'ae_comp_{i+1}' for i in range(ae_bottleneck_dim)]
 
-    return "\n".join(summary_parts)
+    # Create the output DataFrame
+    df_ae_features = pd.DataFrame(ae_components, columns=ae_column_names)
+    df_ae_features['claim_id'] = df_claims['claim_id'].reset_index(drop=True) # Ensure claim_id matches rows
 
-# --- Example Usage (Continued from previous steps) ---
+    # Reorder columns to have claim_id first
+    df_ae_features = df_ae_features[['claim_id'] + ae_column_names]
 
-# This simulates the DataFrame you would pass to the function
-example_df = pd.DataFrame({
-    'patient_id': [101, 102, 103, 104, 105, 106, 107],
-    'billed_drg': ['DRG_481', 'DRG_481', 'DRG_500', 'DRG_600', 'DRG_481', 'DRG_291', 'DRG_700'],
-    'lower_weight_drgs_after_removal': [
-        {'B': 'DRG_482', 'C': 'DRG_101'},
-        {'B': 'DRG_482'},
-        np.nan,
-        {'Z': 'DRG_101'},
-        {'B': 'DRG_482', 'C': 'DRG_101'},
-        np.nan,
-        {'P': 'DRG_999'}
-    ]
-})
+    print("AE feature generation complete.")
+    return df_ae_features
 
-print("Input DataFrame for Summary Generation:")
-print(example_df)
-print("\n" + "="*50 + "\n")
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Sample Data
+    data = {
+        'claim_id': [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010],
+        'proc_concat': [
+            "0JB,0HZ",
+            "0JB,0HT,09X",
+            "09X,0HX",
+            "0JZ,0JV",
+            "0JB,0JZ",
+            "0HX,0HT",
+            "0JB",
+            "09X,0JV",
+            "0HZ,0HT,0JB",
+            "0HX,0JZ,09X"
+        ]
+    }
+    df_sample_claims = pd.DataFrame(data)
 
-# Generate the summary report string
-summary_report_content = generate_nlg_summary_from_lower_weight_df(example_df, drg_weight_map)
-print(summary_report_content)
+    # Generate AE features with a bottleneck of 16 dimensions
+    ae_features_df = generate_ae_features(df_sample_claims, ae_bottleneck_dim=16)
 
-# Optional: Write to file
-# with open("DRG_Optimization_Summary_Report_Crisp.txt", "w") as f: f.write(summary_report_content)
+    if ae_features_df is not None:
+        print("\nResulting AE Features DataFrame (first 5 rows):")
+        print(ae_features_df.head())
+        print(f"\nShape of the resulting DataFrame: {ae_features_df.shape}")
+
+    # Example with a claim having no codes (empty string or NaN)
+    data_with_empty = {
+        'claim_id': [2001, 2002, 2003],
+        'proc_concat': [
+            "0JB,0HZ",
+            "", # Empty string
+            np.nan # NaN
+        ]
+    }
+    df_empty_claims = pd.DataFrame(data_with_empty)
+    print("\n--- Testing with empty/NaN proc_concat ---")
+    ae_features_empty_df = generate_ae_features(df_empty_claims, ae_bottleneck_dim=8)
+    if ae_features_empty_df is not None:
+        print("\nResulting AE Features DataFrame (with empty/NaN):")
+        print(ae_features_empty_df)
+
+    # Example with no unique codes overall
+    data_no_codes = {
+        'claim_id': [3001, 3002],
+        'proc_concat': ["", np.nan]
+    }
+    df_no_codes = pd.DataFrame(data_no_codes)
+    print("\n--- Testing with no unique codes overall ---")
+    ae_features_no_codes_df = generate_ae_features(df_no_codes, ae_bottleneck_dim=4)
+
