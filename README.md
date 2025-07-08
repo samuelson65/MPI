@@ -1,219 +1,161 @@
 import pandas as pd
-import numpy as np # For np.nan for nulls
+import numpy as np
+from sklearn.preprocessing import MultiLabelBinarizer
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.optimizers import Adam
 
-# Assume you have your DRG calculation function
-# IMPORTANT: REPLACE THIS WITH YOUR ACTUAL, ORDER-SENSITIVE DRG GROUPING LOGIC
-# For demonstration, this version is made sensitive to the primary diagnosis (diag_list[0])
-def calculate_drg(diag_list, proc_list):
+def generate_ae_features_from_diag(df_claims, diag_col='diag_concat', ae_bottleneck_dim=64):
     """
-    Simulates a DRG calculation function.
-    In a real scenario, this would be your complex DRG grouping logic.
-    This demo version is sensitive to the primary diagnosis (diag_list[0]).
+    Generates autoencoder components (features) from a DataFrame
+    containing claim IDs and concatenated diagnosis codes.
+
+    Args:
+        df_claims (pd.DataFrame): Input DataFrame with 'claim_id' and a column
+                                  specified by `diag_col`. This column should contain
+                                  a string of comma-separated diagnosis codes (e.g., "I10.9,E11.9").
+        diag_col (str): The name of the column containing concatenated diagnosis codes.
+                        This column is expected to contain the *final* set of diagnosis codes
+                        for each claim, representing the outcome after any 'switching' or 'removal'
+                        processes in the medical record.
+        ae_bottleneck_dim (int): The desired dimensionality of the autoencoder's
+                                 bottleneck layer (number of AE components).
+
+    Returns:
+        pd.DataFrame: A DataFrame with 'claim_id' and the generated AE components.
+                      Returns None if no unique codes are found or AE training fails.
     """
-    diag_list = diag_list if diag_list is not None else []
-    proc_list = proc_list if proc_list is not None else []
 
-    pdx = diag_list[0] if diag_list else None # Primary diagnosis
+    print(f"Step 1: Parse and Collect Unique Diagnosis Codes from '{diag_col}'")
+    # Split the concatenated string into lists of codes
+    # Handle potential NaNs or empty strings in diag_col
+    df_claims['parsed_codes'] = df_claims[diag_col].apply(
+        lambda x: [code.strip() for code in str(x).split(',') if code.strip()] if pd.notna(x) and x.strip() else []
+    )
 
-    # Handle empty lists gracefully
-    if not diag_list and not proc_list:
-        return "DRG_NoCodes"
-    if not diag_list:
-        return f"DRG_ProcOnly_{'_'.join(sorted(proc_list))}"
-    if not proc_list:
-        if pdx == 'D1': return "DRG_DIAG_D1_NoProc"
-        if pdx == 'D2': return "DRG_DIAG_D2_NoProc"
-        if pdx == 'D3': return "DRG_DIAG_D3_NoProc"
-        return f"DRG_DiagOnly_{pdx}"
+    # Get all unique codes to build the vocabulary
+    all_codes = set()
+    for codes_list in df_claims['parsed_codes']:
+        all_codes.update(codes_list)
 
-    # Rules sensitive to PDX and procedures
-    if pdx == 'D1' and 'A' in proc_list and 'B' in proc_list:
-        return "DRG_MAJOR_HEART_SURG" # High weight, PDX D1, Procs A & B
-    if pdx == 'D2' and 'A' in proc_list and 'B' in proc_list:
-        return "DRG_MINOR_HEART_SURG" # Lower weight if D2 is PDX
-    if pdx == 'D1' and 'C' in proc_list:
-        return "DRG_GASTRO_PROC"
-    if pdx == 'D3' and 'X' in proc_list and 'Y' in proc_list:
-        return "DRG_NEURO_COMPLEX"
-    if pdx == 'D4' and 'Z' in proc_list:
-        return "DRG_RESP_LITE"
-    if pdx == 'D5' and 'A' in proc_list: # Specific case for D5 PDX
-        return "DRG_RENAL_ISSUE"
+    if not all_codes:
+        print(f"Error: No unique diagnosis codes found in the '{diag_col}' column.")
+        return None
 
-    # Fallback for other combinations
-    # Using sorted list for robustness in fallback DRG names
-    return f"DRG_OTHER_PDX_{pdx or 'NoPDX'}_PROCS_{'_'.join(sorted(proc_list))}"
+    # Sort codes for consistent indexing
+    vocabulary = sorted(list(all_codes))
+    vocab_size = len(vocabulary)
+    print(f"Total unique diagnosis codes (vocabulary size): {vocab_size}")
 
+    print("Step 2: Create Multi-Hot Encoded Input for Diagnosis Codes")
+    # MultiLabelBinarizer is perfect for converting lists of labels into multi-hot arrays
+    mlb = MultiLabelBinarizer(classes=vocabulary) # Ensure consistent column order
 
-def generate_drg_on_diag_modifications(row):
-    """
-    Generates a dictionary of DRGs after applying various diagnosis code modifications:
-    1. Removal of each single diagnosis code.
-    2. Switching the primary diagnosis (PDX) with another diagnosis in the list.
-    Assumes 'diag_codes' and 'proc_codes' columns exist in the row.
-    """
-    original_diag_codes = row['diag_codes'] if isinstance(row['diag_codes'], list) else []
-    original_proc_codes = row['proc_codes'] if isinstance(row['proc_codes'], list) else []
+    # Transform the parsed codes into multi-hot encoded format
+    X_multi_hot = mlb.fit_transform(df_claims['parsed_codes'])
+    print(f"Shape of multi-hot encoded diagnosis data: {X_multi_hot.shape}")
 
-    drg_results = {}
+    print("Step 3: Design and Train the Autoencoder for Diagnosis Codes")
+    # Define the Autoencoder architecture
+    input_dim = vocab_size
+    encoding_dim = ae_bottleneck_dim # The size of our AE components
 
-    # --- Scenario 1: Removal of a single diagnosis code ---
-    if original_diag_codes:
-        for i, diag_code_to_remove in enumerate(original_diag_codes):
-            modified_diag_codes_for_removal = original_diag_codes[:i] + original_diag_codes[i+1:]
-            
-            # Ensure the remaining list isn't empty for calculate_drg, pass empty list if so
-            new_drg = calculate_drg(modified_diag_codes_for_removal, original_proc_codes)
-            drg_results[f"removed_diag_{diag_code_to_remove}"] = new_drg
+    # Encoder
+    input_layer = Input(shape=(input_dim,))
+    encoder = Dense(encoding_dim * 2, activation='relu')(input_layer) # Example hidden layer
+    encoder_output = Dense(encoding_dim, activation='relu', name='bottleneck_layer')(encoder)
 
-    # --- Scenario 2: Switching Primary Diagnosis (PDX) ---
-    # This applies if there's more than one diagnosis to consider for PDX
-    if len(original_diag_codes) > 1:
-        current_pdx = original_diag_codes[0]
-        
-        for diag_code_candidate_pdx in original_diag_codes:
-            if diag_code_candidate_pdx != current_pdx:
-                # Create a new list where candidate is first, others follow
-                # This ensures the new PDX is at index 0, and others retain relative order
-                modified_diag_codes_for_pdx = [diag_code_candidate_pdx] + \
-                                             [d for d in original_diag_codes if d != diag_code_candidate_pdx]
-                
-                new_drg = calculate_drg(modified_diag_codes_for_pdx, original_proc_codes)
-                drg_results[f"pdx_switched_to_{diag_code_candidate_pdx}"] = new_drg
-    
-    return drg_results if drg_results else np.nan # Return np.nan if no modifications could be applied or no results
+    # Decoder
+    decoder = Dense(encoding_dim * 2, activation='relu')(encoder_output) # Example hidden layer
+    decoder_output = Dense(input_dim, activation='sigmoid')(decoder) # Sigmoid for binary output
+
+    # Full autoencoder model
+    autoencoder = Model(inputs=input_layer, outputs=decoder_output)
+    autoencoder.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy')
+
+    print("Training autoencoder...")
+    history = autoencoder.fit(
+        X_multi_hot, X_multi_hot,
+        epochs=50,          # Adjust based on data size and convergence
+        batch_size=256,     # Adjust based on memory and data size
+        shuffle=True,
+        verbose=0           # Set to 1 or 2 for training progress
+    )
+    print("Autoencoder training complete.")
+    # print(f"Final Autoencoder Reconstruction Loss: {history.history['loss'][-1]:.4f}")
 
 
-# --- NEW: Incorporating your drg_df ---
+    print("Step 4: Extract the AE Components (Encoder Output from Diagnosis AE)")
+    # Create a separate model for the encoder part
+    encoder_model = Model(inputs=input_layer, outputs=encoder_output)
 
-# Create a sample drg_df (REPLACE WITH YOUR ACTUAL drg_df)
-# I've added DRGs relevant to the new calculate_drg logic and made weights to demonstrate changes
-drg_data = {
-    'DRG_Code': [
-        "DRG_MAJOR_HEART_SURG", "DRG_MINOR_HEART_SURG", "DRG_GASTRO_PROC",
-        "DRG_NEURO_COMPLEX", "DRG_RESP_LITE", "DRG_RENAL_ISSUE",
-        "DRG_NoCodes", "DRG_ProcOnly_A_B", "DRG_ProcOnly_X_Y", "DRG_ProcOnly_Z",
-        "DRG_DIAG_D1_NoProc", "DRG_DIAG_D2_NoProc", "DRG_DIAG_D3_NoProc",
-        "DRG_DiagOnly_D4", "DRG_DiagOnly_D5",
-        "DRG_OTHER_PDX_D1_PROCS_AB", "DRG_OTHER_PDX_D2_PROCS_AB",
-        "DRG_OTHER_PDX_D3_PROCS_XY"
-    ],
-    'Weight': [
-        2.800,  # DRG_MAJOR_HEART_SURG
-        1.200,  # DRG_MINOR_HEART_SURG (significantly lower than MAJOR)
-        1.500,
-        3.000,
-        0.900,
-        1.100,  # DRG_RENAL_ISSUE
-        0.100, 0.500, 2.500, 0.700, # Base cases
-        0.200, 0.150, 0.250, # No proc, diag only
-        0.300, 0.400,
-        2.700, 1.150, 2.900 # Other DRGs for fallbacks
-    ]
-}
-drg_df = pd.DataFrame(drg_data)
+    # Get the AE components for each claim
+    ae_components = encoder_model.predict(X_multi_hot)
+    print(f"Shape of extracted AE components: {ae_components.shape}")
 
-# Create a mapping for quick lookup: DRG_Code -> Weight
-drg_weight_map = drg_df.set_index('DRG_Code')['Weight'].to_dict()
+    print("Step 5: Prepare Output DataFrame")
+    # Create column names for the AE components
+    ae_column_names = [f'ae_diag_comp_{i+1}' for i in range(ae_bottleneck_dim)] # Renamed for clarity
 
-def get_drg_weight(drg_code, weight_map):
-    """Safely gets the weight for a DRG code from the map. Returns inf if not found."""
-    return weight_map.get(str(drg_code), float('inf')) # Ensure drg_code is string for lookup
+    # Create the output DataFrame
+    df_ae_features = pd.DataFrame(ae_components, columns=ae_column_names)
+    df_ae_features['claim_id'] = df_claims['claim_id'].reset_index(drop=True) # Ensure claim_id matches rows
 
-def find_lower_weight_drgs(row, weight_map):
-    """
-    Checks the DRGs in 'drg_on_diag_modifications' and returns a dictionary
-    of those with weights lower than the billed DRG, or None if none.
-    """
-    drg_possibilities = row['drg_on_diag_modifications']
-    
-    # If drg_possibilities is NaN (no modifications possible/generated), return NaN directly
-    if pd.isna(drg_possibilities):
-        return np.nan
+    # Reorder columns to have claim_id first
+    df_ae_features = df_ae_features[['claim_id'] + ae_column_names]
 
-    original_billed_drg = row['billed_drg']
-    current_billed_drg_weight = get_drg_weight(original_billed_drg, weight_map)
-
-    lower_weight_drgs = {}
-
-    for modification_key, new_drg_code in drg_possibilities.items():
-        new_drg_weight = get_drg_weight(new_drg_code, weight_map)
-
-        # Compare the new DRG's weight to the original billed DRG's weight for this row
-        if new_drg_weight < current_billed_drg_weight:
-            lower_weight_drgs[modification_key] = new_drg_code
-
-    if lower_weight_drgs:
-        return lower_weight_drgs
-    else:
-        return np.nan # Use pandas' NaN for nulls
-
+    print("AE feature generation for diagnosis codes complete.")
+    return df_ae_features
 
 # --- Example Usage ---
+if __name__ == "__main__":
+    # Sample Data with Diagnosis Codes
+    data = {
+        'claim_id': [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010],
+        'diag_concat': [ # Using sample ICD-10 like codes
+            "I10.9,E11.9",
+            "I10.9,J45.9,R51",
+            "J45.9,M54.5",
+            "E11.9,N18.6",
+            "I10.9,E11.9", # Duplicate pattern
+            "M54.5,J45.9",
+            "I10.9",
+            "J45.9,N18.6",
+            "E11.9,M54.5,I10.9",
+            "M54.5,E11.9,J45.9"
+        ]
+    }
+    df_sample_claims = pd.DataFrame(data)
 
-# Create a sample DataFrame (patient data)
-patient_data = {
-    'patient_id': [1, 2, 3, 4, 5, 6],
-    'diag_codes': [
-        ['D1', 'D2', 'D3'],     # Case 1: Multiple diags, PDX D1 (high DRG if A,B procs)
-        ['D2', 'D1'],           # Case 2: D2 is PDX, but D1 could be PDX for higher DRG
-        ['D3'],                 # Case 3: Single diag, removal means no diag
-        ['D4', 'D5'],           # Case 4: Multiple diags, check PDX switches and removals
-        ['D1', 'D5'],           # Case 5: D1 PDX, D5 secondary
-        ['D5', 'D1']            # Case 6: D5 PDX, D1 secondary (should be lower DRG if procs A)
-    ],
-    'proc_codes': [
-        ['A', 'B'],             # Case 1: D1 PDX + A,B procs -> MAJOR_HEART_SURG (2.8)
-        ['A', 'B'],             # Case 2: D2 PDX + A,B procs -> MINOR_HEART_SURG (1.2)
-        [],                     # Case 3: No procs
-        ['Z'],                  # Case 4: D4 PDX + Z proc -> RESP_LITE (0.9)
-        ['A'],                  # Case 5: D1 PDX + A proc -> Fallback DRG (e.g., OTHER_PDXD1_PROCS_A)
-        ['A']                   # Case 6: D5 PDX + A proc -> RENAL_ISSUE (1.1)
-    ],
-    'billed_drg': [
-        'DRG_MAJOR_HEART_SURG', # For patient 1, billed DRG is high
-        'DRG_MINOR_HEART_SURG', # For patient 2, billed DRG is lower (D2 PDX)
-        'DRG_DIAG_D3_NoProc',   # Patient 3
-        'DRG_RESP_LITE',        # Patient 4
-        'DRG_OTHER_PDX_D1_PROCS_A', # Patient 5
-        'DRG_RENAL_ISSUE'       # Patient 6
-    ]
-}
-df = pd.DataFrame(patient_data)
+    # Generate AE features from diagnosis codes with a bottleneck of 8 dimensions
+    ae_features_diag_df = generate_ae_features_from_diag(df_sample_claims, ae_bottleneck_dim=8)
 
-print("Original Patient DataFrame:")
-print(df)
-print("\n" + "="*50 + "\n")
+    if ae_features_diag_df is not None:
+        print("\nResulting AE Features DataFrame (first 5 rows) from Diagnosis Codes:")
+        print(ae_features_diag_df.head())
+        print(f"\nShape of the resulting DataFrame: {ae_features_diag_df.shape}")
 
-print("DRG Weights DataFrame (for lookup):")
-print(drg_df.to_string()) # Use to_string() to see full DRG names if they are long
-print("\n" + "="*50 + "\n")
+    # Example with a claim having no codes (empty string or NaN)
+    data_with_empty_diag = {
+        'claim_id': [2001, 2002, 2003],
+        'diag_concat': [
+            "I10.9,E11.9",
+            "", # Empty string
+            np.nan # NaN
+        ]
+    }
+    df_empty_diag_claims = pd.DataFrame(data_with_empty_diag)
+    print("\n--- Testing with empty/NaN diag_concat ---")
+    ae_features_empty_diag_df = generate_ae_features_from_diag(df_empty_diag_claims, ae_bottleneck_dim=4)
+    if ae_features_empty_diag_df is not None:
+        print("\nResulting AE Features DataFrame (with empty/NaN diag_concat):")
+        print(ae_features_empty_diag_df)
 
-# Step 1: Generate the column with DRGs on diag modifications
-df['drg_on_diag_modifications'] = df.apply(generate_drg_on_diag_modifications, axis=1)
-
-print("DataFrame after generating 'drg_on_diag_modifications' (raw results):")
-print(df.to_string()) # Use to_string() to see full content of columns
-print("\n" + "="*50 + "\n")
-
-# Step 2: Create the new column based on weight comparison using the drg_weight_map
-df['lower_weight_drgs_after_modifications'] = df.apply(
-    lambda row: find_lower_weight_drgs(row, drg_weight_map), axis=1
-)
-
-print("Final DataFrame with 'lower_weight_drgs_after_modifications' column:")
-print(df[['patient_id', 'diag_codes', 'proc_codes', 'billed_drg', 'lower_weight_drgs_after_modifications']].to_string())
-print("\n" + "="*50 + "\n")
-
-print("Explanation of selected example outcomes:")
-print("Patient 1: Billed DRG is DRG_MAJOR_HEART_SURG (2.8).")
-print("  If PDX switches to D2, it becomes DRG_MINOR_HEART_SURG (1.2), which is lower.")
-print("  This scenario will be captured in 'lower_weight_drgs_after_modifications'.")
-print("Patient 2: Billed DRG is DRG_MINOR_HEART_SURG (1.2).")
-print("  Original PDX is D2. If PDX switches to D1, it becomes DRG_MAJOR_HEART_SURG (2.8), which is higher.")
-print("  No lower weight DRGs will be found for this patient.")
-print("Patient 6: Billed DRG is DRG_RENAL_ISSUE (1.1). (PDX D5, Proc A)")
-print("  If PDX switches to D1, it becomes DRG_OTHER_PDX_D1_PROCS_A (fallback, assumed higher or equal).")
-print("  If 'D5' is removed, and 'D1' becomes the only diag, it would become DRG_DIAG_D1_NoProc (0.2), which is lower.")
-print("  This scenario will also be captured.")
-
+    # Example with no unique codes overall
+    data_no_diag_codes = {
+        'claim_id': [3001, 3002],
+        'diag_concat': ["", np.nan]
+    }
+    df_no_diag_codes = pd.DataFrame(data_no_diag_codes)
+    print("\n--- Testing with no unique diagnosis codes overall ---")
+    ae_features_no_diag_codes_df = generate_ae_features_from_diag(df_no_diag_codes, ae_bottleneck_dim=2)
