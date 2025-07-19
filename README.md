@@ -5,52 +5,40 @@ SELECT
   curr.ref_claim,
   curr.read_claim,
   CASE
-    WHEN interim_flag = 1 AND matching_flag = 1 THEN 'Both'
-    WHEN interim_flag = 1 THEN 'Interim'
-    WHEN matching_flag = 1 THEN 'Matching'
+    WHEN int.has_interim = 1 AND mat.has_matching = 1 THEN 'Both'
+    WHEN int.has_interim = 1 THEN 'Interim'
+    WHEN mat.has_matching = 1 THEN 'Matching'
     ELSE 'None'
   END AS claim_flag
-FROM (
-  SELECT
-    curr.pk,
-    curr.provider_id,
-    curr.member_id,
-    curr.ref_claim,
-    curr.read_claim,
+FROM pairs_table curr
+-- Check for interim claims
+LEFT JOIN (
+  SELECT DISTINCT p1.pk, 1 AS has_interim
+  FROM pairs_table p1
+  JOIN pairs_table p2 ON p1.provider_id = p2.provider_id
+                      AND p1.member_id = p2.member_id
+                      AND p1.pk <> p2.pk
+  WHERE
+    (
+      -- p2's ref or readm dates are BETWEEN p1's ref_ldos and readm_fdos
+      (p2.ref_fdos BETWEEN p1.ref_ldos AND p1.readm_fdos)
+      OR (p2.ref_ldos BETWEEN p1.ref_ldos AND p1.readm_fdos)
+      OR (p2.readm_fdos BETWEEN p1.ref_ldos AND p1.readm_fdos)
+      OR (p2.readm_ldos BETWEEN p1.ref_ldos AND p1.readm_fdos)
+    )
+) int ON curr.pk = int.pk
 
-    -- Flag for interim claims
-    CASE
-      WHEN EXISTS (
-        SELECT 1
-        FROM pairs_table other
-        WHERE
-          other.pk <> curr.pk
-          AND other.provider_id = curr.provider_id
-          AND other.member_id = curr.member_id
-          AND (
-            (other.ref_fdos BETWEEN curr.ref_ldos AND curr.readm_fdos) OR
-            (other.ref_ldos BETWEEN curr.ref_ldos AND curr.readm_fdos) OR
-            (other.readm_fdos BETWEEN curr.ref_ldos AND curr.readm_fdos) OR
-            (other.readm_ldos BETWEEN curr.ref_ldos AND curr.readm_fdos)
-          )
-      ) THEN 1 ELSE 0
-    END AS interim_flag,
-
-    -- Flag for ref/readm claims with exact same fdos/ldos
-    CASE
-      WHEN EXISTS (
-        SELECT 1
-        FROM pairs_table other
-        WHERE
-          other.pk <> curr.pk
-          AND other.provider_id = curr.provider_id
-          AND other.member_id = curr.member_id
-          AND (
-            (other.ref_fdos = curr.ref_fdos AND other.ref_ldos = curr.ref_ldos) OR
-            (other.readm_fdos = curr.readm_fdos AND other.readm_ldos = curr.readm_ldos)
-          )
-      ) THEN 1 ELSE 0
-    END AS matching_flag
-
-  FROM pairs_table curr
-) final;
+-- Check for exact date match with other pk's
+LEFT JOIN (
+  SELECT DISTINCT p1.pk, 1 AS has_matching
+  FROM pairs_table p1
+  JOIN pairs_table p2 ON p1.provider_id = p2.provider_id
+                      AND p1.member_id = p2.member_id
+                      AND p1.pk <> p2.pk
+  WHERE
+    (
+      (p1.ref_fdos = p2.ref_fdos AND p1.ref_ldos = p2.ref_ldos)
+      OR (p1.readm_fdos = p2.readm_fdos AND p1.readm_ldos = p2.readm_ldos)
+    )
+) mat ON curr.pk = mat.pk
+;
