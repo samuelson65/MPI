@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
 
 # ==============================================================================
 #  YOUR DATA LOADING SECTION
@@ -14,114 +12,108 @@ import plotly.graph_objects as go
 # Example: df = pd.read_csv('your_data.csv')
 # Example: df = pd.read_excel('your_data.xlsx')
 
-
 # ==============================================================================
-#  PREPROCESSING: FEATURE EXTRACTION
-#  This section transforms your raw data into features useful for analysis.
+#  PREPROCESSING: FEATURE EXTRACTION (Same as previous script)
 # ==============================================================================
 
-# Robustly extract features from 'Diag soi' dictionary
 def extract_diag_features(diag_dict):
     """Safely extracts number of diagnoses and max SOI from a dictionary."""
     try:
         if not isinstance(diag_dict, dict) or not diag_dict:
-            return 0, 0, 0
+            return 0, 0
         soi_values = list(diag_dict.values())
-        return len(soi_values), max(soi_values), np.mean(soi_values)
+        return len(soi_values), max(soi_values)
     except Exception:
-        return 0, 0, 0
+        return 0, 0
 
-df[['num_diags', 'max_soi', 'avg_soi']] = df['Diag soi'].apply(
+df[['num_diags', 'max_soi']] = df['Diag soi'].apply(
     lambda x: pd.Series(extract_diag_features(x))
 )
 
-# Extract features from the 'aprdrg' code
 df['aprdrg'] = df['aprdrg'].astype(str).str.zfill(4)
 df['aprdrg_drg'] = df['aprdrg'].str[:3]
 df['aprdrg_soi'] = df['aprdrg'].str[3].astype(int)
 
-# Create a critical feature: SOI Discrepancy
-# This flags claims where the billed SOI does not match the max clinical SOI.
 df['soi_discrepancy'] = (df['aprdrg_soi'] != df['max_soi'])
 
 
 # ==============================================================================
-#  CREATIVE PLOTLY VISUALIZATIONS
+#  INSIGHTS GENERATION
+#  This section calculates and prints meaningful insights from the data.
 # ==============================================================================
 
-### Plot 1: Hierarchical Overpayment Analysis (Sunburst Chart)
-# This chart provides an interactive, hierarchical view of your data,
-# showing how the overpayment status is distributed across DRG codes and SOI values.
-fig_sunburst = px.sunburst(
-    df,
-    path=['sta', 'aprdrg_drg', 'aprdrg_soi'],
-    title='Hierarchical Analysis: Overpayment Status -> DRG -> SOI',
-    color='sta',
-    color_discrete_map={'I': 'firebrick', 'Z': 'limegreen', '(?)': 'gray'}
-)
-fig_sunburst.update_traces(hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percentParent:.1%}<extra></extra>')
-fig_sunburst.show()
+print("="*80)
+print("             INSIGHTS FROM OVERPAYMENT DATA")
+print("="*80)
+
+# --- Overall Summary ---
+total_claims = len(df)
+overpayment_claims = (df['sta'] == 'I').sum()
+overpayment_rate = overpayment_claims / total_claims * 100
+
+print("\n### 1. Overall Dataset Summary")
+print(f"Total claims analyzed: {total_claims:,}")
+print(f"Claims with overpayment ('I'): {overpayment_claims:,}")
+print(f"Claims with no findings ('Z'): {(df['sta'] == 'Z').sum():,}")
+print(f"Overall overpayment rate: {overpayment_rate:.2f}%")
 
 
-### Plot 2: Severity Discrepancy Scatter Plot
-# This is a powerful, custom scatter plot to visualize the relationship between
-# clinical severity (`max_soi`) and billed severity (`aprdrg_soi`).
-# It highlights claims with mismatched SOI values, which may be a strong indicator of overpayment.
-fig_scatter = go.Figure()
+# --- Insights from Clinical Data ('Diag soi') ---
+avg_num_diags_I = df[df['sta'] == 'I']['num_diags'].mean()
+avg_num_diags_Z = df[df['sta'] == 'Z']['num_diags'].mean()
+avg_max_soi_I = df[df['sta'] == 'I']['max_soi'].mean()
+avg_max_soi_Z = df[df['sta'] == 'Z']['max_soi'].mean()
 
-# Plot points where SOI values match
-df_match = df[~df['soi_discrepancy']]
-fig_scatter.add_trace(go.Scatter(
-    x=df_match['max_soi'],
-    y=df_match['aprdrg_soi'],
-    mode='markers',
-    name='SOI Match',
-    marker=dict(symbol='circle', color='royalblue', size=6),
-    hovertemplate='<b>Clinical SOI: %{x}</b><br><b>APRDRG SOI: %{y}</b><br>Status: %{customdata[0]}<extra></extra>',
-    customdata=df_match[['sta']]
-))
+print("\n### 2. Clinical and Severity Insights")
+print("  - Number of Diagnoses:")
+print(f"    Claims with overpayment ('I') have an average of {avg_num_diags_I:.2f} diagnoses.")
+print(f"    Claims with no findings ('Z') have an average of {avg_num_diags_Z:.2f} diagnoses.")
+if avg_num_diags_I > avg_num_diags_Z:
+    print("    Insight: Claims with a higher number of diagnoses appear to have a higher overpayment risk.")
+else:
+    print("    Insight: The number of diagnoses does not seem to be a major differentiator for overpayment.")
 
-# Plot points where SOI values mismatch
-df_mismatch = df[df['soi_discrepancy']]
-fig_scatter.add_trace(go.Scatter(
-    x=df_mismatch['max_soi'],
-    y=df_mismatch['aprdrg_soi'],
-    mode='markers',
-    name='SOI Mismatch',
-    marker=dict(symbol='diamond', color='firebrick', size=8, line=dict(width=1, color='black')),
-    hovertemplate='<b>Clinical SOI: %{x}</b><br><b>APRDRG SOI: %{y}</b><br>Status: %{customdata[0]}<extra></extra>',
-    customdata=df_mismatch[['sta']]
-))
-
-# Add the line of equality (perfect match) for visual comparison
-max_val = max(df['max_soi'].max(), df['aprdrg_soi'].max())
-fig_scatter.add_shape(type='line', x0=0, y0=0, x1=max_val, y1=max_val,
-                      line=dict(color='black', width=2, dash='dash'))
-
-fig_scatter.update_layout(
-    title='Clinical vs. APRDRG Severity: Highlighting Discrepancies',
-    xaxis_title='Maximum Clinical SOI (from "Diag soi")',
-    yaxis_title='APRDRG SOI (4th digit)',
-    showlegend=True
-)
-fig_scatter.show()
+print("\n  - Clinical Severity (Max SOI):")
+print(f"    Claims with overpayment ('I') have an average max clinical SOI of {avg_max_soi_I:.2f}.")
+print(f"    Claims with no findings ('Z') have an average max clinical SOI of {avg_max_soi_Z:.2f}.")
+if avg_max_soi_I > avg_max_soi_Z:
+    print("    Insight: Higher clinical severity seems to be associated with an increased likelihood of overpayment.")
+else:
+    print("    Insight: Clinical severity does not appear to be a significant factor in overpayment.")
 
 
-### Plot 3: Overpayment Rate by DRG, Facetted by Discrepancy Status
-# This chart directly compares the overpayment rate for each DRG,
-# broken down by whether a severity discrepancy exists.
-drg_agg = df.groupby(['aprdrg_drg', 'soi_discrepancy'])['sta'].apply(
-    lambda x: (x == 'I').mean()
+# --- Insights from Billed Data ('aprdrg') ---
+drg_overpayment_rates = df.groupby('aprdrg_drg')['sta'].apply(
+    lambda x: (x == 'I').mean() * 100
+).sort_values(ascending=False).reset_index(name='overpayment_rate')
+
+top_3_drgs = drg_overpayment_rates.head(3)
+drg_soi_rates = df.groupby('aprdrg_soi')['sta'].apply(
+    lambda x: (x == 'I').mean() * 100
 ).reset_index(name='overpayment_rate')
 
-fig_facet = px.bar(
-    drg_agg,
-    x='aprdrg_drg',
-    y='overpayment_rate',
-    color='soi_discrepancy',
-    barmode='group',
-    labels={'aprdrg_drg': 'APRDRG Code', 'overpayment_rate': 'Overpayment Rate'},
-    title='Overpayment Rate by DRG, Separated by SOI Discrepancy Status'
-)
-fig_facet.update_traces(hovertemplate='<b>DRG: %{x}</b><br>Overpayment Rate: %{y:.2%}<extra></extra>')
-fig_facet.show()
+print("\n### 3. Billed Data (APRDRG) Insights")
+print("  - Top 3 APRDRG Codes with the highest overpayment rate:")
+for index, row in top_3_drgs.iterrows():
+    print(f"    - DRG '{row['aprdrg_drg']}' has an overpayment rate of {row['overpayment_rate']:.2f}%.")
+
+print("\n  - Billed Severity (APRDRG SOI):")
+for index, row in drg_soi_rates.iterrows():
+    print(f"    - Claims with APRDRG SOI of {row['aprdrg_soi']} have an overpayment rate of {row['overpayment_rate']:.2f}%.")
+if drg_soi_rates['overpayment_rate'].is_monotonic_increasing:
+    print("    Insight: There is a strong positive correlation between billed severity and the overpayment rate.")
+
+
+# --- Insights from Discrepancy Analysis ---
+discrepancy_rate_I = df[df['soi_discrepancy']]['sta'].apply(lambda x: (x == 'I').mean()) * 100
+no_discrepancy_rate_I = df[~df['soi_discrepancy']]['sta'].apply(lambda x: (x == 'I').mean()) * 100
+
+print("\n### 4. Critical Discrepancy Insight")
+print(f"  - Overpayment rate for claims WITH a clinical vs. billed SOI discrepancy: {discrepancy_rate_I:.2f}%")
+print(f"  - Overpayment rate for claims WITHOUT a discrepancy: {no_discrepancy_rate_I:.2f}%")
+if discrepancy_rate_I > no_discrepancy_rate_I:
+    print("    Key Finding: Claims where the billed severity (APRDRG SOI) does not match the max clinical severity are significantly more likely to be overpaid. This is a powerful signal for potential errors or fraud.")
+else:
+    print("    Key Finding: Discrepancies between billed and clinical SOI do not seem to be a strong indicator of overpayment in this dataset.")
+
+print("\n" + "="*80)
