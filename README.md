@@ -8,7 +8,7 @@ from typing import List
 class DRGRuleMiner:
     def __init__(self, max_depth=4, min_samples_leaf=50, class_weight="balanced"):
         """
-        Initialize the DRG Rule Miner.
+        DRG Rule Miner using decision tree extraction.
         """
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
@@ -19,7 +19,7 @@ class DRGRuleMiner:
 
     def _tree_to_rules(self, tree, feature_names):
         """
-        Convert decision tree to list of logical rules.
+        Convert decision tree structure into human-readable rules.
         """
         rules = []
 
@@ -27,10 +27,10 @@ class DRGRuleMiner:
             if tree.feature[node] != _tree.TREE_UNDEFINED:
                 name = feature_names[tree.feature[node]]
                 threshold = tree.threshold[node]
-                recurse(tree.children_left[node], path + [f"({name} <= {threshold:.2f})"])
-                recurse(tree.children_right[node], path + [f"({name} > {threshold:.2f})"])
+                recurse(tree.children_left[node], path + [f"({name} <= {threshold:.4f})"])
+                recurse(tree.children_right[node], path + [f"({name} > {threshold:.4f})"])
             else:
-                if path:
+                if path:  # only record if path is not empty
                     rules.append(" AND ".join(path))
 
         recurse(0, [])
@@ -38,16 +38,16 @@ class DRGRuleMiner:
 
     def fit(self, X: pd.DataFrame, y: pd.Series):
         """
-        Fit the decision tree and extract rules.
+        Fit decision tree and extract/evaluate rules.
         """
         self.feature_names = list(X.columns)
 
-        # Split into train/test
+        # Train/test split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.3, stratify=y, random_state=42
         )
 
-        # Train decision tree
+        # Train the decision tree
         self.tree = DecisionTreeClassifier(
             max_depth=self.max_depth,
             min_samples_leaf=self.min_samples_leaf,
@@ -59,39 +59,47 @@ class DRGRuleMiner:
         # Extract candidate rules
         candidate_rules = self._tree_to_rules(self.tree.tree_, self.feature_names)
 
-        # Evaluate and store rules
+        # Evaluate rules
         self.rules = self._evaluate_rules(candidate_rules, X, y)
 
         return self
 
     def _evaluate_rules(self, rules: List[str], X: pd.DataFrame, y: pd.Series):
         """
-        Evaluate rules by precision, recall, and lift.
+        Evaluate rules with precision, recall, and lift.
         """
+        if not rules:
+            return pd.DataFrame(columns=["rule", "support", "precision", "recall", "lift"])
+
         results = []
         y_mean = y.mean()
+
         for rule in rules:
             try:
                 mask = X.eval(rule)
+                if mask.sum() == 0:
+                    continue
+                precision = (y[mask].sum()) / mask.sum()
+                recall = (y[mask].sum()) / y.sum() if y.sum() > 0 else 0
+                lift = precision / (y_mean + 1e-9)
+                results.append({
+                    "rule": rule,
+                    "support": int(mask.sum()),
+                    "precision": round(float(precision), 4),
+                    "recall": round(float(recall), 4),
+                    "lift": round(float(lift), 4)
+                })
             except Exception:
                 continue
-            if mask.sum() == 0:
-                continue
-            precision = precision_score(y[mask], np.ones(mask.sum()), zero_division=0)
-            recall = recall_score(y, mask, zero_division=0)
-            lift = precision / (y_mean + 1e-9)
-            results.append({
-                "rule": rule,
-                "support": int(mask.sum()),
-                "precision": round(float(precision), 4),
-                "recall": round(float(recall), 4),
-                "lift": round(float(lift), 4)
-            })
+
+        if not results:
+            return pd.DataFrame(columns=["rule", "support", "precision", "recall", "lift"])
+
         return pd.DataFrame(results).sort_values(by=["precision", "lift"], ascending=False).reset_index(drop=True)
 
     def export_rules(self, top_n: int = 10) -> List[str]:
         """
-        Export top N rules as a list.
+        Export top N rules.
         """
         if self.rules.empty:
             return []
@@ -99,8 +107,10 @@ class DRGRuleMiner:
 
     def to_sql(self, rules: List[str]) -> str:
         """
-        Convert rules into a SQL-compatible WHERE clause.
+        Convert rules into SQL WHERE clause.
         """
+        if not rules:
+            return "-- No valid rules found"
         sql_rules = []
         for rule in rules:
             sql_rule = rule.replace("and", "AND").replace("or", "OR")
@@ -128,7 +138,7 @@ if __name__ == "__main__":
     miner.fit(X, y)
 
     print("\n===== Top Rules =====")
-    print(miner.rules.head())
+    print(miner.rules.head() if not miner.rules.empty else "No rules found")
 
     print("\n===== SQL WHERE Clause =====")
     print(miner.to_sql(miner.export_rules()))
