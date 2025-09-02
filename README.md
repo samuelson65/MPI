@@ -1,120 +1,96 @@
 import pandas as pd
 import numpy as np
-from sklearn.tree import DecisionTreeClassifier, _tree
-from sklearn.model_selection import train_test_split
-from typing import List
+from itertools import combinations
+from collections import defaultdict
+from sklearn.metrics.pairwise import cosine_similarity
+import networkx as nx
+import matplotlib.pyplot as plt
 
-class DRGRuleMiner:
-    def __init__(self, max_depth=4, min_samples_leaf=50, class_weight="balanced"):
-        self.max_depth = max_depth
-        self.min_samples_leaf = min_samples_leaf
-        self.class_weight = class_weight
-        self.tree = None
-        self.feature_names = None
-        self.rules = pd.DataFrame()
+# ---------------------------
+# 1. SAMPLE DATA
+# ---------------------------
+data = {
+    'claimid': ['claim_001', 'claim_002', 'claim_002', 'claim_003', 'claim_004', 'claim_005', 'claim_005'],
+    'query_name': ['A', 'A', 'B', 'B', 'C', 'A', 'B']
+}
+df = pd.DataFrame(data)
 
-    def _tree_to_rules(self, tree, feature_names):
-        rules = []
+# ---------------------------
+# 2. BUILD QUERY -> CLAIMS MAPPING
+# ---------------------------
+query_claims = defaultdict(set)
+for _, row in df.iterrows():
+    query_claims[row['query_name']].add(row['claimid'])
 
-        def recurse(node, path):
-            if tree.feature[node] != _tree.TREE_UNDEFINED:
-                name = feature_names[tree.feature[node]]
-                threshold = tree.threshold[node]
-                recurse(tree.children_left[node], path + [f"({name} <= {threshold:.4f})"])
-                recurse(tree.children_right[node], path + [f"({name} > {threshold:.4f})"])
-            else:
-                if path:
-                    rules.append(" AND ".join(path))
+queries = list(query_claims.keys())
+claims = sorted(set(df['claimid']))
 
-        recurse(0, [])
-        return rules
+# ---------------------------
+# 3. CREATE BINARY MATRIX FOR COSINE SIMILARITY
+# ---------------------------
+binary_matrix = pd.DataFrame(0, index=queries, columns=claims)
+for query, claimset in query_claims.items():
+    binary_matrix.loc[query, list(claimset)] = 1
 
-    def fit(self, X: pd.DataFrame, y: pd.Series):
-        self.feature_names = list(X.columns)
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, stratify=y, random_state=42
-        )
+# ---------------------------
+# 4. CALCULATE JACCARD SIMILARITY
+# ---------------------------
+def jaccard_similarity(set1, set2):
+    intersection = len(set1 & set2)
+    union = len(set1 | set2)
+    return intersection / union if union else 0
 
-        self.tree = DecisionTreeClassifier(
-            max_depth=self.max_depth,
-            min_samples_leaf=self.min_samples_leaf,
-            class_weight=self.class_weight,
-            random_state=42
-        )
-        self.tree.fit(X_train, y_train)
+jaccard_results = []
+for q1, q2 in combinations(queries, 2):
+    score = jaccard_similarity(query_claims[q1], query_claims[q2])
+    jaccard_results.append((q1, q2, score))
 
-        candidate_rules = self._tree_to_rules(self.tree.tree_, self.feature_names)
-        self.rules = self._evaluate_rules(candidate_rules, X, y)
+jaccard_df = pd.DataFrame(jaccard_results, columns=["Query_1", "Query_2", "Jaccard_Similarity"])
 
-        return self
+# ---------------------------
+# 5. CALCULATE COSINE SIMILARITY
+# ---------------------------
+cosine_matrix = cosine_similarity(binary_matrix)
+cosine_df = pd.DataFrame(cosine_matrix, index=queries, columns=queries)
 
-    def _evaluate_rules(self, rules: List[str], X: pd.DataFrame, y: pd.Series):
-        if not rules:
-            print("DEBUG: No candidate rules generated from the decision tree.")
-            return pd.DataFrame(columns=["rule", "support", "precision", "recall", "lift"])
+cosine_results = []
+for q1, q2 in combinations(queries, 2):
+    score = cosine_df.loc[q1, q2]
+    cosine_results.append((q1, q2, score))
 
-        results = []
-        y_mean = y.mean()
+cosine_pairs_df = pd.DataFrame(cosine_results, columns=["Query_1", "Query_2", "Cosine_Similarity"])
 
-        for rule in rules:
-            try:
-                mask = X.eval(rule)
-                if mask.sum() == 0:
-                    continue
-                precision = y[mask].sum() / mask.sum()
-                recall = y[mask].sum() / y.sum() if y.sum() > 0 else 0
-                lift = precision / (y_mean + 1e-9)
-                results.append({
-                    "rule": rule,
-                    "support": int(mask.sum()),
-                    "precision": round(float(precision), 4),
-                    "recall": round(float(recall), 4),
-                    "lift": round(float(lift), 4)
-                })
-            except Exception as e:
-                print(f"DEBUG: Failed to evaluate rule `{rule}` -> {e}")
-                continue
+# ---------------------------
+# 6. PRINT RESULTS
+# ---------------------------
+print("\n=== Jaccard Similarity ===")
+print(jaccard_df)
 
-        if not results:
-            print("DEBUG: No rules matched any rows during evaluation.")
-            return pd.DataFrame(columns=["rule", "support", "precision", "recall", "lift"])
+print("\n=== Cosine Similarity ===")
+print(cosine_pairs_df)
 
-        return pd.DataFrame(results).sort_values(by=["precision", "lift"], ascending=False).reset_index(drop=True)
+# ---------------------------
+# 7. BUILD NETWORK GRAPH
+# ---------------------------
+def plot_network(similarity_df, similarity_type="Jaccard", threshold=0.1):
+    G = nx.Graph()
+    for _, row in similarity_df.iterrows():
+        if row[similarity_type + "_Similarity"] >= threshold:
+            G.add_edge(row['Query_1'], row['Query_2'], weight=row[similarity_type + "_Similarity"])
 
-    def export_rules(self, top_n=10):
-        if self.rules.empty:
-            return []
-        return self.rules.head(top_n)["rule"].tolist()
+    pos = nx.spring_layout(G, seed=42)
+    weights = nx.get_edge_attributes(G, 'weight')
 
-    def to_sql(self, rules):
-        if not rules:
-            return "-- No valid rules found"
-        sql_rules = [f"({r.replace('and', 'AND').replace('or', 'OR')})" for r in rules]
-        return " OR ".join(sql_rules)
+    plt.figure(figsize=(8, 6))
+    nx.draw(G, pos, with_labels=True, node_size=1500, node_color="lightblue",
+            font_size=12, font_weight="bold", width=2, edge_color="gray")
+    nx.draw_networkx_edge_labels(G, pos, edge_labels={k: f"{v:.2f}" for k, v in weights.items()},
+                                 font_color='red', font_size=10)
+    plt.title(f"{similarity_type} Similarity Network (Threshold ≥ {threshold})", fontsize=14)
+    plt.show()
 
-
-if __name__ == "__main__":
-    np.random.seed(42)
-    df = pd.DataFrame({
-        "mcc_count": np.random.randint(0, 6, 1000),
-        "cc_count": np.random.randint(0, 4, 1000),
-        "procedure_count": np.random.randint(0, 8, 1000),
-        "length_of_stay": np.random.randint(1, 15, 1000),
-        "discharge_status": np.random.choice([1, 2, 3, 4, 5], 1000),
-        "overpayment": np.random.choice([0, 1], 1000, p=[0.8, 0.2])
-    })
-
-    X = df.drop(columns="overpayment")
-    y = df["overpayment"]
-
-    miner = DRGRuleMiner(max_depth=4, min_samples_leaf=20)
-    miner.fit(X, y)
-
-    print("\n===== Top Rules =====")
-    if miner.rules.empty:
-        print("No rules generated. Check data balance or parameters.")
-    else:
-        print(miner.rules.head())
-
-    print("\n===== SQL WHERE Clause =====")
-    print(miner.to_sql(miner.export_rules()))
+# ---------------------------
+# 8. PLOT NETWORKS
+# ---------------------------
+plot_network(jaccard_df.rename(columns={"Jaccard_Similarity": "Jaccard_Similarity"}), "Jaccard", threshold=0.1)
+plot_network(cosine_pairs_df.rename(columns={"Cosine_Similarity": "Cosine_Similarity"}), "Cosine", threshold=0.1)
