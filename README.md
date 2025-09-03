@@ -1,96 +1,119 @@
-import pandas as pd
-import numpy as np
-from itertools import combinations
+import re
 from collections import defaultdict
-from sklearn.metrics.pairwise import cosine_similarity
-import networkx as nx
-import matplotlib.pyplot as plt
+from typing import Dict, List
 
-# ---------------------------
-# 1. SAMPLE DATA
-# ---------------------------
-data = {
-    'claimid': ['claim_001', 'claim_002', 'claim_002', 'claim_003', 'claim_004', 'claim_005', 'claim_005'],
-    'query_name': ['A', 'A', 'B', 'B', 'C', 'A', 'B']
-}
-df = pd.DataFrame(data)
+class QueryMerger:
+    def __init__(self):
+        self.operator_pattern = re.compile(r'\b(AND|OR)\b', re.IGNORECASE)
+        self.condition_pattern = re.compile(
+            r'([A-Z0-9_]+)\s*(=|>|<|>=|<=|IN|BETWEEN)\s*(.*)', re.IGNORECASE
+        )
 
-# ---------------------------
-# 2. BUILD QUERY -> CLAIMS MAPPING
-# ---------------------------
-query_claims = defaultdict(set)
-for _, row in df.iterrows():
-    query_claims[row['query_name']].add(row['claimid'])
+    def normalize(self, cond: str) -> str:
+        cond = cond.upper().strip()
+        cond = re.sub(r'\s+', ' ', cond)
+        return cond
 
-queries = list(query_claims.keys())
-claims = sorted(set(df['claimid']))
+    def tokenize_conditions(self, condition: str) -> List[Dict]:
+        """Breaks condition into tokens: field, operator, values"""
+        tokens = []
+        parts = self.operator_pattern.split(condition)
+        current_op = "AND"
+        for part in parts:
+            part = part.strip()
+            if part in ["AND", "OR"]:
+                current_op = part
+                continue
+            match = self.condition_pattern.match(part)
+            if match:
+                field, op, value = match.groups()
+                field, op, value = field.strip(), op.strip(), value.strip()
+                values = self.extract_values(op, value)
+                tokens.append({
+                    "field": field,
+                    "operator": op,
+                    "values": values,
+                    "logical_op": current_op
+                })
+        return tokens
 
-# ---------------------------
-# 3. CREATE BINARY MATRIX FOR COSINE SIMILARITY
-# ---------------------------
-binary_matrix = pd.DataFrame(0, index=queries, columns=claims)
-for query, claimset in query_claims.items():
-    binary_matrix.loc[query, list(claimset)] = 1
+    def extract_values(self, operator: str, value: str) -> List[str]:
+        """Extract values based on operator type"""
+        if operator == "=":
+            return [value]
+        elif operator == "IN":
+            return [v.strip() for v in re.findall(r'\d+|\w+', value)]
+        elif operator == "BETWEEN":
+            bounds = re.findall(r'\d+', value)
+            return [str(bounds[0]), str(bounds[1])] if len(bounds) == 2 else []
+        else:
+            return [value]
 
-# ---------------------------
-# 4. CALCULATE JACCARD SIMILARITY
-# ---------------------------
-def jaccard_similarity(set1, set2):
-    intersection = len(set1 & set2)
-    union = len(set1 | set2)
-    return intersection / union if union else 0
+    def merge_tokens(self, tokens_a: List[Dict], tokens_b: List[Dict]) -> List[Dict]:
+        """Combine tokens intelligently"""
+        combined = defaultdict(lambda: {"operator": None, "values": set(), "logical_op": "AND"})
 
-jaccard_results = []
-for q1, q2 in combinations(queries, 2):
-    score = jaccard_similarity(query_claims[q1], query_claims[q2])
-    jaccard_results.append((q1, q2, score))
+        for token in tokens_a + tokens_b:
+            field = token["field"]
+            op = token["operator"]
+            if combined[field]["operator"] in [None, "=", "IN"] and op in ["=", "IN"]:
+                combined[field]["operator"] = "IN"
+                combined[field]["values"].update(token["values"])
+            else:
+                combined[field]["operator"] = op
+                combined[field]["values"].update(token["values"])
+            combined[field]["logical_op"] = token["logical_op"]
 
-jaccard_df = pd.DataFrame(jaccard_results, columns=["Query_1", "Query_2", "Jaccard_Similarity"])
+        merged_list = []
+        for field, details in combined.items():
+            merged_list.append({
+                "field": field,
+                "operator": details["operator"],
+                "values": sorted(details["values"]),
+                "logical_op": details["logical_op"]
+            })
+        return merged_list
 
-# ---------------------------
-# 5. CALCULATE COSINE SIMILARITY
-# ---------------------------
-cosine_matrix = cosine_similarity(binary_matrix)
-cosine_df = pd.DataFrame(cosine_matrix, index=queries, columns=queries)
+    def build_condition(self, merged_tokens: List[Dict]) -> str:
+        """Builds query string from merged tokens"""
+        parts = []
+        for token in merged_tokens:
+            field, op, values, logical_op = token["field"], token["operator"], token["values"], token["logical_op"]
+            if op == "IN":
+                parts.append(f"{field} IN ({', '.join(values)})")
+            elif op == "=":
+                parts.append(f"{field}={values[0]}")
+            elif op == "BETWEEN":
+                parts.append(f"{field} BETWEEN {values[0]} AND {values[1]}")
+            else:
+                parts.append(f"{field}{op}{values[0]}")
+        return f" {logical_op} ".join(parts)
 
-cosine_results = []
-for q1, q2 in combinations(queries, 2):
-    score = cosine_df.loc[q1, q2]
-    cosine_results.append((q1, q2, score))
+    def merge_queries(self, name_a: str, cond_a: str, name_b: str, cond_b: str) -> Dict:
+        cond_a, cond_b = self.normalize(cond_a), self.normalize(cond_b)
+        tokens_a = self.tokenize_conditions(cond_a)
+        tokens_b = self.tokenize_conditions(cond_b)
+        merged_tokens = self.merge_tokens(tokens_a, tokens_b)
+        merged_condition = self.build_condition(merged_tokens)
+        return {
+            "merged_name": f"{name_a}_{name_b}_MERGED",
+            "merged_condition": merged_condition
+        }
 
-cosine_pairs_df = pd.DataFrame(cosine_results, columns=["Query_1", "Query_2", "Cosine_Similarity"])
+# ------------------ EXAMPLES ------------------
+merger = QueryMerger()
 
-# ---------------------------
-# 6. PRINT RESULTS
-# ---------------------------
-print("\n=== Jaccard Similarity ===")
-print(jaccard_df)
+# Case 1: Simple merge with equality
+q1 = "DRG=871 AND LOS>10"
+q2 = "DRG=872 AND LOS>10"
+print(merger.merge_queries("QueryA", q1, "QueryB", q2))
 
-print("\n=== Cosine Similarity ===")
-print(cosine_pairs_df)
+# Case 2: Merge with IN operator
+q3 = "DRG IN (870, 871) AND LOS>5"
+q4 = "DRG=872 AND LOS>5"
+print(merger.merge_queries("QueryC", q3, "QueryD", q4))
 
-# ---------------------------
-# 7. BUILD NETWORK GRAPH
-# ---------------------------
-def plot_network(similarity_df, similarity_type="Jaccard", threshold=0.1):
-    G = nx.Graph()
-    for _, row in similarity_df.iterrows():
-        if row[similarity_type + "_Similarity"] >= threshold:
-            G.add_edge(row['Query_1'], row['Query_2'], weight=row[similarity_type + "_Similarity"])
-
-    pos = nx.spring_layout(G, seed=42)
-    weights = nx.get_edge_attributes(G, 'weight')
-
-    plt.figure(figsize=(8, 6))
-    nx.draw(G, pos, with_labels=True, node_size=1500, node_color="lightblue",
-            font_size=12, font_weight="bold", width=2, edge_color="gray")
-    nx.draw_networkx_edge_labels(G, pos, edge_labels={k: f"{v:.2f}" for k, v in weights.items()},
-                                 font_color='red', font_size=10)
-    plt.title(f"{similarity_type} Similarity Network (Threshold ≥ {threshold})", fontsize=14)
-    plt.show()
-
-# ---------------------------
-# 8. PLOT NETWORKS
-# ---------------------------
-plot_network(jaccard_df.rename(columns={"Jaccard_Similarity": "Jaccard_Similarity"}), "Jaccard", threshold=0.1)
-plot_network(cosine_pairs_df.rename(columns={"Cosine_Similarity": "Cosine_Similarity"}), "Cosine", threshold=0.1)
+# Case 3: Merge with BETWEEN and OR
+q5 = "DRG=871 OR LOS BETWEEN 5 AND 10"
+q6 = "DRG=872 OR LOS BETWEEN 7 AND 12"
+print(merger.merge_queries("QueryE", q5, "QueryF", q6))
