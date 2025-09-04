@@ -1,7 +1,6 @@
 import networkx as nx
-import matplotlib.pyplot as plt
 import community as community_louvain  # Louvain
-from cdlib import algorithms  # Leiden
+import plotly.graph_objects as go
 
 # ----------------------------
 # 1. Sample Queries and Claims
@@ -28,40 +27,85 @@ for i in range(len(queries)):
     for j in range(i + 1, len(queries)):
         q1, q2 = queries[i], queries[j]
         sim = jaccard(query_claims[q1], query_claims[q2])
-        if sim > 0:  # add edge only if they overlap
+        if sim > 0:  # only if overlap
             G.add_edge(q1, q2, weight=sim)
 
 # ----------------------------
 # 3. Louvain Clustering
 # ----------------------------
-louvain_partition = community_louvain.best_partition(G, weight="weight")
-
-print("🔹 Louvain Clustering Result:")
-for q, cluster in louvain_partition.items():
-    print(f"{q} → Cluster {cluster}")
+partition = community_louvain.best_partition(G, weight="weight")
 
 # ----------------------------
-# 4. Leiden Clustering
+# 4. Prepare Plotly Visualization
 # ----------------------------
-leiden_partition = algorithms.leiden(G, weights="weight", resolution=1.0)
+pos = nx.spring_layout(G, seed=42, weight="weight")
 
-print("\n🔹 Leiden Clustering Result:")
-for idx, comm in enumerate(leiden_partition.communities):
-    print(f"Cluster {idx}: {comm}")
+# Extract edges for plotting
+edge_x = []
+edge_y = []
+edge_weights = []
+for edge in G.edges(data=True):
+    x0, y0 = pos[edge[0]]
+    x1, y1 = pos[edge[1]]
+    edge_x.extend([x0, x1, None])
+    edge_y.extend([y0, y1, None])
+    edge_weights.append(edge[2]['weight'])
+
+# Edge trace
+edge_trace = go.Scatter(
+    x=edge_x, y=edge_y,
+    line=dict(width=1, color='lightgray'),
+    hoverinfo='none',
+    mode='lines'
+)
+
+# Node trace
+node_x = []
+node_y = []
+node_text = []
+node_color = []
+
+for node in G.nodes():
+    x, y = pos[node]
+    node_x.append(x)
+    node_y.append(y)
+    node_text.append(f"{node}<br>Cluster: {partition[node]}<br>Claims: {list(query_claims[node])}")
+    node_color.append(partition[node])  # Louvain cluster ID
+
+node_trace = go.Scatter(
+    x=node_x, y=node_y,
+    mode='markers+text',
+    text=[n for n in G.nodes()],
+    textposition="bottom center",
+    hovertext=node_text,
+    hoverinfo="text",
+    marker=dict(
+        showscale=True,
+        colorscale="Viridis",
+        size=20,
+        color=node_color,
+        line_width=2
+    )
+)
 
 # ----------------------------
-# 5. Visualization
+# 5. Build Interactive Graph
 # ----------------------------
-pos = nx.spring_layout(G, seed=42)
-plt.figure(figsize=(8,6))
+fig = go.Figure(data=[edge_trace, node_trace],
+                layout=go.Layout(
+                    title="Query Clustering with Louvain",
+                    titlefont_size=20,
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20, l=5, r=5, t=40),
+                    annotations=[dict(
+                        text="Queries clustered by claim overlap",
+                        showarrow=False,
+                        xref="paper", yref="paper",
+                        x=0.005, y=-0.002
+                    )],
+                    xaxis=dict(showgrid=False, zeroline=False),
+                    yaxis=dict(showgrid=False, zeroline=False)
+                ))
 
-# Louvain colors
-colors = [louvain_partition[node] for node in G.nodes()]
-nx.draw(G, pos, with_labels=True, node_size=1200,
-        node_color=colors, cmap=plt.cm.Set3, edge_color="gray")
-
-labels = nx.get_edge_attributes(G, 'weight')
-nx.draw_networkx_edge_labels(G, pos, edge_labels={k: round(v,2) for k,v in labels.items()})
-
-plt.title("Query Graph with Louvain Clusters")
-plt.show()
+fig.show()
