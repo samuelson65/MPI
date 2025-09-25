@@ -1,108 +1,82 @@
 import pandas as pd
 import networkx as nx
-import plotly.graph_objects as go
 
-def build_query_graph(result_df):
+def jaccard_similarity(set1, set2):
+    """Compute Jaccard similarity between two sets."""
+    if not set1 and not set2:
+        return 0.0
+    return len(set1 & set2) / len(set1 | set2)
+
+def overlap_coefficient(set1, set2):
+    """Compute Overlap Coefficient = |A ∩ B| / min(|A|, |B|)."""
+    if not set1 or not set2:
+        return 0.0
+    return len(set1 & set2) / min(len(set1), len(set2))
+
+def cluster_queries(result_df, threshold=0.8, metric="overlap"):
     """
-    Build a graph from clustered queries.
-    Each query is a node, and edges are drawn if queries belong to the same cluster.
+    Cluster queries based on claim overlap.
 
     Parameters
     ----------
     result_df : pd.DataFrame
-        Must have columns ["query_name", "cluster_id"]
+        Must contain ["query_name", "claim_id"]
+    threshold : float
+        Similarity threshold (default 0.8)
+    metric : str
+        "jaccard" or "overlap"
 
     Returns
     -------
-    G : networkx.Graph
-        Graph of queries connected within clusters
+    clustered_df : pd.DataFrame
+        ["query_name", "cluster_id"]
     """
 
+    # build dictionary: query_name -> set of claims
+    query_claims = result_df.groupby("query_name")["claim_id"].apply(set).to_dict()
+
+    # build graph of queries
     G = nx.Graph()
+    for q in query_claims.keys():
+        G.add_node(q)
 
-    # Add nodes with cluster info
-    for _, row in result_df.iterrows():
-        G.add_node(row["query_name"], cluster=row["cluster_id"])
+    queries = list(query_claims.keys())
+    for i in range(len(queries)):
+        for j in range(i+1, len(queries)):
+            q1, q2 = queries[i], queries[j]
+            set1, set2 = query_claims[q1], query_claims[q2]
 
-    # Add edges: connect all queries inside the same cluster
-    for cluster_id, group in result_df.groupby("cluster_id"):
-        queries = group["query_name"].tolist()
-        for i in range(len(queries)):
-            for j in range(i + 1, len(queries)):
-                G.add_edge(queries[i], queries[j], cluster=cluster_id)
+            if metric == "jaccard":
+                score = jaccard_similarity(set1, set2)
+            else:
+                score = overlap_coefficient(set1, set2)
 
-    return G
+            if score >= threshold:
+                G.add_edge(q1, q2, weight=score)
 
+    # connected components = clusters
+    clusters = list(nx.connected_components(G))
 
-def plot_query_graph(G):
-    """
-    Plot query graph using Plotly.
-    """
+    cluster_map = {}
+    for cluster_id, nodes in enumerate(clusters, start=1):
+        for q in nodes:
+            cluster_map[q] = cluster_id
 
-    pos = nx.spring_layout(G, seed=42)  # nice stable layout
-    edge_x, edge_y = [], []
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
+    clustered_df = pd.DataFrame([
+        {"query_name": q, "cluster_id": cluster_map[q]} for q in queries
+    ])
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=0.8, color="#888"),
-        hoverinfo="none",
-        mode="lines"
-    )
-
-    node_x, node_y, node_color, text = [], [], [], []
-    for node in G.nodes():
-        x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        node_color.append(G.nodes[node]["cluster"])
-        text.append(f"{node}<br>Cluster: {G.nodes[node]['cluster']}")
-
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode="markers+text",
-        text=[n for n in G.nodes()],
-        textposition="bottom center",
-        hovertext=text,
-        marker=dict(
-            showscale=True,
-            colorscale="Viridis",
-            color=node_color,
-            size=18,
-            colorbar=dict(
-                thickness=15,
-                title="Cluster ID",
-                xanchor="left",
-                titleside="right"
-            ),
-            line=dict(width=2, color="DarkSlateGrey")
-        )
-    )
-
-    fig = go.Figure(data=[edge_trace, node_trace],
-                    layout=go.Layout(
-                        title="Query Similarity Graph (Clustered)",
-                        title_x=0.5,
-                        showlegend=False,
-                        hovermode="closest",
-                        margin=dict(b=20, l=5, r=5, t=40)
-                    ))
-
-    fig.show()
+    return clustered_df
 
 
-# --------------------------
+# ------------------------------
 # 🔹 Example usage
 if __name__ == "__main__":
-    # Example clustering result_df
-    result_df = pd.DataFrame({
-        "query_name": ["A", "B", "C", "D", "E", "F"],
-        "cluster_id": [1, 1, 1, 2, 2, 3]
-    })
+    data = {
+        "query_name": ["A", "A", "B", "B", "C", "D", "D", "E"],
+        "claim_id":   [101, 102, 101, 103, 104, 105, 106, 105]
+    }
+    df = pd.DataFrame(data)
 
-    G = build_query_graph(result_df)
-    plot_query_graph(G)
+    clustered_df = cluster_queries(df, threshold=0.8, metric="overlap")
+    print(clustered_df)
