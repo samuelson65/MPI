@@ -1,153 +1,84 @@
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestClassifier
-import matplotlib.pyplot as plt
-import seaborn as sns
+import itertools
 
-def cluster_and_explain_drg(df, features):
-    """
-    This function preprocesses the data, performs K-Means clustering,
-    and returns an explained analysis of the resulting clusters.
+def compute_metrics(setA, setB):
+    """Compute symmetric and asymmetric metrics between two sets."""
+    A, B = set(setA), set(setB)
+    inter = A & B
+    union = A | B
+    a_len, b_len = len(A), len(B)
+    inter_len, union_len = len(inter), len(union)
 
-    Args:
-        df (pd.DataFrame): The input DataFrame containing DRG data.
-        features (list): A list of column names to be used for clustering.
+    jaccard = inter_len / union_len if union_len else 0.0
+    overlap = inter_len / min(a_len, b_len) if min(a_len, b_len) > 0 else 0.0
 
-    Returns:
-        pd.DataFrame: The original DataFrame with an added 'Cluster' column.
-        pd.DataFrame: A DataFrame with the cluster profiles (centroids).
-        pd.DataFrame: A DataFrame with feature importances for clustering.
-    """
-    print("--- Starting the Clustering Process ---")
+    contain_A_in_B = inter_len / a_len if a_len > 0 else 0.0
+    contain_B_in_A = inter_len / b_len if b_len > 0 else 0.0
 
-    # --- 1. Outlier Removal (using IQR method) ---
-    data_to_process = df[features].copy()
-    Q1 = data_to_process.quantile(0.25)
-    Q3 = data_to_process.quantile(0.75)
-    IQR = Q3 - Q1
-    
-    # Define bounds for outlier detection
-    lower_bound = Q1 - 1.5 * IQR
-    upper_bound = Q3 + 1.5 * IQR
-    
-    # Filter out outliers
-    initial_rows = len(data_to_process)
-    data_no_outliers = data_to_process[~((data_to_process < lower_bound) | (data_to_process > upper_bound)).any(axis=1)]
-    rows_removed = initial_rows - len(data_no_outliers)
-    print(f"Removed {rows_removed} rows identified as outliers.")
+    unique_count_A = len(A - B)
+    unique_frac_A = unique_count_A / a_len if a_len > 0 else 0.0
 
-    # --- 2. Data Standardization ---
-    scaler = StandardScaler()
-    data_scaled = scaler.fit_transform(data_no_outliers)
-    print("Data has been standardized (Mean=0, Std=1).")
-    
-    # --- 3. Find Optimal Number of Clusters (Elbow Method) ---
-    wcss = [] # Within-Cluster Sum of Squares
-    k_range = range(1, 11)
-    for i in k_range:
-        kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42, n_init='auto')
-        kmeans.fit(data_scaled)
-        wcss.append(kmeans.inertia_)
-        
-    # Plotting the elbow curve
-    plt.figure(figsize=(10, 6))
-    plt.plot(k_range, wcss, marker='o', linestyle='--')
-    plt.title('Elbow Method for Optimal K')
-    plt.xlabel('Number of Clusters (K)')
-    plt.ylabel('WCSS')
-    plt.grid(True)
-    plt.show()
+    unique_count_B = len(B - A)
+    unique_frac_B = unique_count_B / b_len if b_len > 0 else 0.0
 
-    # We typically choose the 'elbow' point. Let's ask the user or automate it.
-    optimal_k = int(input("Please enter the optimal number of clusters (K) based on the elbow plot: "))
-    
-    # --- 4. Perform K-Means Clustering ---
-    print(f"\nPerforming K-Means with K={optimal_k}...")
-    kmeans_final = KMeans(n_clusters=optimal_k, init='k-means++', random_state=42, n_init='auto')
-    clusters = kmeans_final.fit_predict(data_scaled)
-    
-    # Add cluster labels to the non-outlier data
-    data_no_outliers['Cluster'] = clusters
-    
-    # Map clusters back to the original DataFrame
-    df_clustered = df.copy()
-    df_clustered['Cluster'] = data_no_outliers['Cluster'] # This will be NaN for outliers
-
-    print(f"Clustering complete. Assigned {len(df_clustered.dropna())} DRGs to {optimal_k} clusters.")
-
-    # --- 5. Explainability ---
-    
-    # a) Cluster Profiles (Centroids)
-    centroids_scaled = kmeans_final.cluster_centers_
-    # Inverse transform to get centroids in the original scale
-    centroids_original = scaler.inverse_transform(centroids_scaled)
-    cluster_profiles = pd.DataFrame(centroids_original, columns=features)
-    cluster_profiles.index.name = 'Cluster'
-    
-    # Add cluster size to the profile
-    cluster_profiles['Size'] = data_no_outliers['Cluster'].value_counts()
-
-    print("\n--- Cluster Profiles (Centroids in Original Scale) ---")
-    print(cluster_profiles)
-    
-    # b) Feature Importance using a Random Forest
-    X = data_no_outliers[features]
-    y = data_no_outliers['Cluster']
-    
-    # Train a classifier to predict the cluster based on the features
-    rf = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf.fit(X, y)
-    
-    feature_importances = pd.DataFrame({
-        'Feature': features,
-        'Importance': rf.feature_importances_
-    }).sort_values(by='Importance', ascending=False)
-    
-    print("\n--- Feature Importance for Cluster Separation ---")
-    print(feature_importances)
-
-    # Visualize feature importances
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x='Importance', y='Feature', data=feature_importances, palette='viridis')
-    plt.title('Feature Importance for Clustering')
-    plt.tight_layout()
-    plt.show()
-
-    return df_clustered, cluster_profiles, feature_importances
-
-# --- Example Usage ---
-if __name__ == '__main__':
-    # 1. Create a sample DataFrame (replace this with your actual data)
-    # For example: df = pd.read_csv('your_drg_data.csv')
-    np.random.seed(42)
-    data = {
-        'drg_code': [f'DRG_{i}' for i in range(100)],
-        'Avg Op': np.random.normal(120, 40, 100).clip(20),
-        'Median probability score': np.random.uniform(0.6, 1.0, 100),
-        'claim volume': np.random.lognormal(8, 1.5, 100).astype(int) + 100,
-        'hitrate': np.random.uniform(0.7, 0.99, 100)
+    return {
+        "jaccard": jaccard,
+        "overlap_coeff": overlap,
+        "contain_A_in_B": contain_A_in_B,
+        "contain_B_in_A": contain_B_in_A,
+        "unique_count_A": unique_count_A,
+        "unique_frac_A": unique_frac_A,
+        "unique_count_B": unique_count_B,
+        "unique_frac_B": unique_frac_B
     }
-    # Add some outliers for demonstration
-    data['claim volume'][5] = 8000
-    data['Avg Op'][10] = 500
-    
-    drg_df = pd.DataFrame(data)
 
-    print("--- Sample Data Head ---")
-    print(drg_df.head())
-    print("\n")
+def recommend_action(metrics, thresh_jaccard=0.8, thresh_contain=0.99, thresh_unique=0.05):
+    """Provide recommendation based on thresholds."""
+    if metrics["contain_A_in_B"] >= thresh_contain and metrics["unique_count_A"] == 0:
+        return "A redundant (subset of B)"
+    if metrics["contain_B_in_A"] >= thresh_contain and metrics["unique_count_B"] == 0:
+        return "B redundant (subset of A)"
+    if metrics["jaccard"] >= thresh_jaccard and metrics["unique_frac_A"] <= thresh_unique:
+        return "Merge (A mostly covered by B)"
+    if metrics["jaccard"] >= thresh_jaccard and metrics["unique_frac_B"] <= thresh_unique:
+        return "Merge (B mostly covered by A)"
+    return "Keep separate"
 
-    # 2. Define the features for clustering
-    clustering_features = ['Avg Op', 'Median probability score', 'claim volume', 'hitrate']
+def query_similarity(df, thresh_jaccard=0.8, thresh_contain=0.99, thresh_unique=0.05):
+    """
+    Input: df with columns [query_name, claim_id]
+    Output: pairwise similarity dataframe with metrics + recommendation
+    """
+    # group claims per query
+    query_claims = df.groupby("query_name")["claim_id"].apply(set).to_dict()
 
-    # 3. Run the clustering and explanation function
-    clustered_df, profiles, importances = cluster_and_explain_drg(drg_df, clustering_features)
-    
-    # 4. Inspect the final DataFrame with cluster assignments
-    print("\n--- Final DataFrame with Cluster Labels ---")
-    print(clustered_df.head(10))
-    print("\n--- DRGs per cluster ---")
-    print(clustered_df['Cluster'].value_counts())
+    results = []
+    for (q1, claims1), (q2, claims2) in itertools.combinations(query_claims.items(), 2):
+        metrics = compute_metrics(claims1, claims2)
+        rec = recommend_action(metrics, thresh_jaccard, thresh_contain, thresh_unique)
+        results.append({
+            "Query_A": q1,
+            "Query_B": q2,
+            **metrics,
+            "Recommendation": rec
+        })
 
+    return pd.DataFrame(results)
+
+
+# -------------------------------
+# 🔹 Example usage
+if __name__ == "__main__":
+    # Example toy data
+    data = [
+        ("A", "C1"), ("A", "C2"), ("A", "C3"),
+        ("B", "C1"), ("B", "C2"), ("B", "C3"), ("B", "C4"),
+        ("C", "C5"), ("C", "C6"),
+        ("D", "C2"), ("D", "C3")
+    ]
+    df = pd.DataFrame(data, columns=["query_name", "claim_id"])
+
+    results_df = query_similarity(df)
+
+    print("\nPairwise Query Similarity:")
+    print(results_df)
