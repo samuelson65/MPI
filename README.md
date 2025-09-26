@@ -79,29 +79,48 @@ def generate_counterfactual(top_pos, top_neg, pred_prob, threshold=0.5):
 # =========================
 # Similarity-based Explanation
 # =========================
-def generate_similarity_explanations(X, pred_proba, top_k=1):
-    sim_matrix = cosine_similarity(X)
+def generate_similarity_explanations(input_df, top_k=1):
+    # Select only numeric columns for similarity
+    numeric_cols = input_df.select_dtypes(include=[np.number]).columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c not in ["probabilityscore"]]  # exclude prob itself
+
+    if not numeric_cols:  # if no numeric features, fallback
+        return ["No numeric features available for similarity analysis."] * len(input_df)
+
+    X_num = input_df[numeric_cols].fillna(0).values
+    sim_matrix = cosine_similarity(X_num)
+
     explanations = []
-    for i in range(len(X)):
+    for i in range(len(input_df)):
         sims = list(enumerate(sim_matrix[i]))
         sims = sorted(sims, key=lambda x: -x[1])
         sims = [j for j in sims if j[0] != i]
-        nearest_idx = sims[0][0]
-        explanations.append(f"This claim is most similar to claim {nearest_idx} (predicted probability {pred_proba[nearest_idx]:.2f}).")
+
+        top_matches = sims[:top_k]
+        phrases = []
+        for idx, score in top_matches:
+            pk_match = input_df.iloc[idx]["pk"]
+            prob_match = input_df.iloc[idx]["probabilityscore"]
+            phrases.append(f"claim {pk_match} (prob {prob_match:.2f})")
+
+        explanations.append(f"This claim is most similar to {', '.join(phrases)}.")
     return explanations
 
 # =========================
 # Main Processor
 # =========================
-def generate_explanations(shap_df, X, pred_proba, threshold=0.5, top_n=3):
+def generate_explanations(shap_df, input_df, threshold=0.5, top_n=3, top_k_sim=1):
     clinical_summaries = []
     patient_summaries = []
     counterfactuals = []
 
-    for i in range(len(X)):
+    # Features (exclude pk + probabilityscore)
+    feature_cols = [c for c in input_df.columns if c not in ["pk", "probabilityscore"]]
+
+    for i in range(len(input_df)):
         shap_row = shap_df.iloc[i]
-        feature_row = X.iloc[i]
-        prob = pred_proba[i]
+        feature_row = input_df[feature_cols].iloc[i]
+        prob = input_df.iloc[i]["probabilityscore"]
 
         top_pos, top_neg = explain_shap_row(shap_row, feature_row, top_n=top_n)
 
@@ -113,23 +132,38 @@ def generate_explanations(shap_df, X, pred_proba, threshold=0.5, top_n=3):
         patient_summaries.append(patient)
         counterfactuals.append(counterf)
 
-    similarity_summaries = generate_similarity_explanations(X, pred_proba)
+    similarity_summaries = generate_similarity_explanations(input_df, top_k=top_k_sim)
 
-    X_out = X.copy()
-    X_out['clinical_summary'] = clinical_summaries
-    X_out['patient_summary'] = patient_summaries
-    X_out['counterfactual_summary'] = counterfactuals
-    X_out['similarity_summary'] = similarity_summaries
-    return X_out
+    # Attach results
+    result_df = input_df.copy()
+    result_df["clinical_summary"] = clinical_summaries
+    result_df["patient_summary"] = patient_summaries
+    result_df["counterfactual_summary"] = counterfactuals
+    result_df["similarity_summary"] = similarity_summaries
+    return result_df
 
 # =========================
 # Example Usage
 # =========================
 if __name__ == "__main__":
-    # Example dummy data
-    shap_df = pd.DataFrame([[0.2, -0.1, 0.05], [-0.3, 0.2, -0.05]], columns=["age", "comorbidity", "length_of_stay"])
-    X = pd.DataFrame([[65, 2, 5], [45, 0, 2]], columns=["age", "comorbidity", "length_of_stay"])
-    pred_proba = [0.75, 0.35]
+    # Example shap values
+    shap_df = pd.DataFrame(
+        [[0.2, -0.1, 0.05], [-0.3, 0.2, -0.05]],
+        columns=["age", "comorbidity", "length_of_stay"]
+    )
 
-    result_df = generate_explanations(shap_df, X, pred_proba)
-    print(result_df[['clinical_summary','patient_summary','counterfactual_summary','similarity_summary']])
+    # Input data with pk, probabilityscore, numeric + categorical features
+    input_df = pd.DataFrame(
+        {
+            "pk": [101, 102],
+            "probabilityscore": [0.75, 0.35],
+            "age": [65, 45],
+            "comorbidity": [2, 0],
+            "length_of_stay": [5, 2],
+            "diagnosis": ["Diabetes", "Hypertension"],   # string feature
+            "gender": ["M", "F"]                        # string feature
+        }
+    )
+
+    result_df = generate_explanations(shap_df, input_df, top_k_sim=2)
+    print(result_df[["pk", "probabilityscore", "clinical_summary", "patient_summary", "counterfactual_summary", "similarity_summary"]])
