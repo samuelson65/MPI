@@ -1,128 +1,135 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-def explain_claim(shap_row, feature_row, pred_prob, X_all, top_n_neighbors=3):
-    """
-    Generate explanations for a single claim.
+# =========================
+# SHAP Explanation Helpers
+# =========================
+def explain_shap_row(shap_row, feature_row, top_n=3):
+    contribs = list(zip(shap_row.index, shap_row.values, feature_row.values))
+    contribs.sort(key=lambda x: abs(x[1]), reverse=True)
+    top_pos = [(f, v) for f, s, v in contribs if s > 0][:top_n]
+    top_neg = [(f, v) for f, s, v in contribs if s < 0][:top_n]
+    return top_pos, top_neg
 
-    Inputs:
-    - shap_row: array-like of SHAP values for this claim (1D, len = features)
-    - feature_row: pandas Series or dict of feature values for this claim
-    - pred_prob: predicted probability of being flagged (float, 0–1)
-    - X_all: DataFrame of all claims' features (for peer comparison)
-    - top_n_neighbors: number of nearest neighbors for similarity
-
-    Returns:
-    - dict with 'narrative', 'counterfactual', 'peer' explanations
-    """
-    
-    # Ensure feature_row is a Series
-    if isinstance(feature_row, dict):
-        feature_row = pd.Series(feature_row)
-    
-    feature_names = feature_row.index.tolist()
-    shap_row = np.array(shap_row)
-
-    explanations = {}
-
-    # ======================
-    # 1. SHAP Narrative
-    # ======================
-    top_idx = np.argsort(np.abs(shap_row))[::-1][:2]  # top 2 drivers
-    parts = []
-    
-    for idx in top_idx:
-        feat = feature_names[idx]
-        val = feature_row.iloc[idx]
-        if shap_row[idx] > 0:
-            parts.append(f"{feat.replace('_',' ')} is unusually high ({val}), increasing risk.")
+def format_feature_phrases(features, direction="elevated", plain=False):
+    phrases = []
+    for name, val in features:
+        name_clean = name.replace("_", " ").capitalize()
+        if plain:
+            phr = f"{name_clean} is {direction} (value: {val})"
         else:
-            parts.append(f"{feat.replace('_',' ')} looks typical ({val}), lowering concern.")
-    
-    narrative = " ".join(parts)
-    explanations["narrative"] = (
-        f"The model predicts this claim has a {pred_prob:.0%} chance of being flagged. {narrative}"
-    )
+            phr = f"{name_clean} being {direction} ({val})"
+        phrases.append(phr)
+    return phrases
 
-    # ======================
-    # 2. Counterfactual
-    # ======================
-    top_idx = np.argsort(np.abs(shap_row))[::-1][:1]  # strongest feature
-    feat = feature_names[top_idx[0]]
-    val = feature_row.iloc[top_idx[0]]
-    
-    if shap_row[top_idx[0]] > 0:
-        counterfactual = (
-            f"If the {feat.replace('_',' ')} were closer to typical values instead of {val}, "
-            f"this claim would appear more routine."
-        )
+# =========================
+# Clinical Explanation
+# =========================
+def generate_clinical_summary(top_pos, top_neg, pred_prob, threshold=0.5):
+    summary = []
+    if pred_prob > threshold + 0.1:
+        summary.append(f"High risk (p={pred_prob:.2f}).")
+    elif pred_prob <= threshold - 0.1:
+        summary.append(f"Low risk (p={pred_prob:.2f}).")
     else:
-        counterfactual = (
-            f"Even if the {feat.replace('_',' ')} were different, it wouldn’t change much — "
-            f"the claim already looks fairly normal."
-        )
-    
-    explanations["counterfactual"] = counterfactual
+        summary.append(f"Moderate risk (p={pred_prob:.2f}).")
 
-    # ======================
-    # 3. Peer Explanation
-    # ======================
-    claim_idx = feature_row.name if feature_row.name in X_all.index else None
-    
-    if claim_idx is not None:
-        sims = cosine_similarity(feature_row.values.reshape(1, -1), X_all.values)[0]
-        neighbor_ids = sims.argsort()[::-1][1:top_n_neighbors+1]
-        neighbors = X_all.iloc[neighbor_ids]
-        
-        # Pick two numeric columns for comparison
-        numeric_cols = X_all.select_dtypes(include=np.number).columns
-        peer_parts = []
-        for col in numeric_cols[:2]:  # first 2 numeric cols
-            avg_val = neighbors[col].mean()
-            peer_parts.append(
-                f"Similar claims usually had {col.replace('_',' ')} around {avg_val:.1f}, "
-                f"but this claim had {feature_row[col]}."
-            )
-        
-        peer_expl = " ".join(peer_parts)
+    if top_pos:
+        summary.append("Top contributors: " + ", ".join(format_feature_phrases(top_pos, "elevated")) + ".")
+    if top_neg:
+        summary.append("Protective factors: " + ", ".join(format_feature_phrases(top_neg, "low")) + ".")
+    return " ".join(summary)
+
+# =========================
+# Layman Explanation
+# =========================
+def generate_layman_summary(top_pos, top_neg, pred_prob, threshold=0.5):
+    summary = []
+    if pred_prob > threshold + 0.1:
+        summary.append(f"Your risk is high (about {int(pred_prob*100)}%).")
+    elif pred_prob < threshold - 0.1:
+        summary.append(f"Your chance of risk is low (around {int(pred_prob*100)}%).")
     else:
-        peer_expl = "Peer comparison not available (index mismatch)."
-    
-    explanations["peer"] = peer_expl
+        summary.append(f"You have a moderate chance (around {int(pred_prob*100)}%).")
 
+    if top_pos:
+        summary.append("This is mainly due to " + ", ".join(format_feature_phrases(top_pos, "high", plain=True)) + ".")
+    if top_neg:
+        summary.append("On the positive side, factors like " + ", ".join(format_feature_phrases(top_neg, "low", plain=True)) + " help reduce the risk.")
+    return " ".join(summary)
+
+# =========================
+# Counterfactual Explanation
+# =========================
+def generate_counterfactual(top_pos, top_neg, pred_prob, threshold=0.5):
+    summary = []
+    if pred_prob > threshold:
+        if top_neg:
+            summary.append("If protective factors like " + ", ".join([f for f, _ in top_neg]) + " were stronger, the claim could have been classified as lower risk.")
+        else:
+            summary.append("If one or more top contributing factors were reduced, this claim might shift to lower risk.")
+    else:
+        if top_pos:
+            summary.append("If factors such as " + ", ".join([f for f, _ in top_pos]) + " were higher, the claim might move towards higher risk.")
+        else:
+            summary.append("With stronger negative signals, this claim could shift upward in risk.")
+    return " ".join(summary)
+
+# =========================
+# Similarity-based Explanation
+# =========================
+def generate_similarity_explanations(X, pred_proba, top_k=1):
+    sim_matrix = cosine_similarity(X)
+    explanations = []
+    for i in range(len(X)):
+        sims = list(enumerate(sim_matrix[i]))
+        sims = sorted(sims, key=lambda x: -x[1])
+        sims = [j for j in sims if j[0] != i]
+        nearest_idx = sims[0][0]
+        explanations.append(f"This claim is most similar to claim {nearest_idx} (predicted probability {pred_proba[nearest_idx]:.2f}).")
     return explanations
 
+# =========================
+# Main Processor
+# =========================
+def generate_explanations(shap_df, X, pred_proba, threshold=0.5, top_n=3):
+    clinical_summaries = []
+    patient_summaries = []
+    counterfactuals = []
 
-# ======================
-# Example usage
-# ======================
+    for i in range(len(X)):
+        shap_row = shap_df.iloc[i]
+        feature_row = X.iloc[i]
+        prob = pred_proba[i]
+
+        top_pos, top_neg = explain_shap_row(shap_row, feature_row, top_n=top_n)
+
+        clinical = generate_clinical_summary(top_pos, top_neg, prob, threshold)
+        patient = generate_layman_summary(top_pos, top_neg, prob, threshold)
+        counterf = generate_counterfactual(top_pos, top_neg, prob, threshold)
+
+        clinical_summaries.append(clinical)
+        patient_summaries.append(patient)
+        counterfactuals.append(counterf)
+
+    similarity_summaries = generate_similarity_explanations(X, pred_proba)
+
+    X_out = X.copy()
+    X_out['clinical_summary'] = clinical_summaries
+    X_out['patient_summary'] = patient_summaries
+    X_out['counterfactual_summary'] = counterfactuals
+    X_out['similarity_summary'] = similarity_summaries
+    return X_out
+
+# =========================
+# Example Usage
+# =========================
 if __name__ == "__main__":
-    # Example SHAP values for one claim (4 features)
-    shap_row = np.array([0.2, -0.1, 0.5, 0.3])
-    
-    # Example claim feature values
-    feature_row = pd.Series({
-        "length_of_stay": 12,
-        "total_charges": 20000,
-        "diagnosis_code": 2,
-        "procedure_code": 5
-    }, name=2)
-    
-    # Example predicted probability
-    pred_prob = 0.87
-    
-    # Example dataset for similarity lookup
-    X_all = pd.DataFrame({
-        "length_of_stay": [5, 7, 12, 3, 15, 6],
-        "total_charges": [5000, 7000, 20000, 4000, 25000, 6000],
-        "diagnosis_code": [1, 1, 2, 2, 3, 3],
-        "procedure_code": [5, 4, 5, 6, 4, 6]
-    })
-    
-    # Run explanation
-    explanations = explain_claim(shap_row, feature_row, pred_prob, X_all)
-    
-    print("🔎 Narrative:", explanations["narrative"])
-    print("💡 Counterfactual:", explanations["counterfactual"])
-    print("📊 Peer:", explanations["peer"])
+    # Example dummy data
+    shap_df = pd.DataFrame([[0.2, -0.1, 0.05], [-0.3, 0.2, -0.05]], columns=["age", "comorbidity", "length_of_stay"])
+    X = pd.DataFrame([[65, 2, 5], [45, 0, 2]], columns=["age", "comorbidity", "length_of_stay"])
+    pred_proba = [0.75, 0.35]
+
+    result_df = generate_explanations(shap_df, X, pred_proba)
+    print(result_df[['clinical_summary','patient_summary','counterfactual_summary','similarity_summary']])
