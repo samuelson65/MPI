@@ -1,82 +1,96 @@
+import numpy as np
 import pandas as pd
-import networkx as nx
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics.pairwise import cosine_similarity
+import shap
 
-def jaccard_similarity(set1, set2):
-    """Compute Jaccard similarity between two sets."""
-    if not set1 and not set2:
-        return 0.0
-    return len(set1 & set2) / len(set1 | set2)
+# =============================
+# 1. Train sample model
+# =============================
 
-def overlap_coefficient(set1, set2):
-    """Compute Overlap Coefficient = |A ∩ B| / min(|A|, |B|)."""
-    if not set1 or not set2:
-        return 0.0
-    return len(set1 & set2) / min(len(set1), len(set2))
+# Example dataset (replace with Medicare claims data)
+df = pd.DataFrame({
+    "diagnosis_code": [1, 1, 2, 2, 3, 3],
+    "procedure_code": [5, 4, 5, 6, 4, 6],
+    "length_of_stay": [5, 7, 12, 3, 15, 6],
+    "total_charges": [5000, 7000, 20000, 4000, 25000, 6000],
+    "flagged": [0, 0, 1, 0, 1, 0]  # 1 = suspicious claim
+})
 
-def cluster_queries(result_df, threshold=0.8, metric="overlap"):
-    """
-    Cluster queries based on claim overlap.
+X = df.drop(columns=["flagged"])
+y = df["flagged"]
 
-    Parameters
-    ----------
-    result_df : pd.DataFrame
-        Must contain ["query_name", "claim_id"]
-    threshold : float
-        Similarity threshold (default 0.8)
-    metric : str
-        "jaccard" or "overlap"
+# Train simple model
+model = RandomForestClassifier(random_state=42)
+model.fit(X, y)
 
-    Returns
-    -------
-    clustered_df : pd.DataFrame
-        ["query_name", "cluster_id"]
-    """
+# SHAP explainer
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X)[1]  # focus on "flagged=1" class
 
-    # build dictionary: query_name -> set of claims
-    query_claims = result_df.groupby("query_name")["claim_id"].apply(set).to_dict()
+# =============================
+# 2. Explanations
+# =============================
 
-    # build graph of queries
-    G = nx.Graph()
-    for q in query_claims.keys():
-        G.add_node(q)
+def shap_nlg_explanation(claim_id, feature_names, shap_values, X):
+    """Generate layman explanation using SHAP."""
+    values = shap_values[claim_id]
+    features = X.iloc[claim_id]
 
-    queries = list(query_claims.keys())
-    for i in range(len(queries)):
-        for j in range(i+1, len(queries)):
-            q1, q2 = queries[i], queries[j]
-            set1, set2 = query_claims[q1], query_claims[q2]
+    # Top 2 important features
+    top_idx = np.argsort(np.abs(values))[::-1][:2]
+    explanations = []
 
-            if metric == "jaccard":
-                score = jaccard_similarity(set1, set2)
-            else:
-                score = overlap_coefficient(set1, set2)
+    for idx in top_idx:
+        feat = feature_names[idx]
+        val = features.iloc[idx]
 
-            if score >= threshold:
-                G.add_edge(q1, q2, weight=score)
+        if values[idx] > 0:
+            explanations.append(f"{feat.replace('_',' ')} is unusually high ({val}), increasing risk.")
+        else:
+            explanations.append(f"{feat.replace('_',' ')} looks typical ({val}), lowering concern.")
 
-    # connected components = clusters
-    clusters = list(nx.connected_components(G))
+    return " ".join(explanations)
 
-    cluster_map = {}
-    for cluster_id, nodes in enumerate(clusters, start=1):
-        for q in nodes:
-            cluster_map[q] = cluster_id
+def counterfactual_explanation(claim_id, feature_names, shap_values, X):
+    """Suggest how the claim could look more normal."""
+    values = shap_values[claim_id]
+    features = X.iloc[claim_id]
+    top_idx = np.argsort(np.abs(values))[::-1][:1]  # strongest feature
 
-    clustered_df = pd.DataFrame([
-        {"query_name": q, "cluster_id": cluster_map[q]} for q in queries
-    ])
+    feat = feature_names[top_idx[0]]
+    val = features.iloc[top_idx[0]]
 
-    return clustered_df
+    if values[top_idx[0]] > 0:
+        return f"If the {feat.replace('_',' ')} were closer to typical values instead of {val}, this claim would appear more routine."
+    else:
+        return f"Even if the {feat.replace('_',' ')} were different, it wouldn’t change much — the claim already looks fairly normal."
 
+def peer_explanation(claim_id, X, df, top_n=3):
+    """Compare claim to nearest neighbors."""
+    sims = cosine_similarity(X.iloc[claim_id].values.reshape(1, -1), X)[0]
+    neighbor_ids = sims.argsort()[::-1][1:top_n+1]
+    neighbors = df.iloc[neighbor_ids]
 
-# ------------------------------
-# 🔹 Example usage
-if __name__ == "__main__":
-    data = {
-        "query_name": ["A", "A", "B", "B", "C", "D", "D", "E"],
-        "claim_id":   [101, 102, 101, 103, 104, 105, 106, 105]
-    }
-    df = pd.DataFrame(data)
+    claim = df.iloc[claim_id]
+    avg_los = neighbors["length_of_stay"].mean()
+    avg_charge = neighbors["total_charges"].mean()
 
-    clustered_df = cluster_queries(df, threshold=0.8, metric="overlap")
-    print(clustered_df)
+    return (
+        f"Similar claims usually had a hospital stay of {avg_los:.1f} days "
+        f"and charges around ${avg_charge:,.0f}. "
+        f"This claim had {claim['length_of_stay']} days and charges of ${claim['total_charges']:,.0f}, "
+        f"which makes it stand out from its peers."
+    )
+
+# =============================
+# 3. Run explanations for one claim
+# =============================
+claim_id = 2  # example claim index
+
+print("🔎 SHAP Narrative:")
+print(shap_nlg_explanation(claim_id, X.columns, shap_values, X))
+print("\n💡 Counterfactual:")
+print(counterfactual_explanation(claim_id, X.columns, shap_values, X))
+print("\n📊 Peer Comparison:")
+print(peer_explanation(claim_id, X, df))
