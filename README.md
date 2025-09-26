@@ -1,96 +1,128 @@
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics.pairwise import cosine_similarity
-import shap
 
-# =============================
-# 1. Train sample model
-# =============================
+def explain_claim(shap_row, feature_row, pred_prob, X_all, top_n_neighbors=3):
+    """
+    Generate explanations for a single claim.
 
-# Example dataset (replace with Medicare claims data)
-df = pd.DataFrame({
-    "diagnosis_code": [1, 1, 2, 2, 3, 3],
-    "procedure_code": [5, 4, 5, 6, 4, 6],
-    "length_of_stay": [5, 7, 12, 3, 15, 6],
-    "total_charges": [5000, 7000, 20000, 4000, 25000, 6000],
-    "flagged": [0, 0, 1, 0, 1, 0]  # 1 = suspicious claim
-})
+    Inputs:
+    - shap_row: array-like of SHAP values for this claim (1D, len = features)
+    - feature_row: pandas Series or dict of feature values for this claim
+    - pred_prob: predicted probability of being flagged (float, 0–1)
+    - X_all: DataFrame of all claims' features (for peer comparison)
+    - top_n_neighbors: number of nearest neighbors for similarity
 
-X = df.drop(columns=["flagged"])
-y = df["flagged"]
+    Returns:
+    - dict with 'narrative', 'counterfactual', 'peer' explanations
+    """
+    
+    # Ensure feature_row is a Series
+    if isinstance(feature_row, dict):
+        feature_row = pd.Series(feature_row)
+    
+    feature_names = feature_row.index.tolist()
+    shap_row = np.array(shap_row)
 
-# Train simple model
-model = RandomForestClassifier(random_state=42)
-model.fit(X, y)
+    explanations = {}
 
-# SHAP explainer
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X)[1]  # focus on "flagged=1" class
-
-# =============================
-# 2. Explanations
-# =============================
-
-def shap_nlg_explanation(claim_id, feature_names, shap_values, X):
-    """Generate layman explanation using SHAP."""
-    values = shap_values[claim_id]
-    features = X.iloc[claim_id]
-
-    # Top 2 important features
-    top_idx = np.argsort(np.abs(values))[::-1][:2]
-    explanations = []
-
+    # ======================
+    # 1. SHAP Narrative
+    # ======================
+    top_idx = np.argsort(np.abs(shap_row))[::-1][:2]  # top 2 drivers
+    parts = []
+    
     for idx in top_idx:
         feat = feature_names[idx]
-        val = features.iloc[idx]
-
-        if values[idx] > 0:
-            explanations.append(f"{feat.replace('_',' ')} is unusually high ({val}), increasing risk.")
+        val = feature_row.iloc[idx]
+        if shap_row[idx] > 0:
+            parts.append(f"{feat.replace('_',' ')} is unusually high ({val}), increasing risk.")
         else:
-            explanations.append(f"{feat.replace('_',' ')} looks typical ({val}), lowering concern.")
-
-    return " ".join(explanations)
-
-def counterfactual_explanation(claim_id, feature_names, shap_values, X):
-    """Suggest how the claim could look more normal."""
-    values = shap_values[claim_id]
-    features = X.iloc[claim_id]
-    top_idx = np.argsort(np.abs(values))[::-1][:1]  # strongest feature
-
-    feat = feature_names[top_idx[0]]
-    val = features.iloc[top_idx[0]]
-
-    if values[top_idx[0]] > 0:
-        return f"If the {feat.replace('_',' ')} were closer to typical values instead of {val}, this claim would appear more routine."
-    else:
-        return f"Even if the {feat.replace('_',' ')} were different, it wouldn’t change much — the claim already looks fairly normal."
-
-def peer_explanation(claim_id, X, df, top_n=3):
-    """Compare claim to nearest neighbors."""
-    sims = cosine_similarity(X.iloc[claim_id].values.reshape(1, -1), X)[0]
-    neighbor_ids = sims.argsort()[::-1][1:top_n+1]
-    neighbors = df.iloc[neighbor_ids]
-
-    claim = df.iloc[claim_id]
-    avg_los = neighbors["length_of_stay"].mean()
-    avg_charge = neighbors["total_charges"].mean()
-
-    return (
-        f"Similar claims usually had a hospital stay of {avg_los:.1f} days "
-        f"and charges around ${avg_charge:,.0f}. "
-        f"This claim had {claim['length_of_stay']} days and charges of ${claim['total_charges']:,.0f}, "
-        f"which makes it stand out from its peers."
+            parts.append(f"{feat.replace('_',' ')} looks typical ({val}), lowering concern.")
+    
+    narrative = " ".join(parts)
+    explanations["narrative"] = (
+        f"The model predicts this claim has a {pred_prob:.0%} chance of being flagged. {narrative}"
     )
 
-# =============================
-# 3. Run explanations for one claim
-# =============================
-claim_id = 2  # example claim index
+    # ======================
+    # 2. Counterfactual
+    # ======================
+    top_idx = np.argsort(np.abs(shap_row))[::-1][:1]  # strongest feature
+    feat = feature_names[top_idx[0]]
+    val = feature_row.iloc[top_idx[0]]
+    
+    if shap_row[top_idx[0]] > 0:
+        counterfactual = (
+            f"If the {feat.replace('_',' ')} were closer to typical values instead of {val}, "
+            f"this claim would appear more routine."
+        )
+    else:
+        counterfactual = (
+            f"Even if the {feat.replace('_',' ')} were different, it wouldn’t change much — "
+            f"the claim already looks fairly normal."
+        )
+    
+    explanations["counterfactual"] = counterfactual
 
-print("🔎 SHAP Narrative:")
-print(shap_nlg_explanation(claim_id, X.columns, shap_values, X))
-print("\n💡 Counterfactual:")
-print(counterfactual_explanation(claim_id, X.columns, shap_values, X))
-print("\n📊 Peer Comparison:")
-print(peer_explanation(claim_id, X, df))
+    # ======================
+    # 3. Peer Explanation
+    # ======================
+    claim_idx = feature_row.name if feature_row.name in X_all.index else None
+    
+    if claim_idx is not None:
+        sims = cosine_similarity(feature_row.values.reshape(1, -1), X_all.values)[0]
+        neighbor_ids = sims.argsort()[::-1][1:top_n_neighbors+1]
+        neighbors = X_all.iloc[neighbor_ids]
+        
+        # Pick two numeric columns for comparison
+        numeric_cols = X_all.select_dtypes(include=np.number).columns
+        peer_parts = []
+        for col in numeric_cols[:2]:  # first 2 numeric cols
+            avg_val = neighbors[col].mean()
+            peer_parts.append(
+                f"Similar claims usually had {col.replace('_',' ')} around {avg_val:.1f}, "
+                f"but this claim had {feature_row[col]}."
+            )
+        
+        peer_expl = " ".join(peer_parts)
+    else:
+        peer_expl = "Peer comparison not available (index mismatch)."
+    
+    explanations["peer"] = peer_expl
+
+    return explanations
+
+
+# ======================
+# Example usage
+# ======================
+if __name__ == "__main__":
+    # Example SHAP values for one claim (4 features)
+    shap_row = np.array([0.2, -0.1, 0.5, 0.3])
+    
+    # Example claim feature values
+    feature_row = pd.Series({
+        "length_of_stay": 12,
+        "total_charges": 20000,
+        "diagnosis_code": 2,
+        "procedure_code": 5
+    }, name=2)
+    
+    # Example predicted probability
+    pred_prob = 0.87
+    
+    # Example dataset for similarity lookup
+    X_all = pd.DataFrame({
+        "length_of_stay": [5, 7, 12, 3, 15, 6],
+        "total_charges": [5000, 7000, 20000, 4000, 25000, 6000],
+        "diagnosis_code": [1, 1, 2, 2, 3, 3],
+        "procedure_code": [5, 4, 5, 6, 4, 6]
+    })
+    
+    # Run explanation
+    explanations = explain_claim(shap_row, feature_row, pred_prob, X_all)
+    
+    print("🔎 Narrative:", explanations["narrative"])
+    print("💡 Counterfactual:", explanations["counterfactual"])
+    print("📊 Peer:", explanations["peer"])
