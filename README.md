@@ -2,91 +2,83 @@ import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-# =========================
-# SHAP Explanation Helpers
-# =========================
+# ---------- SHAP Explanation Helpers ----------
+
 def explain_shap_row(shap_row, feature_row, top_n=3):
+    """Extract top positive and negative contributors"""
     contribs = list(zip(shap_row.index, shap_row.values, feature_row.values))
     contribs.sort(key=lambda x: abs(x[1]), reverse=True)
-    top_pos = [(f, v) for f, s, v in contribs if s > 0][:top_n]
-    top_neg = [(f, v) for f, s, v in contribs if s < 0][:top_n]
+    top_pos = [(f, v, val) for f, v, val in contribs if v > 0][:top_n]
+    top_neg = [(f, v, val) for f, v, val in contribs if v < 0][:top_n]
     return top_pos, top_neg
 
-def format_feature_phrases(features, direction="elevated", plain=False):
-    phrases = []
-    for name, val in features:
-        name_clean = name.replace("_", " ").capitalize()
-        if plain:
-            phr = f"{name_clean} is {direction} (value: {val})"
-        else:
-            phr = f"{name_clean} being {direction} ({val})"
-        phrases.append(phr)
-    return phrases
 
-# =========================
-# Clinical Explanation
-# =========================
-def generate_clinical_summary(top_pos, top_neg, pred_prob, threshold=0.5):
-    summary = []
-    if pred_prob > threshold + 0.1:
-        summary.append(f"High risk (p={pred_prob:.2f}).")
-    elif pred_prob <= threshold - 0.1:
-        summary.append(f"Low risk (p={pred_prob:.2f}).")
-    else:
-        summary.append(f"Moderate risk (p={pred_prob:.2f}).")
-
-    if top_pos:
-        summary.append("Top contributors: " + ", ".join(format_feature_phrases(top_pos, "elevated")) + ".")
-    if top_neg:
-        summary.append("Protective factors: " + ", ".join(format_feature_phrases(top_neg, "low")) + ".")
-    return " ".join(summary)
-
-# =========================
-# Layman Explanation
-# =========================
 def generate_layman_summary(top_pos, top_neg, pred_prob, threshold=0.5):
+    """Generate natural language explanation for layman"""
     summary = []
     if pred_prob > threshold + 0.1:
-        summary.append(f"Your risk is high (about {int(pred_prob*100)}%).")
+        summary.append(
+            f"Your claim has a high chance of being flagged (about {int(pred_prob*100)}%)."
+        )
     elif pred_prob < threshold - 0.1:
-        summary.append(f"Your chance of risk is low (around {int(pred_prob*100)}%).")
+        summary.append(
+            f"Your claim has a low chance of being flagged (around {int(pred_prob*100)}%)."
+        )
     else:
-        summary.append(f"You have a moderate chance (around {int(pred_prob*100)}%).")
+        summary.append(
+            f"Your claim has a moderate chance of being flagged (around {int(pred_prob*100)}%)."
+        )
 
     if top_pos:
-        summary.append("This is mainly due to " + ", ".join(format_feature_phrases(top_pos, "high", plain=True)) + ".")
+        pos_feats = ", ".join([f"{f} being high" for f, _, val in top_pos])
+        summary.append(f"This is mainly due to {pos_feats}.")
     if top_neg:
-        summary.append("On the positive side, factors like " + ", ".join(format_feature_phrases(top_neg, "low", plain=True)) + " help reduce the risk.")
+        neg_feats = ", ".join([f"{f} being low" for f, _, val in top_neg])
+        summary.append(f"On the positive side, factors like {neg_feats} reduce your risk.")
+
     return " ".join(summary)
 
-# =========================
-# Counterfactual Explanation
-# =========================
-def generate_counterfactual(top_pos, top_neg, pred_prob, threshold=0.5):
+
+def generate_counterfactual_summary(top_pos, top_neg, pred_prob, threshold=0.5):
+    """Suggest counterfactual: what needs to change"""
     summary = []
-    if pred_prob > threshold:
-        if top_neg:
-            summary.append("If protective factors like " + ", ".join([f for f, _ in top_neg]) + " were stronger, the claim could have been classified as lower risk.")
-        else:
-            summary.append("If one or more top contributing factors were reduced, this claim might shift to lower risk.")
-    else:
+    if pred_prob > threshold + 0.1:
+        summary.append("To reduce the chance of being flagged, changes could include:")
         if top_pos:
-            summary.append("If factors such as " + ", ".join([f for f, _ in top_pos]) + " were higher, the claim might move towards higher risk.")
-        else:
-            summary.append("With stronger negative signals, this claim could shift upward in risk.")
+            for f, _, val in top_pos:
+                summary.append(f"- Lowering {f} (currently {val})")
+    elif pred_prob < threshold - 0.1:
+        summary.append("Your claim is safe, but risk could rise if:")
+        if top_neg:
+            for f, _, val in top_neg:
+                summary.append(f"- {f} were higher (currently {val})")
+    else:
+        summary.append("Small changes could shift this claim either way.")
+        if top_pos:
+            summary.append(
+                f"For example, lowering {top_pos[0][0]} could reduce risk further."
+            )
+        if top_neg:
+            summary.append(
+                f"Whereas increasing {top_neg[0][0]} could make the claim more risky."
+            )
+
     return " ".join(summary)
 
-# =========================
-# Similarity-based Explanation
-# =========================
-def generate_similarity_explanations(input_df, top_k=1):
-    # Select only numeric columns for similarity
-    numeric_cols = input_df.select_dtypes(include=[np.number]).columns.tolist()
-    numeric_cols = [c for c in numeric_cols if c not in ["probabilityscore"]]  # exclude prob itself
 
-    if not numeric_cols:  # if no numeric features, fallback
+def generate_similarity_explanations(input_df, shap_df, top_k=1):
+    """
+    Create similarity-based explanations using:
+    - Shared features
+    - Diverging SHAP contributions
+    """
+    numeric_cols = input_df.select_dtypes(include=[np.number]).columns.tolist()
+    numeric_cols = [c for c in numeric_cols if c not in ["probabilityscore"]]
+
+    if not numeric_cols:
         return ["No numeric features available for similarity analysis."] * len(input_df)
 
+    # similarity matrix
     X_num = input_df[numeric_cols].fillna(0).values
     sim_matrix = cosine_similarity(X_num)
 
@@ -97,73 +89,109 @@ def generate_similarity_explanations(input_df, top_k=1):
         sims = [j for j in sims if j[0] != i]
 
         top_matches = sims[:top_k]
-        phrases = []
-        for idx, score in top_matches:
-            pk_match = input_df.iloc[idx]["pk"]
-            prob_match = input_df.iloc[idx]["probabilityscore"]
-            phrases.append(f"claim {pk_match} (prob {prob_match:.2f})")
+        claim = input_df.iloc[i]
+        claim_pk = claim["pk"]
+        claim_prob = claim["probabilityscore"]
+        claim_shap = shap_df.iloc[i]
 
-        explanations.append(f"This claim is most similar to {', '.join(phrases)}.")
+        claim_exp = []
+        for idx, score in top_matches:
+            peer = input_df.iloc[idx]
+            peer_pk = peer["pk"]
+            peer_prob = peer["probabilityscore"]
+            peer_shap = shap_df.iloc[idx]
+
+            # shared features
+            similar_features = []
+            for col in input_df.columns:
+                if col in ["pk", "probabilityscore"]:
+                    continue
+                if str(claim[col]) == str(peer[col]):
+                    similar_features.append(f"{col} ({claim[col]})")
+
+            # shap-driven differences
+            shap_diff = (claim_shap - peer_shap).abs().sort_values(ascending=False)
+            top_diff = shap_diff.head(2).index.tolist()
+
+            diff_texts = []
+            for col in top_diff:
+                diff_texts.append(
+                    f"{col} influenced claim {claim_pk} more ({claim_shap[col]:.2f}) "
+                    f"than claim {peer_pk} ({peer_shap[col]:.2f})"
+                )
+
+            # build explanation
+            sim_text = (
+                f"Claim {claim_pk} is most similar to claim {peer_pk}, "
+                f"sharing factors like {', '.join(similar_features[:3])}."
+            )
+
+            if peer_prob != claim_prob and diff_texts:
+                diff_text = (
+                    f" Their risk scores differ ({claim_prob:.2f} vs {peer_prob:.2f}) "
+                    f"mainly because {', '.join(diff_texts)}."
+                )
+            else:
+                diff_text = (
+                    f" Their risk scores are also quite similar "
+                    f"({claim_prob:.2f} vs {peer_prob:.2f})."
+                )
+
+            claim_exp.append(sim_text + " " + diff_text)
+
+        explanations.append(" ".join(claim_exp))
+
     return explanations
 
-# =========================
-# Main Processor
-# =========================
-def generate_explanations(shap_df, input_df, threshold=0.5, top_n=3, top_k_sim=1):
-    clinical_summaries = []
-    patient_summaries = []
-    counterfactuals = []
 
-    # Features (exclude pk + probabilityscore)
-    feature_cols = [c for c in input_df.columns if c not in ["pk", "probabilityscore"]]
+# ---------- Main Processor ----------
+
+def generate_explanations(input_df, shap_df, threshold=0.5, top_n=3):
+    layman_summaries = []
+    counterfactuals = []
 
     for i in range(len(input_df)):
         shap_row = shap_df.iloc[i]
-        feature_row = input_df[feature_cols].iloc[i]
+        feature_row = input_df.drop(columns=["pk", "probabilityscore"]).iloc[i]
         prob = input_df.iloc[i]["probabilityscore"]
 
         top_pos, top_neg = explain_shap_row(shap_row, feature_row, top_n=top_n)
 
-        clinical = generate_clinical_summary(top_pos, top_neg, prob, threshold)
-        patient = generate_layman_summary(top_pos, top_neg, prob, threshold)
-        counterf = generate_counterfactual(top_pos, top_neg, prob, threshold)
+        layman = generate_layman_summary(top_pos, top_neg, prob, threshold)
+        counterfactual = generate_counterfactual_summary(top_pos, top_neg, prob, threshold)
 
-        clinical_summaries.append(clinical)
-        patient_summaries.append(patient)
-        counterfactuals.append(counterf)
+        layman_summaries.append(layman)
+        counterfactuals.append(counterfactual)
 
-    similarity_summaries = generate_similarity_explanations(input_df, top_k=top_k_sim)
+    # similarity explanations
+    similarity_exps = generate_similarity_explanations(input_df, shap_df, top_k=1)
 
-    # Attach results
+    # attach results
     result_df = input_df.copy()
-    result_df["clinical_summary"] = clinical_summaries
-    result_df["patient_summary"] = patient_summaries
-    result_df["counterfactual_summary"] = counterfactuals
-    result_df["similarity_summary"] = similarity_summaries
+    result_df["layman_explanation"] = layman_summaries
+    result_df["counterfactual_explanation"] = counterfactuals
+    result_df["similarity_explanation"] = similarity_exps
+
     return result_df
 
-# =========================
-# Example Usage
-# =========================
+
+# ---------- Example Usage ----------
 if __name__ == "__main__":
-    # Example shap values
-    shap_df = pd.DataFrame(
-        [[0.2, -0.1, 0.05], [-0.3, 0.2, -0.05]],
-        columns=["age", "comorbidity", "length_of_stay"]
-    )
+    # fake example
+    input_df = pd.DataFrame({
+        "pk": [101, 102, 103],
+        "Age": [65, 70, 65],
+        "Gender": ["M", "F", "M"],
+        "Length_of_stay": [12, 5, 10],
+        "Comorbidity_count": [2, 0, 3],
+        "probabilityscore": [0.75, 0.35, 0.60]
+    })
 
-    # Input data with pk, probabilityscore, numeric + categorical features
-    input_df = pd.DataFrame(
-        {
-            "pk": [101, 102],
-            "probabilityscore": [0.75, 0.35],
-            "age": [65, 45],
-            "comorbidity": [2, 0],
-            "length_of_stay": [5, 2],
-            "diagnosis": ["Diabetes", "Hypertension"],   # string feature
-            "gender": ["M", "F"]                        # string feature
-        }
-    )
+    shap_df = pd.DataFrame([
+        {"Age": 0.02, "Gender": 0.01, "Length_of_stay": 0.35, "Comorbidity_count": 0.20},
+        {"Age": -0.01, "Gender": 0.00, "Length_of_stay": 0.05, "Comorbidity_count": -0.05},
+        {"Age": 0.01, "Gender": 0.00, "Length_of_stay": 0.25, "Comorbidity_count": 0.10},
+    ])
 
-    result_df = generate_explanations(shap_df, input_df, top_k_sim=2)
-    print(result_df[["pk", "probabilityscore", "clinical_summary", "patient_summary", "counterfactual_summary", "similarity_summary"]])
+    result = generate_explanations(input_df, shap_df)
+    print(result[["pk", "layman_explanation", "counterfactual_explanation", "similarity_explanation"]])
