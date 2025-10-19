@@ -1,37 +1,134 @@
-Title
-Summary
-New report: Surging claims denials are undermining working relationships between health systems and health plans (HFMA, 2024)
-HFMA surveyed CFOs who say that CFOs are increasingly seeing deteriorating relationships with payers, citing denials, adjudication errors, administrative burden. �
-Shows current payer-provider tensions. Good evidence that payers’ practices (denials, etc.) are perceived as damaging relationships.
-hfma.org
-Denials top reason for eroding provider-payer relationship (Healthcare Finance News)
-Article summarizing HFMA report data. �
-Useful for anecdotes and quotes, and shows provider sentiment.
-healthcarefinancenews.com
-Transforming a payer-provider relationship from conflict to collaboration (PubMed)
-Case study describing how one payer & one provider improved collaboration by data sharing. �
-Good counterpoint: if collaboration is possible, what factors enabled it? Helps you see what mitigates friction.
-PubMed
-One-Third of Providers Believe Payer Audits Are a Burden (TechTarget)
-Article about how payer audits impose burdens: high volume of requests, costs, and administrative pain. �
-Direct evidence that audits cause friction & burden. Possibly triggers abrasive behavior.
-TechTarget +1
-Revenue Cycle Management: The Art and the Science (PMC)
-Scholarly article about revenue cycle, how claim denials and associated processes create cash flow issues and burdens. �
-Helps you understand how denials & admin work affect provider finances & operations.
-PMC
-Claims Adjudication Costs Providers $25.7 Billion / Premier
-Premier’s 2025 data: providers are spending $25.7B in 2023 in claims adjudication & many denials that get overturned. �
-Quantitative data: shows scale of burden & wasted cost which may fuel abrasion.
-Premier
-Reducing administrative costs in US health care (PMC)
-Scholarly article that explores where admin costs come from & how complexity in healthcare admin is costly. �
-Supports hypothesis that complexity + admin burden rates is a real, structural contributor to stress.
-PMC
-Reducing Administrative Costs in U.S. Health Care (The Hamilton Project)
-Policy report with data on prior authorization burdens, physician experiences, etc. �
-Especially useful for prior authorization as a driver of administrative & financial burden.
-The Hamilton Project
-Change Healthcare: Payment Integrity Programs: ... National Study on the Impact of DRG Audits
-Change Healthcare / Frost & Sullivan: shows the cost of payer audits (some providers spend up to $1 million/year), provider sentiment about audits. �
-Very direct support: audits create both financial & psychological burden.
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.exceptions import ConvergenceWarning
+import warnings
+
+def drg_cluster_analysis(df: pd.DataFrame,
+                         feature_cols=None,
+                         k_min=2,
+                         k_max=8,
+                         random_state=42,
+                         verbose=True):
+    """
+    Cluster DRG codes based on probability, hitrate, overpayment, and volume.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe with DRGCode and metric columns.
+    feature_cols : list, optional
+        List of numeric columns to use for clustering. Defaults to
+        ['Median_Probability', 'HitRate', 'Avg_Overpayment', 'Volume'].
+    k_min, k_max : int
+        Range of cluster sizes to test for optimal k.
+    random_state : int
+        Seed for reproducibility.
+    verbose : bool
+        Whether to print progress and summaries.
+
+    Returns
+    -------
+    dict with:
+        - 'df': Original dataframe with cluster labels
+        - 'summary': Cluster-level mean metrics
+        - 'model': Fitted KMeans model
+        - 'scaler': Fitted StandardScaler
+    """
+
+    if feature_cols is None:
+        feature_cols = ['Median_Probability', 'HitRate', 'Avg_Overpayment', 'Volume']
+
+    # --- Validate input ---
+    missing_cols = [c for c in feature_cols if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    df = df.copy()
+
+    # --- Handle missing or invalid data ---
+    df = df.dropna(subset=feature_cols)
+    if df.empty:
+        raise ValueError("No valid rows left after dropping NaNs.")
+
+    # Replace inf or -inf
+    df[feature_cols] = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0)
+
+    # --- Handle small dataset edge case ---
+    n_samples = df.shape[0]
+    if n_samples < k_min:
+        raise ValueError(f"Too few DRGs ({n_samples}) for clustering (need ≥ {k_min}).")
+
+    # --- Scale features ---
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df[feature_cols])
+
+    # --- Optimal K search with safety ---
+    silhouette_scores = {}
+    best_k = k_min
+    best_score = -1
+
+    for k in range(k_min, min(k_max, n_samples) + 1):
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                km = KMeans(n_clusters=k, n_init=10, random_state=random_state)
+                labels = km.fit_predict(X_scaled)
+                if len(set(labels)) > 1:
+                    score = silhouette_score(X_scaled, labels)
+                    silhouette_scores[k] = score
+                    if score > best_score:
+                        best_score = score
+                        best_k = k
+        except Exception as e:
+            if verbose:
+                print(f"⚠️ Skipped k={k}: {e}")
+
+    if verbose and silhouette_scores:
+        print("Silhouette scores:", silhouette_scores)
+
+    # --- Fit final model ---
+    kmeans = KMeans(n_clusters=best_k, n_init=10, random_state=random_state)
+    df['Cluster'] = kmeans.fit_predict(X_scaled)
+
+    # --- Compute cluster summary ---
+    cluster_summary = (
+        df.groupby('Cluster')[feature_cols]
+        .agg(['mean', 'median', 'count'])
+        .round(3)
+    )
+
+    # --- Optional human-readable cluster naming ---
+    centroids = pd.DataFrame(
+        kmeans.cluster_centers_, columns=feature_cols
+    ).apply(lambda x: np.round(x, 3))
+
+    cluster_labels = []
+    for _, row in centroids.iterrows():
+        if row['Median_Probability'] > 0.7 and row['HitRate'] > 0.6:
+            cluster_labels.append("High-Confidence")
+        elif row['Avg_Overpayment'] > np.median(centroids['Avg_Overpayment']):
+            cluster_labels.append("High-Risk")
+        elif row['Volume'] > np.median(centroids['Volume']):
+            cluster_labels.append("High-Volume")
+        else:
+            cluster_labels.append("Moderate")
+
+    label_map = dict(enumerate(cluster_labels))
+    df['Cluster_Label'] = df['Cluster'].map(label_map)
+
+    # --- Output summary ---
+    if verbose:
+        print(f"\n✅ Optimal number of clusters: {best_k} (Silhouette: {best_score:.3f})")
+        print("\nCluster centroids:\n", centroids)
+        print("\nCluster summary:\n", cluster_summary)
+        print("\nLabel mapping:\n", label_map)
+
+    return {
+        'df': df,
+        'summary': cluster_summary,
+        'model': kmeans,
+        'scaler': scaler
+    }
