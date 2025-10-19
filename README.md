@@ -1,60 +1,91 @@
 import pandas as pd
 import numpy as np
 
-def categorize_drg_logic(df,
-                         hitrate_col='hitrate',
-                         overpay_col='avg_overpayment',
-                         volume_col='volume',
-                         drg_col='drg_code',
-                         hitrate_thresh=0.6,
-                         overpay_thresh=3000,
-                         volume_thresh=100):
+def categorize_drg_logic_auto(df,
+                              hitrate_col='hitrate',
+                              overpay_col='avg_overpayment',
+                              volume_col='volume',
+                              drg_col='drg_code',
+                              high_percentile=0.70,
+                              low_percentile=0.30):
     """
-    Rule-based classification of DRGs into performance categories.
+    Automatically classify DRGs into Include More / Exclude / Review
+    based on percentile-based thresholds for each metric.
 
     Parameters:
         df : pd.DataFrame with ['drg_code', 'hitrate', 'avg_overpayment', 'volume']
-        *_thresh : thresholds for defining high/low for each metric
+        high_percentile : float (0-1), e.g. 0.70 means top 30% are "High"
+        low_percentile  : float (0-1), e.g. 0.30 means bottom 30% are "Low"
 
     Returns:
-        pd.DataFrame with ['drg_code', 'hitrate', 'avg_overpayment', 'volume', 'category']
+        pd.DataFrame with classification columns:
+            drg_code, hitrate, avg_overpayment, volume, cluster_label, category
     """
+
     df = df.copy()
     required = [drg_col, hitrate_col, overpay_col, volume_col]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"Missing columns: {missing}")
 
-    # convert to numeric safely
+    # Convert numerics
     for c in [hitrate_col, overpay_col, volume_col]:
         df[c] = pd.to_numeric(df[c], errors='coerce')
+    df = df.dropna(subset=[hitrate_col, overpay_col, volume_col])
 
-    # assign flags
-    df['hitrate_flag'] = np.where(df[hitrate_col] >= hitrate_thresh, 'High', 'Low')
-    df['overpay_flag'] = np.where(df[overpay_col] >= overpay_thresh, 'High', 'Low')
-    df['volume_flag']  = np.where(df[volume_col]  >= volume_thresh, 'High', 'Low')
+    # --- Compute adaptive thresholds ---
+    thresholds = {
+        hitrate_col: {
+            'low':  df[hitrate_col].quantile(low_percentile),
+            'high': df[hitrate_col].quantile(high_percentile)
+        },
+        overpay_col: {
+            'low':  df[overpay_col].quantile(low_percentile),
+            'high': df[overpay_col].quantile(high_percentile)
+        },
+        volume_col: {
+            'low':  df[volume_col].quantile(low_percentile),
+            'high': df[volume_col].quantile(high_percentile)
+        }
+    }
 
-    # build category logic
+    # --- Assign flags dynamically ---
+    def flag_value(val, low, high):
+        if val >= high:
+            return "High"
+        elif val <= low:
+            return "Low"
+        else:
+            return "Medium"
+
+    for metric in [hitrate_col, overpay_col, volume_col]:
+        df[f"{metric}_flag"] = df[metric].apply(lambda x: flag_value(x,
+                                                                     thresholds[metric]['low'],
+                                                                     thresholds[metric]['high']))
+
+    # --- Combine flags into category ---
     def decide(row):
-        highs = [row['hitrate_flag'], row['overpay_flag'], row['volume_flag']].count('High')
+        highs = [row[f"{hitrate_col}_flag"], row[f"{overpay_col}_flag"], row[f"{volume_col}_flag"]].count("High")
+        lows = [row[f"{hitrate_col}_flag"], row[f"{overpay_col}_flag"], row[f"{volume_col}_flag"]].count("Low")
         if highs == 3:
             return "Include More"
-        elif highs <= 1:
+        elif lows == 3:
             return "Exclude"
         else:
             return "Review"
 
     df['category'] = df.apply(decide, axis=1)
 
-    # create readable cluster label
+    # --- Human-readable label ---
     df['cluster_label'] = (
-        df['hitrate_flag'] + " Hitrate & " +
-        df['overpay_flag'] + " Overpayment & " +
-        df['volume_flag'] + " Volume"
+        df[f"{hitrate_col}_flag"] + " Hitrate & " +
+        df[f"{overpay_col}_flag"] + " Overpayment & " +
+        df[f"{volume_col}_flag"] + " Volume"
     )
 
+    # --- Output tidy DataFrame ---
     out = df[[drg_col, hitrate_col, overpay_col, volume_col, 'cluster_label', 'category']].reset_index(drop=True)
-    return out
+    return out, thresholds
 
 
 # ---------------- Example Usage ----------------
@@ -66,5 +97,9 @@ if __name__ == "__main__":
         'volume': [45, 120, 300, 25, 400, 95, 60]
     })
 
-    result = categorize_drg_logic(sample)
+    result, used_thresholds = categorize_drg_logic_auto(sample)
+
+    print("\n=== Adaptive DRG Classification ===")
     print(result.to_string(index=False))
+    print("\n=== Thresholds Used (Auto) ===")
+    print(pd.DataFrame(used_thresholds))
