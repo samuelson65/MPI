@@ -1,140 +1,113 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
-def classify_drg_opportunity(df: pd.DataFrame,
-                             feature_cols=None,
-                             verbose=True,
-                             plot=True):
+def classify_drg_clusters(df, random_state=42, min_clusters=2, max_clusters=8, return_centroids=False):
     """
-    Classify DRGs into High / Moderate / Low Opportunity groups based on
-    volume, hitrate, and overpayment metrics.
+    Clusters DRG codes (e.g., 'drg_100') based on performance and financial metrics.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataframe containing DRG metrics.
-        Must include: drgcode, hitrate, avg_overpayment, volume
-    feature_cols : list, optional
-        Defaults to ['median_probability', 'hitrate', 'avg_overpayment', 'volume']
-    verbose : bool
-        Whether to print summary insights.
-    plot : bool
-        Whether to show scatter plot visualization.
+    Parameters:
+        df (pd.DataFrame): Must contain columns:
+            ['drg_code', 'median_probability', 'hitrate', 'avg_overpayment', 'volume']
+        random_state (int): Random seed for reproducibility.
+        min_clusters (int): Minimum number of clusters to evaluate.
+        max_clusters (int): Maximum number of clusters to evaluate.
+        return_centroids (bool): If True, returns both the DRG-cluster mapping and centroid summary.
 
-    Returns
-    -------
-    pd.DataFrame with columns:
-        ['drgcode', 'category', 'score', 'volume', 'hitrate', 'avg_overpayment']
+    Returns:
+        pd.DataFrame or (pd.DataFrame, pd.DataFrame):
+            - drg_cluster_df: ['drg_code', 'cluster', 'cluster_label']
+            - (optional) cluster_summary_df: centroid-level mean metrics
     """
 
-    # --- Standardize column names ---
-    df = df.rename(columns={c: c.lower() for c in df.columns})
-
-    if feature_cols is None:
-        feature_cols = ['median_probability', 'hitrate', 'avg_overpayment', 'volume']
-    feature_cols = [c.lower() for c in feature_cols]
-
-    required = ['drgcode'] + feature_cols
-    missing = [c for c in required if c not in df.columns]
+    # --- 1. Validate input ---
+    required_cols = ['drg_code', 'median_probability', 'hitrate', 'avg_overpayment', 'volume']
+    missing = [c for c in required_cols if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
-    # --- Drop invalid rows ---
-    df = df.dropna(subset=feature_cols).copy()
+    df = df.copy()
+
+    # --- 2. Ensure proper data types ---
+    num_cols = ['median_probability', 'hitrate', 'avg_overpayment', 'volume']
+    df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
+    df.dropna(subset=num_cols, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
     if df.empty:
-        raise ValueError("No valid rows after dropping NaNs.")
+        raise ValueError("DataFrame has no valid numeric data after cleaning.")
 
-    # --- Compute quantiles for adaptive thresholds ---
-    q = df[feature_cols].quantile([0.33, 0.66])
-    low_q, high_q = q.iloc[0], q.iloc[1]
+    # --- 3. Adjust max_clusters for small datasets ---
+    max_clusters = min(max_clusters, max(2, len(df) // 2))
 
-    # --- Normalize features and compute weighted opportunity score ---
-    # You can adjust the weights as per business priority
-    df['score'] = (
-        0.4 * (df['hitrate'] - df['hitrate'].min()) / (df['hitrate'].max() - df['hitrate'].min() + 1e-9) +
-        0.3 * (df['avg_overpayment'] - df['avg_overpayment'].min()) / (df['avg_overpayment'].max() - df['avg_overpayment'].min() + 1e-9) +
-        0.3 * (df['volume'] - df['volume'].min()) / (df['volume'].max() - df['volume'].min() + 1e-9)
+    # --- 4. Scale numeric features ---
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df[num_cols])
+
+    # --- 5. Determine optimal number of clusters ---
+    silhouette_scores = {}
+    for k in range(min_clusters, max_clusters + 1):
+        try:
+            km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+            labels = km.fit_predict(X_scaled)
+            silhouette_scores[k] = silhouette_score(X_scaled, labels)
+        except Exception:
+            continue
+
+    optimal_k = max(silhouette_scores, key=silhouette_scores.get, default=3)
+
+    # --- 6. Final KMeans fit ---
+    kmeans = KMeans(n_clusters=optimal_k, random_state=random_state, n_init=10)
+    df['cluster'] = kmeans.fit_predict(X_scaled)
+
+    # --- 7. Compute cluster centroids (in original scale) ---
+    centroids = pd.DataFrame(
+        scaler.inverse_transform(kmeans.cluster_centers_),
+        columns=num_cols
     )
+    centroids['cluster'] = centroids.index
 
-    # --- Apply quantile-based classification ---
-    conditions = [
-        (df['score'] >= df['score'].quantile(0.66)),
-        (df['score'].between(df['score'].quantile(0.33), df['score'].quantile(0.66))),
-        (df['score'] < df['score'].quantile(0.33))
-    ]
-    categories = ['High-Opportunity', 'Moderate', 'Low-Opportunity']
-    df['category'] = np.select(conditions, categories)
+    # --- 8. Generate descriptive cluster labels ---
+    labels = []
+    medians = {col: df[col].median() for col in num_cols}
+    for _, row in centroids.iterrows():
+        desc = []
+        desc.append("High Hitrate" if row['hitrate'] > medians['hitrate'] else "Low Hitrate")
+        desc.append("High Overpayment" if row['avg_overpayment'] > medians['avg_overpayment'] else "Low Overpayment")
+        desc.append("High Volume" if row['volume'] > medians['volume'] else "Low Volume")
+        desc.append("High Probability" if row['median_probability'] > medians['median_probability'] else "Low Probability")
+        labels.append(" & ".join(desc))
+    centroids['cluster_label'] = labels
 
-    # --- Optional overrides for strong rules ---
-    df.loc[
-        (df['hitrate'] > high_q['hitrate']) &
-        (df['avg_overpayment'] > high_q['avg_overpayment']) &
-        (df['volume'] > high_q['volume']),
-        'category'
-    ] = 'High-Opportunity'
+    # --- 9. Merge back cluster labels to main df ---
+    df = df.merge(centroids[['cluster', 'cluster_label']], on='cluster', how='left')
 
-    df.loc[
-        (df['hitrate'] < low_q['hitrate']) &
-        (df['avg_overpayment'] < low_q['avg_overpayment']) &
-        (df['volume'] < low_q['volume']),
-        'category'
-    ] = 'Low-Opportunity'
+    # --- 10. Final tidy output ---
+    drg_cluster_df = df[['drg_code', 'cluster', 'cluster_label']].sort_values('cluster').reset_index(drop=True)
+    cluster_summary_df = centroids[['cluster'] + num_cols + ['cluster_label']]
 
-    # --- Prepare final output ---
-    result = df[['drgcode', 'category', 'score', 'volume', 'hitrate', 'avg_overpayment']].sort_values(
-        'score', ascending=False
-    )
-
-    # --- Print summary ---
-    if verbose:
-        print("\n📊 DRG Opportunity Classification Summary:")
-        dist = result['category'].value_counts(normalize=True).mul(100).round(1).to_dict()
-        print("  Category distribution (%):", dist)
-        print("\n🔝 Example High-Opportunity DRGs:")
-        print(result[result['category'] == 'High-Opportunity'].head(5))
-
-    # --- Visualization ---
-    if plot:
-        plt.figure(figsize=(8,6))
-        colors = {
-            'High-Opportunity': 'green',
-            'Moderate': 'orange',
-            'Low-Opportunity': 'red'
-        }
-        for cat, color in colors.items():
-            subset = result[result['category'] == cat]
-            plt.scatter(subset['hitrate'], subset['avg_overpayment'],
-                        s=subset['volume'] * 0.5,  # size by volume
-                        c=color, alpha=0.6, label=cat, edgecolor='k')
-
-        plt.xlabel('Hitrate')
-        plt.ylabel('Average Overpayment')
-        plt.title('DRG Opportunity Classification')
-        plt.legend(title='Category')
-        plt.grid(True, linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        plt.show()
-
-    return result
+    if return_centroids:
+        return drg_cluster_df, cluster_summary_df
+    return drg_cluster_df
 
 
-# ------------------- #
-# Example usage below #
-# ------------------- #
+# ---------------- Example usage ----------------
 if __name__ == "__main__":
-    # Example data
     data = {
-        'drgcode': [291, 292, 293, 294, 295, 296, 297, 298],
-        'median_probability': [0.81, 0.55, 0.91, 0.35, 0.62, 0.77, 0.45, 0.84],
-        'hitrate': [0.73, 0.33, 0.89, 0.25, 0.6, 0.7, 0.4, 0.82],
-        'avg_overpayment': [5600, 2500, 7000, 1100, 3500, 5200, 1800, 6400],
-        'volume': [45, 150, 22, 420, 180, 55, 300, 40]
+        'drg_code': ['drg_100', 'drg_101', 'drg_102', 'drg_103', 'drg_104', 'drg_105'],
+        'median_probability': [0.82, 0.60, 0.45, 0.91, 0.38, 0.75],
+        'hitrate': [0.70, 0.55, 0.25, 0.88, 0.20, 0.68],
+        'avg_overpayment': [5800, 3200, 1100, 7200, 800, 4500],
+        'volume': [45, 120, 300, 25, 400, 95]
     }
-
     df = pd.DataFrame(data)
 
-    result_df = classify_drg_opportunity(df, verbose=True, plot=True)
+    drg_cluster_df, cluster_summary_df = classify_drg_clusters(df, return_centroids=True)
 
-    print("\n✅ Final Output:")
-    print(result_df)
+    print("\n=== DRG Cluster Mapping ===")
+    print(drg_cluster_df)
+
+    print("\n=== Cluster Summary ===")
+    print(cluster_summary_df)
