@@ -132,3 +132,17 @@ def drg_cluster_analysis(df: pd.DataFrame,
         'model': kmeans,
         'scaler': scaler
     }
+
+result = drg_cluster_analysis(df, verbose=True)
+
+clustered_df = result['df']
+summary_df = result['summary']
+
+# Optional: apply custom thresholds later
+threshold_map = {
+    "High-Confidence": 0.9,
+    "High-Volume": 0.75,
+    "Moderate": 0.7,
+    "High-Risk": 0.6
+}
+clustered_df['Adjusted_Threshold'] = clustered_df['Cluster_Label'].map(threshold_map)
