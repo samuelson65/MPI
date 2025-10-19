@@ -14,7 +14,7 @@ def classify_drg_clusters(df,
                           include_action=True):
     """
     Cluster DRG codes (e.g. 'drg_100') using hitrate, avg_overpayment, and volume.
-    Returns aligned labels and actions per cluster.
+    Assigns cluster labels using relative ranking of centroid values instead of global medians.
 
     Parameters:
         df (pd.DataFrame): Must contain ['drg_code', 'hitrate', 'avg_overpayment', 'volume']
@@ -74,25 +74,38 @@ def classify_drg_clusters(df,
         final_km = KMeans(n_clusters=optimal_k, random_state=random_state, n_init=10)
         df['cluster'] = final_km.fit_predict(X_scaled)
 
-    # --- 5. Compute true centroids in ORIGINAL space ---
+    # --- 5. Compute centroids in original scale ---
     cluster_summary_df = df.groupby('cluster')[num_cols].mean().reset_index()
 
-    # --- 6. Assign cluster labels based on median comparisons ---
-    medians = df[num_cols].median()
+    # --- 6. Rank clusters on each metric ---
+    for col in num_cols:
+        # higher value → higher rank
+        cluster_summary_df[f'{col}_rank'] = cluster_summary_df[col].rank(ascending=True).astype(int)
 
-    def make_label(row):
-        parts = []
-        parts.append("High Hitrate" if row['hitrate'] > medians['hitrate'] else "Low Hitrate")
-        parts.append("High Overpayment" if row['avg_overpayment'] > medians['avg_overpayment'] else "Low Overpayment")
-        parts.append("High Volume" if row['volume'] > medians['volume'] else "Low Volume")
-        return " & ".join(parts)
+    # --- 7. Assign human-readable qualitative labels ---
+    def qualitative_label(val, total_clusters):
+        if val >= total_clusters - 0.5:
+            return "High"
+        elif val <= 1.5:
+            return "Low"
+        else:
+            return "Medium"
 
-    cluster_summary_df['cluster_label'] = cluster_summary_df.apply(make_label, axis=1)
+    total_clusters = cluster_summary_df['cluster'].nunique()
+    for col in num_cols:
+        cluster_summary_df[f'{col}_level'] = cluster_summary_df[f'{col}_rank'].apply(lambda x: qualitative_label(x, total_clusters))
 
-    # --- 7. Merge back to main DF (aligned) ---
+    # --- 8. Build descriptive label ---
+    cluster_summary_df['cluster_label'] = (
+        cluster_summary_df.apply(
+            lambda r: f"{r['hitrate_level']} Hitrate & {r['avg_overpayment_level']} Overpayment & {r['volume_level']} Volume", axis=1
+        )
+    )
+
+    # --- 9. Merge back to main DF ---
     df = df.merge(cluster_summary_df[['cluster', 'cluster_label']], on='cluster', how='left')
 
-    # --- 8. Optional action classification ---
+    # --- 10. Optional: add action rules ---
     if include_action:
         def action_from_label(lbl):
             if all(x in lbl for x in ["High Hitrate", "High Overpayment", "High Volume"]):
@@ -103,21 +116,14 @@ def classify_drg_clusters(df,
 
         df['action'] = df['cluster_label'].apply(action_from_label)
 
-    # --- 9. Final outputs ---
-    out_cols = ['drg_code', 'cluster', 'cluster_label']
-    if include_action:
-        out_cols.append('action')
-
-    drg_cluster_df = df[out_cols].sort_values(['cluster', 'drg_code']).reset_index(drop=True)
+    # --- 11. Final outputs ---
+    drg_cluster_df = df[['drg_code', 'cluster', 'cluster_label'] + (['action'] if include_action else [])]
     cluster_summary_df = cluster_summary_df[['cluster', 'cluster_label'] + num_cols]
 
-    if return_centroids:
-        return drg_cluster_df, cluster_summary_df
-    else:
-        return drg_cluster_df
+    return (drg_cluster_df, cluster_summary_df) if return_centroids else drg_cluster_df
 
 
-# ---------------- Example usage ----------------
+# ---------------- Example Usage ----------------
 if __name__ == "__main__":
     sample = pd.DataFrame({
         'drg_code': ['drg_100', 'drg_101', 'drg_102', 'drg_103', 'drg_104', 'drg_105', 'drg_106'],
@@ -126,10 +132,10 @@ if __name__ == "__main__":
         'volume': [45, 120, 300, 25, 400, 95, 60]
     })
 
-    drg_map, cluster_summary = classify_drg_clusters(sample, return_centroids=True)
+    drg_map, summary = classify_drg_clusters(sample)
 
     print("\n=== DRG → Cluster Mapping ===")
     print(drg_map)
 
     print("\n=== Cluster Summary ===")
-    print(cluster_summary)
+    print(summary)
