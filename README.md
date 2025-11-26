@@ -1,240 +1,143 @@
-import json
+import pandas as pd
+import numpy as np
 
-# =============================================================================
-# 1. DATA LIBRARIES (The "Knowledge Base")
-# =============================================================================
+class AuditRuleGenerator:
+    def __init__(self, data):
+        self.df = data
+        self.stats = None
+        self.rules = None
 
-# A. DRG Grouper / Mapper
-# Maps specific MS-DRG codes to the Clinical Categories used in our guidelines.
-# NOTE: In a real system, this would be a database query.
-DRG_CATEGORY_MAP = {
-    # Heart Failure
-    '291': 'CHF', '292': 'CHF', '293': 'CHF',
-    # AMI / PCI
-    '280': 'AMI', '281': 'AMI', '282': 'AMI',
-    '246': 'PCI', '247': 'PCI',
-    # Pneumonia / Sepsis
-    '193': 'PNA', '194': 'PNA', '195': 'PNA',
-    '871': 'SEPSIS', '872': 'SEPSIS',
-    # COPD
-    '190': 'COPD', '191': 'COPD', '192': 'COPD',
-    # Surgery (Orthopedic / General)
-    '470': 'TKA_THA', '469': 'TKA_THA', # Knee/Hip replacement
-    '329': 'BOWEL_SURGERY', # Major Small & Large Bowel Procedures
-    # Complications / Targets
-    '682': 'RENAL_FAILURE',
-    '544': 'PJI', # Prosthetic Joint Infection
-    '999': 'TRAUMA', # Placeholder for unrelated trauma
-    '000': 'OTHER'
+    def preprocess_wide_to_long(self):
+        """
+        Converts 25 Dx columns into a single vertical 'Code' column.
+        This is the secret to scalability.
+        """
+        print("1. Reshaping data from Wide (25 cols) to Long (1 col)...")
+        
+        # 1. Identify Dx columns
+        dx_cols = [col for col in self.df.columns if col.startswith('Original_Dx')]
+        final_dx_cols = [col for col in self.df.columns if col.startswith('Final_Dx')]
+
+        # 2. Melt Original Codes (Create one row per code)
+        # We keep ClaimID, DRG, and Severity as identifiers
+        df_long = self.df.melt(
+            id_vars=['ClaimID', 'DRG', 'Severity'], 
+            value_vars=dx_cols, 
+            value_name='Code'
+        ).dropna(subset=['Code']) # Remove empty slots
+        
+        # 3. Create a set of "Final Valid Codes" for fast lookup
+        # We consolidate all final codes into a set per ClaimID for O(1) lookup
+        print("2. Indexing Final Audited Codes...")
+        
+        # Helper to collect non-null final codes into a set
+        def gather_codes(row):
+            codes = [row[c] for c in final_dx_cols if pd.notna(row[c])]
+            return set(codes)
+            
+        final_lookup = self.df.set_index('ClaimID').apply(gather_codes, axis=1)
+        
+        # 4. Map the check: Is the specific 'Code' in 'Final_Codes'?
+        # If it is NOT in the final set, it was DROPPED.
+        df_long['Is_Dropped'] = df_long.apply(
+            lambda row: row['Code'] not in final_lookup.get(row['ClaimID'], set()), axis=1
+        )
+        
+        return df_long
+
+    def train_logic(self, df_long):
+        """
+        Aggregates millions of rows instantly using GroupBy
+        """
+        print("3. calculating probabilities...")
+        
+        # Group by the specific context: DRG + Severity + Code
+        # We calculate count (Total) and sum (Dropped Count)
+        self.stats = df_long.groupby(['DRG', 'Severity', 'Code'])['Is_Dropped'].agg(
+            Total_Appearances='count',
+            Drop_Count='sum'
+        ).reset_index()
+        
+        # Calculate Probability
+        self.stats['Drop_Probability'] = self.stats['Drop_Count'] / self.stats['Total_Appearances']
+        
+        # Filter noise (e.g., code only appeared once)
+        self.stats = self.stats[self.stats['Total_Appearances'] >= 5]
+        
+        return self.stats
+
+    def generate_sentences(self, confidence_threshold=0.4):
+        """
+        Converts the math back into English sentences
+        """
+        print("4. Generating Recommendations...")
+        
+        # Filter for high risk
+        high_risk = self.stats[self.stats['Drop_Probability'] >= confidence_threshold].sort_values(
+            by='Drop_Probability', ascending=False
+        )
+        
+        recs = []
+        for _, row in high_risk.iterrows():
+            sentence = (
+                f"Given DRG {int(row['DRG'])} and Severity {int(row['Severity'])}, "
+                f"the code {row['Code']} can be DROPPED "
+                f"(Historical Fail Rate: {round(row['Drop_Probability']*100, 1)}% "
+                f"based on {row['Total_Appearances']} claims)"
+            )
+            recs.append(sentence)
+        
+        return recs
+
+# ==========================================
+# USAGE SIMULATION
+# ==========================================
+
+# 1. Create Dummy Data with 25 Columns (Real-world structure)
+# Imagine 1000 claims
+data_size = 1000
+data = {
+    'ClaimID': range(data_size),
+    'DRG': np.random.choice([871, 190, 291, 194], size=data_size),
+    'Severity': np.random.choice([1, 2, 3, 4], size=data_size),
 }
 
-# B. GMLOS Dictionary (Geometric Mean Length of Stay)
-# Maps DRG to its benchmark days. (Mock values based on MCG averages).
-GMLOS_MAP = {
-    '291': 4.1, '292': 3.5, '293': 2.8, # CHF
-    '193': 4.2, '194': 3.6, # PNA
-    '470': 2.4, # TKA
-    '329': 6.5, # Bowel Surgery
-    # Default fallback
-    'DEFAULT': 3.0
-}
+# Simulate 25 Dx columns (Mostly empty/NaN for realism)
+for i in range(1, 26):
+    # Randomly assign codes, with some NaNs
+    col_name = f"Original_Dx_{i}"
+    data[col_name] = np.random.choice(['J96.00', 'I10', 'E11.9', 'A41.9', np.nan], size=data_size)
 
-# C. THE GUIDELINES LIBRARY (The "Rules Engine")
-# Each dictionary represents one row from your Guidelines Table.
-GUIDELINES_LIBRARY = [
-    {
-        "id": "CHF-001",
-        "name": "Probable 'Wet' Discharge (Premature)",
-        "logic": {
-            "index_category": ["CHF"],
-            "readm_category": ["CHF"],
-            "max_days_gap": 7,
-            "check_premature": True # Logic: Index LOS < GMLOS
-        },
-        "insight_template": "High-Risk Premature Discharge. Patient discharged {diff} days early. Audit Idea: Check final 24hr vitals, I/Os, and look for IV Lasix use."
-    },
-    {
-        "id": "CHF-002",
-        "name": "Failed Handoff (CHF)",
-        "logic": {
-            "index_category": ["CHF"],
-            "disposition": ["01"], # 01 = Home
-            "max_days_gap": 3
-        },
-        "insight_template": "Critical Handoff Failure. Patient bounced back in {gap} days after discharge to Home. Audit Idea: Order CM notes. Check for failed 'teach-back' on diet/meds and lack of scheduled follow-up."
-    },
-    {
-        "id": "CHF-003",
-        "name": "Renal Complication (CHF)",
-        "logic": {
-            "index_category": ["CHF"],
-            "readm_category": ["RENAL_FAILURE"],
-            "max_days_gap": 7
-        },
-        "insight_template": "Foreseeable Complication. Aggressive diuresis likely caused AKI. Audit Idea: Review index labs. Was Creatinine rising before discharge?"
-    },
-    {
-        "id": "SURG-001",
-        "name": "Surgical Site Infection (SSI)",
-        "logic": {
-            "index_category": ["TKA_THA", "BOWEL_SURGERY"],
-            "readm_category": ["SEPSIS", "PJI"],
-            "max_days_gap": 30
-        },
-        "insight_template": "Surgical Site Infection / Sepsis. Direct post-op complication. Audit Idea: Check discharge wound instructions and post-op vitals for ignored low-grade fevers."
-    },
-    {
-        "id": "HANDOFF-001",
-        "name": "SNF Bounce-Back",
-        "logic": {
-            "disposition": ["03"], # 03 = SNF
-            "max_days_gap": 2
-        },
-        "insight_template": "Critical SNF Rejection. SNF likely rejected patient as unstable. Audit Idea: Compare transfer summary vitals vs. actual vitals. Look for documentation conflict in SNF readmit note."
-    }
-]
+df = pd.DataFrame(data)
 
-# =============================================================================
-# 2. THE PROCESSING ENGINE (The Logic)
-# =============================================================================
+# Simulate "Final" columns (Where J96.00 is often removed if DRG=871)
+# Copy original to final first
+for i in range(1, 26):
+    df[f"Final_Dx_{i}"] = df[f"Original_Dx_{i}"]
 
-class ReadmissionAuditEngine:
-    def __init__(self, drg_map, gmlos_map, guidelines):
-        self.drg_map = drg_map
-        self.gmlos_map = gmlos_map
-        self.guidelines = guidelines
+# Inject Logic: If DRG is 871 and Code is J96.00, drop it in Final columns
+# (This simulates the audit action)
+for idx, row in df.iterrows():
+    if row['DRG'] == 871:
+        for i in range(1, 26):
+            if row[f"Original_Dx_{i}"] == 'J96.00':
+                df.at[idx, f"Final_Dx_{i}"] = np.nan # Simulate Drop
 
-    def enrich_claim(self, claim):
-        """
-        Step 1: Enrich the raw claim with categories and benchmarks.
-        """
-        claim['index_category'] = self.drg_map.get(claim['index_drg'], 'OTHER')
-        claim['readm_category'] = self.drg_map.get(claim['readm_drg'], 'OTHER')
-        claim['gmlos'] = self.gmlos_map.get(claim['index_drg'], self.gmlos_map['DEFAULT'])
-        
-        # Calculate if discharge was early (for the 'check_premature' logic)
-        claim['is_premature'] = claim['index_los'] < claim['gmlos']
-        claim['los_diff'] = round(claim['gmlos'] - claim['index_los'], 1)
-        
-        return claim
+# ==========================================
+# EXECUTE ENGINE
+# ==========================================
 
-    def evaluate_claim(self, raw_claim):
-        """
-        Step 2: Run the enriched claim against the Guidelines Library.
-        """
-        claim = self.enrich_claim(raw_claim.copy())
-        triggered_insights = []
+engine = AuditRuleGenerator(df)
 
-        for rule in self.guidelines:
-            logic = rule['logic']
-            is_match = True
+# Step A: Preprocess
+long_data = engine.preprocess_wide_to_long()
 
-            # --- LOGIC CHECKS ---
-            
-            # 1. Check Index DRG Category
-            if 'index_category' in logic:
-                if claim['index_category'] not in logic['index_category']:
-                    is_match = False
+# Step B: Train
+engine.train_logic(long_data)
 
-            # 2. Check Readmission DRG Category
-            if is_match and 'readm_category' in logic:
-                if claim['readm_category'] not in logic['readm_category']:
-                    is_match = False
+# Step C: Get Results
+recommendations = engine.generate_sentences(confidence_threshold=0.5)
 
-            # 3. Check Days Gap (Time window)
-            if is_match and 'max_days_gap' in logic:
-                if claim['days_gap'] > logic['max_days_gap']:
-                    is_match = False
-
-            # 4. Check Disposition Code
-            if is_match and 'disposition' in logic:
-                if claim['disposition'] not in logic['disposition']:
-                    is_match = False
-            
-            # 5. Check Premature Discharge Logic (LOS < GMLOS)
-            if is_match and logic.get('check_premature'):
-                if not claim['is_premature']:
-                    is_match = False
-
-            # --- RESULT GENERATION ---
-            if is_match:
-                # Format the insight string with dynamic data from the claim
-                formatted_insight = rule['insight_template'].format(
-                    diff=claim['los_diff'],
-                    gap=claim['days_gap']
-                )
-                
-                triggered_insights.append({
-                    "Rule_ID": rule['id'],
-                    "Rule_Name": rule['name'],
-                    "Actionable_Insight": formatted_insight
-                })
-
-        claim['Audit_Results'] = triggered_insights
-        claim['High_Priority'] = len(triggered_insights) > 0
-        return claim
-
-# =============================================================================
-# 3. EXECUTION (Sample Run)
-# =============================================================================
-
-# Initialize the engine
-engine = ReadmissionAuditEngine(DRG_CATEGORY_MAP, GMLOS_MAP, GUIDELINES_LIBRARY)
-
-# Sample Claims Data (The Input)
-sample_claims = [
-    # Claim A: CHF patient, short stay, back in 3 days with CHF (Should trigger CHF-001 and CHF-002)
-    {
-        "claim_id": "CLM-001 (CHF High Risk)",
-        "index_drg": "291", # CHF
-        "readm_drg": "292", # CHF
-        "index_los": 2.0,   # Short stay (GMLOS is 4.1)
-        "days_gap": 3,
-        "disposition": "01" # Home
-    },
-    # Claim B: TKA patient, back in 15 days with Infection (Should trigger SURG-001)
-    {
-        "claim_id": "CLM-002 (Surgical Infection)",
-        "index_drg": "470", # Knee Replacement
-        "readm_drg": "544", # PJI (Infection)
-        "index_los": 3.0,
-        "days_gap": 15,
-        "disposition": "06" # Home Health
-    },
-    # Claim C: SNF Bounce back (Should trigger HANDOFF-001)
-    {
-        "claim_id": "CLM-003 (SNF Failure)",
-        "index_drg": "194", # PNA
-        "readm_drg": "871", # Sepsis
-        "index_los": 4.0,
-        "days_gap": 1,      # Back next day
-        "disposition": "03" # SNF
-    },
-    # Claim D: Unrelated Trauma (Should trigger NOTHING)
-    {
-        "claim_id": "CLM-004 (Unrelated)",
-        "index_drg": "291", # CHF
-        "readm_drg": "999", # Trauma/Car Accident
-        "index_los": 5.0,
-        "days_gap": 12,
-        "disposition": "01"
-    }
-]
-
-# Run the claims through the engine
-print(f"{'CLAIM ID':<30} | {'STATUS':<15} | {'RULES FIRED'}")
-print("-" * 80)
-
-for raw_claim in sample_claims:
-    result = engine.evaluate_claim(raw_claim)
-    
-    status = "AUDIT" if result['High_Priority'] else "SKIP"
-    rules_fired = [r['Rule_ID'] for r in result['Audit_Results']]
-    
-    print(f"{result['claim_id']:<30} | {status:<15} | {rules_fired}")
-    
-    # Print detailed insights for AUDIT claims
-    if result['High_Priority']:
-        for insight in result['Audit_Results']:
-            print(f"   >> [{insight['Rule_ID']}] {insight['Actionable_Insight']}")
-    print("-" * 80)
+print("\n--- AUDIT RECOMMENDATIONS (SCALED) ---")
+for r in recommendations[:10]: # Print top 10
+    print(r)
