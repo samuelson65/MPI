@@ -1,143 +1,157 @@
 import pandas as pd
 import numpy as np
 
-class AuditRecommender:
+class APR_DRG_Audit_Engine:
     def __init__(self, df):
         self.raw_df = df
         self.stats = None
-        self.rules = None
 
     def preprocess_and_train(self):
         """
-        1. Explodes the Dictionary Column into multiple rows.
-        2. Flags which codes were dropped.
-        3. Calculates Drop Probability for every Code/DRG/Severity combo.
+        1. Calculates the 'Severity Profile' (Count of Sev 1, 2, 3, 4) for each claim.
+        2. Flattens the data.
+        3. Learns drop patterns based on the specific mix of severities.
         """
-        print("--- Processing Data ---")
+        print("--- Analyzing Claim Composition (Severity Profiling) ---")
         
-        # --- STEP 1: FLATTEN THE DICTIONARY (SCALABILITY KEY) ---
-        # We use a list comprehension which is faster than apply() for this specific structure
         flattened_data = []
         
         for idx, row in self.raw_df.iterrows():
             claim_id = row['ClaimID']
-            drg = row['DRG_Code']
-            claim_sev = row['Claim_Severity']
+            apr_drg = row['APR_DRG_Code']
+            claim_sev = row['Claim_SOI'] # The final SOI (1-4)
+            
+            diag_dict = row['Diag_Codes_Dict'] # {Code: Severity_Int}
             dropped_set = set(row['Dropped_Codes']) if isinstance(row['Dropped_Codes'], list) else set()
             
-            # Iterate through the dictionary of codes for this specific claim
-            # Input format: {'J96.00': 'MCC', 'I10': 'Non-CC'}
-            if isinstance(row['Diag_Codes_Dict'], dict):
-                for code, code_severity in row['Diag_Codes_Dict'].items():
-                    flattened_data.append({
-                        'ClaimID': claim_id,
-                        'DRG': drg,
-                        'Claim_Severity': claim_sev,
-                        'Diag_Code': code,
-                        'Code_Severity_Type': code_severity, # e.g., MCC/CC
-                        'Is_Dropped': 1 if code in dropped_set else 0
-                    })
+            # --- INTELLIGENCE STEP: Calculate Severity Counts ---
+            # We count how many codes of each severity exist on this specific claim
+            # This detects if a claim is "Fragile" (only 1 high severity code) or "Robust"
+            sev_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+            
+            for code, sev in diag_dict.items():
+                # Ensure sev is an integer (handle potential string inputs)
+                sev_int = int(sev)
+                if sev_int in sev_counts:
+                    sev_counts[sev_int] += 1
+            
+            # --- EXPLOSION STEP ---
+            for code, code_sev in diag_dict.items():
+                code_sev_int = int(code_sev)
+                
+                # We identify if this specific code is a "Lone Driver"
+                # (i.e., It is a Sev 4 code, and there is only 1 Sev 4 code on the claim)
+                is_lone_driver = 1 if (code_sev_int == 4 and sev_counts[4] == 1) else 0
+                
+                flattened_data.append({
+                    'APR_DRG': apr_drg,
+                    'Claim_SOI': claim_sev,
+                    'Diag_Code': code,
+                    'Code_SOI': code_sev_int,
+                    # We Embed the Profile into the row
+                    'Count_SOI_3': sev_counts[3],
+                    'Count_SOI_4': sev_counts[4],
+                    'Is_Lone_Driver': is_lone_driver, 
+                    'Is_Dropped': 1 if code in dropped_set else 0
+                })
         
         long_df = pd.DataFrame(flattened_data)
         
-        # --- STEP 2: AGGREGATE (TRAINING) ---
-        # We group by the Claim Context to find patterns
-        print("--- Learning Patterns ---")
+        print("--- Learning Logic based on Severity Counts ---")
         
-        self.stats = long_df.groupby(['DRG', 'Claim_Severity', 'Diag_Code']).agg(
+        # --- TRAINING STEP ---
+        # We group by the Counts of High Severity codes.
+        # This allows us to learn: "J96.00 is dropped when there are NO other Sev 4 codes"
+        self.stats = long_df.groupby([
+            'APR_DRG', 
+            'Claim_SOI', 
+            'Diag_Code', 
+            'Count_SOI_3', 
+            'Count_SOI_4'
+        ]).agg(
             Total_Appearances=('Is_Dropped', 'count'),
             Drop_Count=('Is_Dropped', 'sum')
         ).reset_index()
         
-        # Calculate Probability
         self.stats['Drop_Probability'] = self.stats['Drop_Count'] / self.stats['Total_Appearances']
         
-        # Filter out noise (e.g., codes that appeared less than 3 times)
-        self.stats = self.stats[self.stats['Total_Appearances'] >= 3]
+        # Filter for noise (require at least 2 examples to form a rule)
+        self.stats = self.stats[self.stats['Total_Appearances'] >= 2]
         
         return self.stats
 
-    def generate_recommendations(self, threshold=0.3):
-        """
-        Generates the specific 'Given DRG...' sentences.
-        """
-        print(f"--- Generating Rules (Confidence > {threshold*100}%) ---")
+    def generate_smart_recommendations(self, threshold=0.4):
+        print(f"--- Generating Smart Recommendations (Confidence > {threshold*100}%) ---")
         
-        # Sort by highest probability of being dropped
-        prioritized_rules = self.stats[self.stats['Drop_Probability'] >= threshold].sort_values(
-            by=['Drop_Probability', 'Total_Appearances'], ascending=False
+        high_risk = self.stats[self.stats['Drop_Probability'] >= threshold].sort_values(
+            by='Drop_Probability', ascending=False
         )
         
-        recommendations = []
-        
-        for _, row in prioritized_rules.iterrows():
-            # Format the sentence exactly as requested
-            sentence = (
-                f"Given DRG code {row['DRG']} and Severity {row['Claim_Severity']}, "
-                f"the code {row['Diag_Code']} can be DROPPED "
-                f"(Historical Drop Rate: {round(row['Drop_Probability']*100, 1)}%)"
-            )
-            recommendations.append(sentence)
+        recs = []
+        for _, row in high_risk.iterrows():
+            # We construct a sentence that explains the logic based on the COUNTS
             
-        return recommendations
+            # Context description
+            context = []
+            if row['Count_SOI_4'] > 0:
+                context.append(f"{row['Count_SOI_4']}x SOI-4 codes")
+            if row['Count_SOI_3'] > 0:
+                context.append(f"{row['Count_SOI_3']}x SOI-3 codes")
+            
+            context_str = " and ".join(context) if context else "low severity codes"
+            
+            sentence = (
+                f"For APR-DRG {row['APR_DRG']} (SOI {row['Claim_SOI']}): "
+                f"When the claim contains [{context_str}], "
+                f"Code {row['Diag_Code']} is DROPPED. "
+                f"(Confidence: {int(row['Drop_Probability']*100)}%)"
+            )
+            recs.append(sentence)
+            
+        return recs
 
 # ==========================================
-# 1. INPUT DATA SIMULATION
+# 1. SIMULATE APR-DRG DATA
 # ==========================================
-# This matches the structure you described:
-# - Diag_Codes_Dict: Key=Code, Value=Severity (MCC/CC)
-# - Dropped_Codes: List of codes removed
+
+# Scenario 1: The "Fragile" Claim. 
+# J96.00 is the ONLY Severity 4 code. Auditors love to drop this to lower payment.
+claim_fragile = {
+    'ClaimID': 1, 'APR_DRG_Code': 137, 'Claim_SOI': 4,
+    'Diag_Codes_Dict': {'J18.9': 2, 'I10': 1, 'J96.00': 4}, # Only one 4
+    'Dropped_Codes': ['J96.00']
+}
+
+# Scenario 2: The "Robust" Claim.
+# Claim has multiple Sev 4 codes. Dropping J96.00 doesn't change much.
+claim_robust = {
+    'ClaimID': 2, 'APR_DRG_Code': 137, 'Claim_SOI': 4,
+    'Diag_Codes_Dict': {'J18.9': 2, 'I50.23': 4, 'N17.9': 4, 'J96.00': 4}, # Three 4s
+    'Dropped_Codes': [] # Not dropped because the claim stays Sev 4 anyway
+}
+
+# Add more data to reinforce the pattern
 data = [
-    {
-        'ClaimID': 101, 
-        'DRG_Code': 871, 
-        'Claim_Severity': 3, 
-        'Diag_Codes_Dict': {'A41.9': 'MCC', 'J96.00': 'MCC', 'I10': 'Non-CC'}, 
-        'Dropped_Codes': ['J96.00'] # J96 dropped
-    },
-    {
-        'ClaimID': 102, 
-        'DRG_Code': 871, 
-        'Claim_Severity': 3, 
-        'Diag_Codes_Dict': {'A41.9': 'MCC', 'J96.00': 'MCC', 'E11.9': 'CC'}, 
-        'Dropped_Codes': ['J96.00'] # J96 dropped again (Pattern!)
-    },
-    {
-        'ClaimID': 103, 
-        'DRG_Code': 190, 
-        'Claim_Severity': 1, 
-        'Diag_Codes_Dict': {'J18.9': 'CC', 'I10': 'Non-CC'}, 
-        'Dropped_Codes': [] # Nothing dropped
-    },
-    {
-        'ClaimID': 104, 
-        'DRG_Code': 871, 
-        'Claim_Severity': 3, 
-        'Diag_Codes_Dict': {'A41.9': 'MCC', 'J96.00': 'MCC'}, 
-        'Dropped_Codes': [] # J96 kept this time
-    },
-     {
-        'ClaimID': 105, 
-        'DRG_Code': 871, 
-        'Claim_Severity': 3, 
-        'Diag_Codes_Dict': {'A41.9': 'MCC', 'J96.00': 'MCC', 'N17.9': 'CC'}, 
-        'Dropped_Codes': ['J96.00'] # J96 dropped 3rd time
-    }
+    claim_fragile, 
+    claim_robust,
+    # Another fragile case reinforcing the rule
+    {'ClaimID': 3, 'APR_DRG_Code': 137, 'Claim_SOI': 4, 
+     'Diag_Codes_Dict': {'E11.9': 2, 'J96.00': 4}, 'Dropped_Codes': ['J96.00']}, 
+    # Another robust case reinforcing the rule
+    {'ClaimID': 4, 'APR_DRG_Code': 137, 'Claim_SOI': 4, 
+     'Diag_Codes_Dict': {'I50.23': 4, 'J96.00': 4}, 'Dropped_Codes': []}
 ]
 
 df = pd.DataFrame(data)
 
 # ==========================================
-# 2. RUN THE ENGINE
+# 2. RUN ENGINE
 # ==========================================
 
-engine = AuditRecommender(df)
+engine = APR_DRG_Audit_Engine(df)
 engine.preprocess_and_train()
-results = engine.generate_recommendations(threshold=0.5) # 50% confidence threshold
+recommendations = engine.generate_smart_recommendations()
 
-# ==========================================
-# 3. OUTPUT
-# ==========================================
-print("\nOUTPUT:")
-for res in results:
-    print(res)
+print("\n--- OUTPUT ---")
+for r in recommendations:
+    print(r)
