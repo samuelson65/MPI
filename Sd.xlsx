@@ -1,117 +1,102 @@
-Guideline ID Clinical Category Guideline Name Logic (The "IF" Statement) Insight & Audit Idea (Multiple Angles)
-CHF-001 Cardiology (CHF) Probable "Wet" Discharge (index drg IN [CHF_DRGs]) AND (readm drg IN [CHF_DRGs]) AND (index claim los < [gmlos_lookup]) AND (daysgap <= 7) Insight: High-risk premature discharge. The claim data (short LOS, quick readmit) suggests the patient was still "wet" (fluid overloaded). 
-Audit Idea (Multiple Angles): Order the record. Investigate these 3 potential failure points: 
-1. Clinical Instability: Check final 24-hr vitals (tachycardia?). Check I/Os & daily weights. Was the patient gaining weight or had low urine output? 
-2. Medical Plan Failure: Check the MAR. Was the patient still on IV Lasix or Bumex within 24 hours of discharge? A stable patient must be on oral (PO) meds. 
-3. Documentation Contradiction: Look for nursing or PT notes like "patient reports SOB on ambulation" or "2+ pedal edema" that contradict the physician's "stable for discharge" note.
-CHF-002 Cardiology (CHF) Failed Handoff (CHF) (index drg IN [CHF_DRGs]) AND (Discharge_Disposition = '01' [Home]) AND (daysgap <= 3) Insight: Extremely rapid "bounce-back" after discharge to home. This signals a critical failure in the handoff. 
-Audit Idea (Multiple Angles): Order Case Management (CM) notes. 
-1. Failed Education: Look for a lack of documented "teach-back" on the patient's new diuretic (Lasix) plan, low-sodium diet, and daily weight monitoring. 
-2. Failed Follow-up: Was a specific PCP/Cardiology follow-up appointment scheduled and confirmed? "Follow up in 1 week" is a failed plan. 
-3. Failed Med Reconciliation: Did the patient understand their new, complex med list? Was it reconciled with their home meds?
-CHF-003 Cardiology (CHF) Renal Complication (index drg IN [CHF_DRGs]) AND (readm drg IN [Renal_Failure_DRGs]) AND (daysgap <= 7) Insight: Foreseeable complication. Aggressive diuresis for CHF may have caused acute kidney injury (AKI). 
-Audit Idea (Multiple Angles): Order the record. 
-1. Lab Instability: Review the index stay's lab trends. Was the patient's Creatinine/BUN already rising before discharge? 
-2. Failed Monitoring: Given the high-dose diuretics, was a follow-up lab appointment (for BMP) scheduled? If not, the discharge was unsafe.
-CHF-004 Cardiology (CHF) Over-Medication / Hypotension (index drg IN [CHF_or_HTN_DRGs]) AND (readm drg IN [Syncope_Fall_Hypotension_DRGs]) AND (daysgap <= 10) Insight: The patient was likely started on or titrated up on new BP/heart meds (e.g., ACE-I, Beta-Blockers) and became hypotensive at home. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Med Plan: Review med reconciliation. Was a new, high-risk med started or a dose significantly increased? 
-2. Clinical Instability: Were there any notes of "dizziness" or "low BP" in the final 24 hours that were ignored? 
-3. Failed Education: Was the patient educated on monitoring for dizziness or checking their blood pressure at home?
-AMI-001 Cardiology (AMI) Failed Med Handoff (DAPT) (index drg IN [AMI_or_PCI_DRGs]) AND (readm drg IN [AMI_or_Stent_Thrombosis_DRGs]) AND (daysgap <= 30) Insight: This is a critical failure of education. Stent thrombosis is often due to non-adherence to Dual Anti-Platelet Therapy (DAPT - e.g., Plavix, Brilinta). 
-Audit Idea (Multiple Angles): Order CM & Pharmacy notes. 
-1. Failed Education: Look for explicit "teach-back" that the patient understood the life-threatening risk of stopping their DAPT. 
-2. Failed Access: Was the prescription filled? (e.g., "meds to bedside" program). Did the patient verbalize they could afford the (often expensive) medication?
-AMI-002 Cardiology (AMI) Post-PCI Complication (Bleed) (index drg IN [PCI_DRGs]) AND (readm drg IN [Bleeding_or_Vascular_Comp_DRGs]) AND (daysgap <= 3) Insight: Direct complication from the procedure (e.g., retroperitoneal bleed, access site hematoma). 
-Audit Idea (Multiple Angles): Order the record. 
-1. Clinical Instability: Review post-procedure nursing notes. Were there any notes of new hematoma, severe back/flank pain, or unstable BP before discharge? 
-2. Failed Monitoring: Did the patient meet stability criteria? (e.g., stable H&H lab values, 6+ hours of monitoring).
-AMI-003 Cardiology (AMI) Post-AMI Heart Failure (index drg IN [AMI_DRGs]) AND (readm drg IN [CHF_DRGs]) AND (daysgap <= 10) Insight: A very common complication of AMI (a weakened heart). The discharge plan must anticipate this. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Risk Stratification: Review the final Echocardiogram. Was the LVEF (ejection fraction) very low? If so, the patient was high-risk. 
-2. Medical Plan Failure: Was the patient started on guideline-directed medical therapy (e.g., beta-blockers, ACE-inhibitors) before discharge? 
-3. Failed Education: Was this high-risk patient educated on new CHF symptoms (weight gain, swelling)?
-PNA-001 Pulmonology (PNA) Unstable Discharge (Vitals) (index drg IN [PNA_DRGs]) AND (readm drg IN [PNA_or_Sepsis_DRGs]) AND (index claim los < [gmlos_lookup]) AND (daysgap <= 5) Insight: Classic premature discharge. The infection was likely not resolved. 
-Audit Idea (Multiple Angles): Order the record. Hunt for any of these instability markers: 
-1. Vital Sign Instability: Check final 24-hr flow sheet. Look for fever (T > 100.4F), masked fever (e.g., afebrile but receiving Tylenol Q6H), tachycardia (HR > 100), or tachypnea (RR > 24). 
-2. Oxygenation Failure: Check O2 sat. Was the patient stable on room air? Or were they still on 2L O2 and sent home? 
-3. Lab/Med Instability: Check labs. Was the WBC count trending up or still > 15k? Check MAR. Was the patient transitioned to oral (PO) antibiotics and did they tolerate a dose? Or were they discharged on IV meds?
-PNA-002 Pulmonology (PNA) Unsafe Handoff (Weakness) (index drg IN [PNA_DRGs]) AND (readm drg IN [Dehydration_or_Altered_Mental_DRGs]) AND (Discharge_Disposition = '01' [Home]) AND (daysgap <= 5) Insight: Patient (often elderly) was discharged home too weak to care for themselves. This is a functional, not a medical, failure. 
-Audit Idea (Multiple Angles): Order PT & CM notes. 
-1. Functional Failure: Did PT clear the patient for "independent ambulation"? Check nursing notes for "min assist to BR." 
-2. Social/Support Failure: Did CM document a "safe home environment" and "family support available"? If the note says "patient lives alone," this was an unsafe discharge.
-COPD-001 Pulmonology (COPD) Failed Education (Action Plan) (index drg IN [COPD_DRGs]) AND (readm drg IN [COPD_DRGs]) AND (daysgap <= 15) Insight: The patient did not understand how to manage their condition at home. This is a primary failure of education. 
-Audit Idea (Multiple Angles): Order CM & Respiratory Therapy (RT) notes. 
-1. Failed Inhaler Education: Look for documented "teach-back"* on new/complex inhaler technique. "Education provided" is not enough. 
-2. Failed Action Plan: Was the patient given a written "COPD Action Plan" (Green/Yellow/Red zones)? Its absence is the core of your audit.
-COPD-002 Pulmonology (COPD) Failed Handoff (Home O2) (index drg IN [COPD_DRGs]) AND (Discharge_Disposition = '06' [Home w/ Home Health]) AND (daysgap <= 3) Insight: This signals a critical failure in coordinating the home care plan. The patient likely went without O2. 
-Audit Idea (Multiple Angles): Order CM notes. 
-1. Failed Handoff: Look for confirmation that the Home Oxygen company accepted the patient and delivered the equipment. "Referral sent to home O2" is not enough—it must be a confirmed handoff.
-SURG-001 Surgical (General) Surgical Site Infection (SSI) (index drg IN [Major_Surgery_DRGs_eg_Ortho_Colon]) AND (readm drg IN [SSI_Sepsis_or_Wound_Dehiscence_DRGs]) AND (daysgap <= 30) Insight: The #1 preventable surgical readmission. This is a direct, related complication. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Failed Education: Review discharge notes. Was the patient given clear, written instructions on wound care and the specific signs of infection (fever, redness, pus) to report? 
-2. Clinical Instability: Check post-op vitals/labs. Were there any low-grade fevers or rising WBC counts that were dismissed?
-SURG-002 Surgical (GI) Anastomotic Leak (index drg IN [Bowel_Resection_DRGs]) AND (readm drg IN [Sepsis_Abscess_or_Peritonitis_DRGs]) AND (daysgap <= 10) Insight: A dreaded, but known, complication. Patient may have had subtle signs of this before discharge. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Clinical Instability: Review the final 48-hr vitals & labs. Look for any low-grade fever, persistent tachycardia (HR > 100), or rising WBC count that was dismissed as "normal post-op." 
-2. Failed "Return to Function": Was the patient tolerating a diet? Or were there notes of "nausea" or "abdominal distention" that were ignored?
-SURG-003 Surgical (General) Post-op DVT / PE (index drg IN [Major_Surgery_DRGs_eg_Ortho_Gyn_Abdo]) AND (readm drg IN [DVT_or_Pulmonary_Embolism_DRGs]) AND (daysgap <= 30) Insight: Failure of post-operative prophylaxis (blood thinners). 
-Audit Idea (Multiple Angles): Order the index stay's MAR. 
-1. Inpatient Failure: Was the patient receiving chemical prophylaxis (e.g., Lovenox, Heparin)? Were their SCDs (leg pumps) on? 
-2. Handoff Failure: Were they prescribed prophylaxis (e.g., Xarelto) to take home? Was education on DVT signs (leg swelling, pain) provided?
-SURG-004 Surgical (General) Post-op Ileus / Obstruction (index drg IN [GI_Surgery_DRGs_eg_Bowel_Resection]) AND (readm drg IN [Ileus_Obstruction_or_Vomiting_DRGs]) AND (daysgap <= 7) Insight: Premature discharge before bowel function ("flatus" or "BM") fully returned. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Failed "Return to Function": Review nursing notes for the last 24-48 hrs. Was the patient tolerating a solid diet? Were they having bowel movements (BMs) and passing flatus? If not, they failed a basic discharge criterion.
-SURG-005 Surgical (Spine/Ortho) Post-op Urinary Retention (index drg IN [Major_Surgery_esp_Spinal_Ortho_DRGs]) AND (readm drg IN [UTI_or_Urinary_Retention_DRGs]) AND (daysgap <= 3) Insight: Patient (especially male) discharged without a successful "voiding trial" after their Foley catheter was removed. 
-Audit Idea (Multiple Angles): Check nursing notes. 
-1. Failed Trial: Did the patient void successfully and have a "bladder scan" to check for residual urine before discharge? A high residual (>200cc) is a failed trial.
-ORTHO-001 Orthopedics (TKA/THA) Prosthetic Joint Infection (PJI) (index drg IN [TKA_THA_DRGs]) AND (readm drg IN [Infection_Sepsis_PJI_DRGs]) AND (daysgap <= 30) Insight: This is a high-cost, severe complication. The readmission is a direct consequence of the index procedure. 
-Audit Idea (Multiple Angles): Order the record. 
-1. Clinical Instability: Review index Op Note (long procedure time?), post-op vitals (any low-grade fevers?), and rising WBC count. 
-2. Failed Education: Review discharge wound care instructions. Was education on infection signs (fever, redness, warmth, pus) clear and documented?
-ORTHO-002 Orthopedics (TKA/THA) SNF Bounce-Back (Pain/Rehab) (index drg IN [TKA_THA_DRGs]) AND (Discharge_Disposition = '03' [To SNF]) AND (readm drg IN [Uncontrolled_Pain_Failure_to_Rehab_DRGs]) AND (daysgap <= 5) Insight: The SNF rejected the patient as unable to participate in rehab. The hospital's discharge pain plan was inadequate. 
-Audit Idea (Multiple Angles): Order CM notes and the SNF transfer packet. 
-1. Failed Pain Control: Was the patient's pain controlled on oral meds for 24-48 hours before transfer? Or were they still on IV pain meds? 
-2. Failed Handoff: Check the SNF's readmit note. It will often state "patient arrived with 10/10 pain" or "pain meds not appropriate."
-ORTHO-003 Orthopedics (THA) Hip Dislocation (index drg IN [THA_DRGs]) AND (readm drg IN [Dislocation_DRGs]) AND (daysgap <= 30) Insight: This is a 100% failure of patient education or post-op positioning. 
-Audit Idea (Multiple Angles): Order PT and CM notes. 
-1. Failed Education: Look for explicit, documented "teach-back"* that the patient/family understood "hip precautions" (e.g., no bending > 90 degrees, no crossing legs). "Education provided" is not a defense.
-WOUND-001 Debridement / Wound Failed Debridement / Progression (index drg IN [Debridement_DRGs]) AND (readm drg IN [Sepsis_Osteomyelitis_or_Amputation_DRGs]) AND (daysgap <= 15) Insight: The initial debridement failed to control the infection source. This is a continuation of the first stay. 
-Audit Idea (Multiple Angles): Order index Op Note. 
-1. Failed Procedure: Was the debridement described as "to clean margins"? 
-2. Failed Med Plan: Review index cultures vs. readmit cultures. Was the discharge antibiotic plan appropriate for the bug? Was the WBC count still high at discharge?
-WOUND-002 Debridement / Wound Failed Home Care (Wound VAC) (index drg IN [Complex_Wound_DRGs]) AND (Discharge_Disposition = '06' [Home Health]) AND (readm drg IN [Infection_Sepsis_Wound_Comp_DRGs]) AND (daysgap <= 7) Insight: Critical failure in coordinating complex home care. The Wound VAC may have failed or the HH nurse was not set up. 
-Audit Idea (Multiple Angles): Order CM notes. 
-1. Failed Handoff: Look for confirmation that the Wound VAC company and the HH agency accepted the patient and scheduled the first visit. "Referral sent" is not sufficient.
-NEURO-001 Neurological (Stroke) Post-Stroke Complication (index drg IN [Stroke_CVA_DRGs]) AND (readm drg IN [Aspiration_PNA_or_UTI_or_Fall_DRGs]) AND (daysgap <= 15) Insight: These are 100% discharge-planning failures. The patient's new functional/cognitive deficits were not properly managed. 
-Audit Idea (Multiple Angles): Order PT, OT, and Speech Therapy notes. 
-1. Aspiration PNA: Was a swallow study done? Was the patient's diet (e.g., "nectar thick") appropriate and was the family trained? 
-2. Fall: Was the patient "high fall risk" and discharged home without support? 
-3. UTI: Was the patient discharged with a Foley catheter without a clear plan for removal?
-MED-001 High-Risk Meds Anticoagulation (Warfarin) Failure (index drg IN [ANY_DRG]) AND (Patient_on_Warfarin) AND (readm drg IN [Bleeding_GI_Bleed_or_Clotting_Stroke_DVT_PE_DRGs]) AND (daysgap <= 10) Insight: A high-risk medication handoff failure. The patient's INR was either sub-therapeutic (clot) or supra-therapeutic (bleed). 
-Audit Idea (Multiple Angles): Order CM/Pharmacy notes. 
-1. Failed Handoff: Was a specific follow-up appointment for an INR check within 3-5 days scheduled and confirmed? 
-2. Failed Education: Was a clear "bridge plan" (if needed with Lovenox) documented and taught to the patient?
-MED-002 High-Risk Meds Insulin / Diabetes Mismanagement (index drg IN [ANY_DRG]) AND (Patient_has_Diabetes_Dx) AND (readm drg IN [Hyperglycemia_DKA_or_Hypoglycemia_DRGs]) AND (daysgap <= 7) Insight: The hospital changed the patient's diet, activity, or meds (e.g., added steroids) and failed to create a safe home insulin plan. 
-Audit Idea (Multiple Angles): Order CM/Endo notes. 
-1. Failed Education: Was a "Diabetes Educator" consulted? Was a clear, new home sliding scale or dosing plan documented and taught to the patient ("teach-back")? 
-2. Failed Plan: Was the new plan tested in the hospital (e.g., patient given breakfast + insulin and monitored) before discharge?
-VULN-001 Vulnerable Pop. (ESRD) Missed Dialysis Handoff (index drg IN [ANY_DRG]) AND (Patient_has_ESRD_Dx) AND (readm drg IN [CHF_Hyperkalemia_Fluid_Overload_DRGs]) AND (daysgap <= 3) Insight: This is a 100% preventable, system-level coordination failure. The patient missed their first post-discharge dialysis run. 
-Audit Idea (Multiple Angles): Order CM notes. 
-1. Failed Handoff: Look for confirmation that the outpatient dialysis center was contacted and the patient's first appointment was scheduled and a "chair" was available.
-SOCIAL-001 Social & Vague "Failure to Thrive" / "AMS" (index drg IN [ANY_DRG]) AND (readm drg IN [AMS_Failure_to_Thrive_Dehydration_DRGs]) AND (Discharge_Disposition = '01' [Home]) Insight: This is the ultimate "unsafe discharge." The patient was too weak/confused to be home. A goldmine for auditors. 
-Audit Idea (Multiple Angles): Order CM, PT, and Nutrition notes. 
-1. Social Failure: Look for notes like "patient lives alone," "poor historian," or "no family support." 
-2. Functional Failure: Did PT note "unable to ambulate"? Did Nutrition note "poor PO intake"? This was a demonstrable failure.
-HANDOFF-001 Handoff Failure SNF Bounce-Back (Unstable) (Discharge_Disposition = '03' [To SNF]) AND (daysgap <= 2) Insight: This is a critical failure. The Skilled Nursing Facility (SNF) rejected the patient as unstable upon arrival. 
-Audit Idea (Multiple Angles): Order the transfer packet (H&P, transfer summary). 
-1. Clinical Instability: Compare the transfer summary to the actual final vitals/labs. Did the summary "omit" a recent fever or a pending critical lab (e.g., high WBC count)? 
-2. Documentation Conflict: Check the SNF's readmission note. They will often explicitly state why they sent the patient back (e.g., "patient arrived hypotensive"). This is your "smoking gun."
-HANDOFF-002 Handoff Failure Home Health Bounce-Back (Discharge_Disposition = '06' [To Home Health]) AND (daysgap <= 3) Insight: The Home Health agency found the patient unstable on the first visit ("Admission visit") and sent them back. 
-Audit Idea (Multiple Angles): Order CM notes. 
-1. Failed Handoff: Was the HH referral confirmed? 
-2. Documentation Conflict: Check the HH agency's readmission note/referral. It will state why (e.g., "patient found febrile," "wound VAC non-functional," "patient 'wet' with 3+ edema").
-DEPRI-001 De-Prioritize Patient Non-Compliance (AMA) (Discharge_Disposition = '07' [Left AMA]) AND (daysgap <= 2) Insight: Patient left Against Medical Advice. 
-Audit Idea: De-Prioritize or Filter Out. The hospital is protected if a signed AMA form is in the chart. This is a low-probability audit for you to win.
-DEPRI-002 De-Prioritize Unrelated Traumatic Injury (index drg IN [ANY_Medical_DRG]) AND (readm drg IN [Trauma_Fracture_Fall_DRGs]) Insight: This is likely a new, unavoidable event. (Exception: See CHF-004. If the fall was caused by meds, it's relevant. If it was a car accident, it is not). 
-Audit Idea: De-Prioritize. This is almost certainly an unrelated event.
+Library Placeholder Clinical Category MS-DRG Description
+[CHF_DRGs] Heart Failure 291 Heart Failure & Shock w/ MCC
+    292 Heart Failure & Shock w/ CC
+    293 Heart Failure & Shock w/o CC/MCC
+[AMI_DRGs] Acute Myocardial Infarction 280 Acute Myocardial Infarction, Discharged Alive w/ MCC
+    281 Acute Myocardial Infarction, Discharged Alive w/ CC
+    282 Acute Myocardial Infarction, Discharged Alive w/o CC/MCC
+[PCI_DRGs] PCI / Stents 246 Percutaneous CV Proc w/ Drug-Eluting Stent w/ MCC
+    247 Percutaneous CV Proc w/ Drug-Eluting Stent w/o MCC
+    248 Percutaneous CV Proc w/ Non-Drug-Eluting Stent w/ MCC
+    249 Percutaneous CV Proc w/ Non-Drug-Eluting Stent w/o MCC
+    250 Percutaneous CV Proc w/o Coronary Artery Stent w/ MCC
+    251 Percutaneous CV Proc w/o Coronary Artery Stent w/o MCC
+[PNA_DRGs] Pneumonia 193 Simple Pneumonia & Pleurisy w/ MCC
+    194 Simple Pneumonia & Pleurisy w/ CC
+    195 Simple Pneumonia & Pleurisy w/o CC/MCC
+  Related (often miscoded) 177 Respiratory Infections & Inflammations w/ MCC
+    178 Respiratory Infections & Inflammations w/ CC
+    179 Respiratory Infections & Inflammations w/o CC/MCC
+[COPD_DRGs] COPD / Bronchitis 190 Chronic Obstructive Pulmonary Disease w/ MCC
+    191 Chronic Obstructive Pulmonary Disease w/ CC
+    192 Chronic Obstructive Pulmonary Disease w/o CC/MCC
+    202 Bronchitis & Asthma w/ CC/MCC
+    203 Bronchitis & Asthma w/o CC/MCC
+[Sepsis_DRGs] Sepsis 870 Septicemia or Severe Sepsis w/ MV >96 Hours
+    871 Septicemia or Severe Sepsis w/o MV >96 Hours w/ MCC
+    872 Septicemia or Severe Sepsis w/o MV >96 Hours w/o MCC
+[TKA_THA_DRGs] Joint Replacement 469 Major Joint Replacement or Reattachment of Lower Extremity w/ MCC
+    470 Major Joint Replacement or Reattachment of Lower Extremity w/o CC/MCC
+    466 Revision of Hip or Knee Replacement w/ MCC
+    467 Revision of Hip or Knee Replacement w/ CC
+    468 Revision of Hip or Knee Replacement w/o CC/MCC
+[SSI_Sepsis_PJI_DRGs] Surgical Infections 856 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/ MCC
+    857 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/ CC
+    858 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/o CC/MCC
+    544 Pathological Fx & Musculoskeletal & Conn Tiss Malig w/ MCC (Often PJI)
+[Bowel_Resection_DRGs] Bowel Surgery 329 Major Small & Large Bowel Procedures w/ MCC
+    330 Major Small & Large Bowel Procedures w/ CC
+    331 Major Small & Large Bowel Procedures w/o CC/MCC
+    332 Rectal Resection w/ MCC
+    333 Rectal Resection w/ CC
+    334 Rectal Resection w/o CC/MCC
+[Ileus_Obstruction_DRGs] GI Obstruction 388 G.I. Obstruction w/ MCC
+    389 G.I. Obstruction w/ CC
+    390 G.I. Obstruction w/o CC/MCC
+[Bleeding_or_Vascular_Comp_DRGs] GI Bleed 377 G.I. Hemorrhage w/ MCC
+    378 G.I. Hemorrhage w/ CC
+    379 G.I. Hemorrhage w/o CC/MCC
+[Renal_Failure_DRGs] Renal Failure 682 Renal Failure w/ MCC
+    683 Renal Failure w/ CC
+    684 Renal Failure w/o CC/MCC
+[Stroke_CVA_DRGs] Stroke (Ischemic) 061 Ischemic Stroke w/ Thrombolytic Agent w/ MCC
+    062 Ischemic Stroke w/ Thrombolytic Agent w/ CC
+    063 Ischemic Stroke w/ Thrombolytic Agent w/o CC/MCC
+    064 Intracranial Hemorrhage or Cerebral Infarction w/ MCC
+    065 Intracranial Hemorrhage or Cerebral Infarction w/ CC
+    066 Intracranial Hemorrhage or Cerebral Infarction w/o CC/MCC
+[Debridement_DRGs] Wound Debridement 573 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/ MCC
+    574 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/ CC
+    575 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/o CC/MCC
+    570 Skin Debridement w/ MCC
+    571 Skin Debridement w/ CC
+    572 Skin Debridement w/o CC/MCC
+[UTI_DRGs] Urinary Tract Infection 689 Kidney & Urinary Tract Infections w/ MCC
+    690 Kidney & Urinary Tract Infections w/o CC/MCC
+[Cellulitis_DRGs] Cellulitis 602 Cellulitis w/ MCC
+    603 Cellulitis w/o MCC
+[Dehydration_or_Altered_Mental_DRGs] Dehydration / Metabolic 640 Misc Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/ MCC
+    641 Misc Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/o MCC
+[Syncope_Fall_Hypotension_DRGs] Syncope / Collapse 312 Syncope & Collapse
+    313 Chest Pain
+[Altered_Mental_Status_Delirium_DRGs] AMS / Neuro 091 Other Disorders of Nervous System w/ MCC
+    092 Other Disorders of Nervous System w/ CC
+    093 Other Disorders of Nervous System w/o CC/MCC
+[HTN_DRGs] Hypertension 304 Hypertension w/ MCC
+    305 Hypertension w/o MCC
+[Diabetes_DKA_DRGs] Diabetes 637 Diabetes w/ MCC (Includes DKA, Hyperosmolarity)
+    638 Diabetes w/ CC
+    639 Diabetes w/o CC/MCC
+[PPM_ICD_Implant_DRGs] Pacemaker 242 Permanent Cardiac Pacemaker Implant w/ MCC
+    243 Permanent Cardiac Pacemaker Implant w/ CC
+    244 Permanent Cardiac Pacemaker Implant w/o CC/MCC
+[DVT_or_Pulmonary_Embolism_DRGs] DVT / PE 175 Pulmonary Embolism w/ MCC
+    176 Pulmonary Embolism w/o MCC
+    294 Deep Vein Thrombophlebitis w/ CC/MCC
+    295 Deep Vein Thrombophlebitis w/o CC/MCC
+[Psych_Substance_Abuse_DRGs] Psych / Substance 885 Psychoses
+    896 Alcohol/Drug Abuse or Dependence w/o Rehab Therapy w/ MCC
+    897 Alcohol/Drug Abuse or Dependence w/o Rehab Therapy w/o MCC
+    894 Alcohol/Drug Abuse or Dependence, Left AMA
+[Spinal_Fusion_Laminectomy_DRGs] Spine Surgery 453 Combined Anterior/Posterior Spinal Fusion w/ MCC
+    454 Combined Anterior/Posterior Spinal Fusion w/ CC
+    455 Combined Anterior/Posterior Spinal Fusion w/o CC/MCC
+    459 Spinal Fusion Except Cervical w/ MCC
+    460 Spinal Fusion Except Cervical w/o CC/MCC
+[Dislocation_DRGs] Orthopedic Complication 559 Aftercare, Musculoskeletal System & Connective Tissue w/ MCC
+    560 Aftercare, Musculoskeletal System & Connective Tissue w/ CC
+    561 Aftercare, Musculoskeletal System & Connective Tissue w/o CC/MCC
+[Trauma_Fracture_Fall_DRGs] Trauma (Filters) 955 Craniotomy for Multiple Significant Trauma
+    963 Other Multiple Significant Trauma w/ MCC
+    964 Other Multiple Significant Trauma w/ CC
+    
