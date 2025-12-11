@@ -1,102 +1,81 @@
 Library Placeholder Clinical Category MS-DRG Description
-[CHF_DRGs] Heart Failure 291 Heart Failure & Shock w/ MCC
-    292 Heart Failure & Shock w/ CC
-    293 Heart Failure & Shock w/o CC/MCC
-[AMI_DRGs] Acute Myocardial Infarction 280 Acute Myocardial Infarction, Discharged Alive w/ MCC
-    281 Acute Myocardial Infarction, Discharged Alive w/ CC
-    282 Acute Myocardial Infarction, Discharged Alive w/o CC/MCC
-[PCI_DRGs] PCI / Stents 246 Percutaneous CV Proc w/ Drug-Eluting Stent w/ MCC
-    247 Percutaneous CV Proc w/ Drug-Eluting Stent w/o MCC
-    248 Percutaneous CV Proc w/ Non-Drug-Eluting Stent w/ MCC
-    249 Percutaneous CV Proc w/ Non-Drug-Eluting Stent w/o MCC
-    250 Percutaneous CV Proc w/o Coronary Artery Stent w/ MCC
-    251 Percutaneous CV Proc w/o Coronary Artery Stent w/o MCC
-[PNA_DRGs] Pneumonia 193 Simple Pneumonia & Pleurisy w/ MCC
-    194 Simple Pneumonia & Pleurisy w/ CC
-    195 Simple Pneumonia & Pleurisy w/o CC/MCC
-  Related (often miscoded) 177 Respiratory Infections & Inflammations w/ MCC
+[ALTERED_MENTAL_STATUS_DELIRIUM_DRG] AMS / Delirium 091 Other Disorders of Nervous System w/ MCC
+(Also covers AMS)   092 Other Disorders of Nervous System w/ CC
+    093 Other Disorders of Nervous System w/o CC/MCC
+    881 Depressive Neuroses
+[AMS_Failure_to_Thrive_Dehydration_DRGs] Metabolic / FTT 640 Misc. Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/ MCC
+(Key for "Social" audits)   641 Misc. Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/o MCC
+    947 Signs & Symptoms w/ MCC
+    948 Signs & Symptoms w/o MCC
+[ANY_Medical_DRG] All Medical 052-103, 175-208, 280-316, etc. Logic Rule: DRG_Type = "Medical" (Use your grouper's flag for this instead of a hardcoded list)
+[Aspiration_PNA_Infection_Tube_Dislodged_DRGs] Aspiration / Comp. 177 Respiratory Infections & Inflammations w/ MCC (Includes Aspiration PNA)
     178 Respiratory Infections & Inflammations w/ CC
     179 Respiratory Infections & Inflammations w/o CC/MCC
-[COPD_DRGs] COPD / Bronchitis 190 Chronic Obstructive Pulmonary Disease w/ MCC
-    191 Chronic Obstructive Pulmonary Disease w/ CC
-    192 Chronic Obstructive Pulmonary Disease w/o CC/MCC
-    202 Bronchitis & Asthma w/ CC/MCC
-    203 Bronchitis & Asthma w/o CC/MCC
-[Sepsis_DRGs] Sepsis 870 Septicemia or Severe Sepsis w/ MV >96 Hours
-    871 Septicemia or Severe Sepsis w/o MV >96 Hours w/ MCC
-    872 Septicemia or Severe Sepsis w/o MV >96 Hours w/o MCC
-[TKA_THA_DRGs] Joint Replacement 469 Major Joint Replacement or Reattachment of Lower Extremity w/ MCC
-    470 Major Joint Replacement or Reattachment of Lower Extremity w/o CC/MCC
-    466 Revision of Hip or Knee Replacement w/ MCC
-    467 Revision of Hip or Knee Replacement w/ CC
-    468 Revision of Hip or Knee Replacement w/o CC/MCC
-[SSI_Sepsis_PJI_DRGs] Surgical Infections 856 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/ MCC
-    857 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/ CC
-    858 Postoperative or Post-Traumatic Infections w/ O.R. Proc w/o CC/MCC
-    544 Pathological Fx & Musculoskeletal & Conn Tiss Malig w/ MCC (Often PJI)
-[Bowel_Resection_DRGs] Bowel Surgery 329 Major Small & Large Bowel Procedures w/ MCC
+    981 Extensive O.R. Procedure Unrelated to Principal Diagnosis w/ MCC
+[Bleeding_GI_Bleed_or_Clotting_Stroke_DVT_PE_DRGs] Anticoagulation Fail 377-379 G.I. Hemorrhage (Bleed)
+(Combined Risk Group)   064-066 Intracranial Hemorrhage (Bleed)
+    061-063 Ischemic Stroke (Clot)
+    175-176 Pulmonary Embolism (Clot)
+    294-295 Deep Vein Thrombophlebitis (Clot)
+[BOWEL_RESECTION_GASTRIC_BYPASS_DRG] GI Surgery 329 Major Small & Large Bowel Procedures w/ MCC
     330 Major Small & Large Bowel Procedures w/ CC
     331 Major Small & Large Bowel Procedures w/o CC/MCC
-    332 Rectal Resection w/ MCC
-    333 Rectal Resection w/ CC
-    334 Rectal Resection w/o CC/MCC
-[Ileus_Obstruction_DRGs] GI Obstruction 388 G.I. Obstruction w/ MCC
-    389 G.I. Obstruction w/ CC
-    390 G.I. Obstruction w/o CC/MCC
-[Bleeding_or_Vascular_Comp_DRGs] GI Bleed 377 G.I. Hemorrhage w/ MCC
-    378 G.I. Hemorrhage w/ CC
-    379 G.I. Hemorrhage w/o CC/MCC
-[Renal_Failure_DRGs] Renal Failure 682 Renal Failure w/ MCC
-    683 Renal Failure w/ CC
-    684 Renal Failure w/o CC/MCC
-[Stroke_CVA_DRGs] Stroke (Ischemic) 061 Ischemic Stroke w/ Thrombolytic Agent w/ MCC
-    062 Ischemic Stroke w/ Thrombolytic Agent w/ CC
-    063 Ischemic Stroke w/ Thrombolytic Agent w/o CC/MCC
-    064 Intracranial Hemorrhage or Cerebral Infarction w/ MCC
-    065 Intracranial Hemorrhage or Cerebral Infarction w/ CC
-    066 Intracranial Hemorrhage or Cerebral Infarction w/o CC/MCC
-[Debridement_DRGs] Wound Debridement 573 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/ MCC
-    574 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/ CC
-    575 Skin Graft &/or Debridement for Skin Ulcer or Cellulitis w/o CC/MCC
-    570 Skin Debridement w/ MCC
-    571 Skin Debridement w/ CC
-    572 Skin Debridement w/o CC/MCC
-[UTI_DRGs] Urinary Tract Infection 689 Kidney & Urinary Tract Infections w/ MCC
-    690 Kidney & Urinary Tract Infections w/o CC/MCC
-[Cellulitis_DRGs] Cellulitis 602 Cellulitis w/ MCC
-    603 Cellulitis w/o MCC
-[Dehydration_or_Altered_Mental_DRGs] Dehydration / Metabolic 640 Misc Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/ MCC
-    641 Misc Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/o MCC
-[Syncope_Fall_Hypotension_DRGs] Syncope / Collapse 312 Syncope & Collapse
-    313 Chest Pain
-[Altered_Mental_Status_Delirium_DRGs] AMS / Neuro 091 Other Disorders of Nervous System w/ MCC
-    092 Other Disorders of Nervous System w/ CC
-    093 Other Disorders of Nervous System w/o CC/MCC
-[HTN_DRGs] Hypertension 304 Hypertension w/ MCC
-    305 Hypertension w/o MCC
-[Diabetes_DKA_DRGs] Diabetes 637 Diabetes w/ MCC (Includes DKA, Hyperosmolarity)
+    326 Stomach, Esophageal & Duodenal Proc w/ MCC
+    327 Stomach, Esophageal & Duodenal Proc w/ CC
+    328 Stomach, Esophageal & Duodenal Proc w/o CC/MCC
+[Complex_Wound_DRGs] Wound Care 570-572 Skin Debridement
+    573-575 Skin Graft for Skin Ulcer or Cellulitis
+    463-465 Wound Debridement & Skin Graft Except Hand
+[STENT_THROMBOSIS_DRG] PCI Complication 280-282 Acute Myocardial Infarction (Thrombosis usually codes to AMI)
+(Often codes to AMI)   314 Other Circulatory System Diagnoses w/ MCC
+    315 Other Circulatory System Diagnoses w/ CC
+[EGD_ERCP_DRGS] GI Procedures 391 Esophagitis, Gastroenteritis & Misc Digest Disorders w/ MCC
+(Inpatient Encounters)   392 Esophagitis, Gastroenteritis & Misc Digest Disorders w/o MCC
+    368 Major Esophageal Disorders w/ MCC
+[Hyperglycemia_DKA_or_Hypoglycemia_DRGs] Diabetes Comp. 637 Diabetes w/ MCC (DKA / Hyperosmolarity)
     638 Diabetes w/ CC
     639 Diabetes w/o CC/MCC
-[PPM_ICD_Implant_DRGs] Pacemaker 242 Permanent Cardiac Pacemaker Implant w/ MCC
-    243 Permanent Cardiac Pacemaker Implant w/ CC
-    244 Permanent Cardiac Pacemaker Implant w/o CC/MCC
-[DVT_or_Pulmonary_Embolism_DRGs] DVT / PE 175 Pulmonary Embolism w/ MCC
-    176 Pulmonary Embolism w/o MCC
-    294 Deep Vein Thrombophlebitis w/ CC/MCC
-    295 Deep Vein Thrombophlebitis w/o CC/MCC
-[Psych_Substance_Abuse_DRGs] Psych / Substance 885 Psychoses
-    896 Alcohol/Drug Abuse or Dependence w/o Rehab Therapy w/ MCC
-    897 Alcohol/Drug Abuse or Dependence w/o Rehab Therapy w/o MCC
-    894 Alcohol/Drug Abuse or Dependence, Left AMA
-[Spinal_Fusion_Laminectomy_DRGs] Spine Surgery 453 Combined Anterior/Posterior Spinal Fusion w/ MCC
-    454 Combined Anterior/Posterior Spinal Fusion w/ CC
-    455 Combined Anterior/Posterior Spinal Fusion w/o CC/MCC
-    459 Spinal Fusion Except Cervical w/ MCC
-    460 Spinal Fusion Except Cervical w/o CC/MCC
-[Dislocation_DRGs] Orthopedic Complication 559 Aftercare, Musculoskeletal System & Connective Tissue w/ MCC
-    560 Aftercare, Musculoskeletal System & Connective Tissue w/ CC
-    561 Aftercare, Musculoskeletal System & Connective Tissue w/o CC/MCC
-[Trauma_Fracture_Fall_DRGs] Trauma (Filters) 955 Craniotomy for Multiple Significant Trauma
-    963 Other Multiple Significant Trauma w/ MCC
-    964 Other Multiple Significant Trauma w/ CC
-    
+    640-641 Misc. Nutritional/Metabolic (Hypoglycemia often codes here)
+[Ileus_Obstruction_or_Vomiting_DRGs] GI Symptoms 388 G.I. Obstruction w/ MCC
+    389 G.I. Obstruction w/ CC
+    390 G.I. Obstruction w/o CC/MCC
+    391-392 Esophagitis, Gastroenteritis (Vomiting)
+[Infection_Sepsis_Wound_Comp_DRGs] Wound Comp. 856-858 Postoperative or Post-Traumatic Infections
+    862 Postoperative & Post-Traumatic Misc Procedure
+    871-872 Septicemia or Severe Sepsis
+[Lead_Dislodgement_Device_Malfunction_or_Infection_DRGs] Device Fail 314-316 Other Circulatory System Diagnoses (Malfunction codes here)
+    260-262 Cardiac Pacemaker Revision Except Device Replacement
+[Major_Surgery_DRGs_eg_Ortho_Colon] Major Surg 469-470 Major Joint Replacement (Ortho)
+    329-331 Major Bowel Procedures (Colon)
+    353-355 Hernia Procedures
+    417-419 Laparoscopic Cholecystectomy
+[Major_Surgery_esp_Spinal_Ortho_DRGs] Spine / Ortho 453-455 Combined Ant/Post Spinal Fusion
+    459-460 Spinal Fusion Except Cervical
+    471-473 Cervical Spinal Fusion
+    480-482 Hip & Femur Procedures Except Major Joint
+[Pancreatitis_Bleeding_or_Perforation_DRGs] GI Comp. 438 Disorders of Pancreas Except Malignancy w/ MCC
+    439 Disorders of Pancreas Except Malignancy w/ CC
+    440 Disorders of Pancreas Except Malignancy w/o CC/MCC
+    377-379 G.I. Hemorrhage
+[PEG_Placement_DRG] Procedures 326-328 Stomach, Esophageal & Duodenal Proc (PEG codes here)
+[Sepsis_Abscess_or_Peritonitis_DRGs] Infection 871-872 Septicemia or Severe Sepsis
+    371 Major G.I. Disorders & Peritoneal Infections w/ MCC
+    372 Major G.I. Disorders & Peritoneal Infections w/ CC
+    373 Major G.I. Disorders & Peritoneal Infections w/o CC/MCC
+[Sepsis_Osteomyelitis_or_Amputation_DRGs] Bone Infection 871-872 Septicemia or Severe Sepsis
+    539 Osteomyelitis w/ MCC
+    540 Osteomyelitis w/ CC
+    541 Osteomyelitis w/o CC/MCC
+    616-618 Amputation for Circulatory System Disorders
+[Uncontrolled_Pain_Failure_to_Rehab_DRGs] Pain / Rehab 947 Signs & Symptoms w/ MCC (Pain)
+    948 Signs & Symptoms w/o MCC (Pain)
+    949 Aftercare w/ CC/MCC (Rehab)
+    950 Aftercare w/o CC/MCC (Rehab)
+[Uncontrolled_Pain_Radiculopathy_DRGs] Spine Pain 551 Medical Back Problems w/ MCC
+    552 Medical Back Problems w/o MCC
+[Urinary_Retention_DRGs] GU Comp. 698 Other Kidney & Urinary Tract Diagnoses w/ MCC
+    699 Other Kidney & Urinary Tract Diagnoses w/ CC
+    700 Other Kidney & Urinary Tract Diagnoses w/o CC/MCC
+[WOUND_DEHISCENCE_DRG] Wound Comp. 856-858 Postoperative or Post-Traumatic Infections
+    981-983 Extensive O.R. Procedure Unrelated to Principal Diagnosis
+    (Note: Dehiscence is often a secondary dx code, typically grouping to 981-983 if re-operated)
