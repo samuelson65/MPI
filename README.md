@@ -1,157 +1,100 @@
-import pandas as pd
-import numpy as np
+import datetime
+from Bio import Entrez
 
-class APR_DRG_Audit_Engine:
-    def __init__(self, df):
-        self.raw_df = df
-        self.stats = None
+# 1. SETUP
+Entrez.email = "auditor@insurance.com"  # Required by NCBI
 
-    def preprocess_and_train(self):
-        """
-        1. Calculates the 'Severity Profile' (Count of Sev 1, 2, 3, 4) for each claim.
-        2. Flattens the data.
-        3. Learns drop patterns based on the specific mix of severities.
-        """
-        print("--- Analyzing Claim Composition (Severity Profiling) ---")
-        
-        flattened_data = []
-        
-        for idx, row in self.raw_df.iterrows():
-            claim_id = row['ClaimID']
-            apr_drg = row['APR_DRG_Code']
-            claim_sev = row['Claim_SOI'] # The final SOI (1-4)
-            
-            diag_dict = row['Diag_Codes_Dict'] # {Code: Severity_Int}
-            dropped_set = set(row['Dropped_Codes']) if isinstance(row['Dropped_Codes'], list) else set()
-            
-            # --- INTELLIGENCE STEP: Calculate Severity Counts ---
-            # We count how many codes of each severity exist on this specific claim
-            # This detects if a claim is "Fragile" (only 1 high severity code) or "Robust"
-            sev_counts = {1: 0, 2: 0, 3: 0, 4: 0}
-            
-            for code, sev in diag_dict.items():
-                # Ensure sev is an integer (handle potential string inputs)
-                sev_int = int(sev)
-                if sev_int in sev_counts:
-                    sev_counts[sev_int] += 1
-            
-            # --- EXPLOSION STEP ---
-            for code, code_sev in diag_dict.items():
-                code_sev_int = int(code_sev)
-                
-                # We identify if this specific code is a "Lone Driver"
-                # (i.e., It is a Sev 4 code, and there is only 1 Sev 4 code on the claim)
-                is_lone_driver = 1 if (code_sev_int == 4 and sev_counts[4] == 1) else 0
-                
-                flattened_data.append({
-                    'APR_DRG': apr_drg,
-                    'Claim_SOI': claim_sev,
-                    'Diag_Code': code,
-                    'Code_SOI': code_sev_int,
-                    # We Embed the Profile into the row
-                    'Count_SOI_3': sev_counts[3],
-                    'Count_SOI_4': sev_counts[4],
-                    'Is_Lone_Driver': is_lone_driver, 
-                    'Is_Dropped': 1 if code in dropped_set else 0
-                })
-        
-        long_df = pd.DataFrame(flattened_data)
-        
-        print("--- Learning Logic based on Severity Counts ---")
-        
-        # --- TRAINING STEP ---
-        # We group by the Counts of High Severity codes.
-        # This allows us to learn: "J96.00 is dropped when there are NO other Sev 4 codes"
-        self.stats = long_df.groupby([
-            'APR_DRG', 
-            'Claim_SOI', 
-            'Diag_Code', 
-            'Count_SOI_3', 
-            'Count_SOI_4'
-        ]).agg(
-            Total_Appearances=('Is_Dropped', 'count'),
-            Drop_Count=('Is_Dropped', 'sum')
-        ).reset_index()
-        
-        self.stats['Drop_Probability'] = self.stats['Drop_Count'] / self.stats['Total_Appearances']
-        
-        # Filter for noise (require at least 2 examples to form a rule)
-        self.stats = self.stats[self.stats['Total_Appearances'] >= 2]
-        
-        return self.stats
-
-    def generate_smart_recommendations(self, threshold=0.4):
-        print(f"--- Generating Smart Recommendations (Confidence > {threshold*100}%) ---")
-        
-        high_risk = self.stats[self.stats['Drop_Probability'] >= threshold].sort_values(
-            by='Drop_Probability', ascending=False
-        )
-        
-        recs = []
-        for _, row in high_risk.iterrows():
-            # We construct a sentence that explains the logic based on the COUNTS
-            
-            # Context description
-            context = []
-            if row['Count_SOI_4'] > 0:
-                context.append(f"{row['Count_SOI_4']}x SOI-4 codes")
-            if row['Count_SOI_3'] > 0:
-                context.append(f"{row['Count_SOI_3']}x SOI-3 codes")
-            
-            context_str = " and ".join(context) if context else "low severity codes"
-            
-            sentence = (
-                f"For APR-DRG {row['APR_DRG']} (SOI {row['Claim_SOI']}): "
-                f"When the claim contains [{context_str}], "
-                f"Code {row['Diag_Code']} is DROPPED. "
-                f"(Confidence: {int(row['Drop_Probability']*100)}%)"
-            )
-            recs.append(sentence)
-            
-        return recs
-
-# ==========================================
-# 1. SIMULATE APR-DRG DATA
-# ==========================================
-
-# Scenario 1: The "Fragile" Claim. 
-# J96.00 is the ONLY Severity 4 code. Auditors love to drop this to lower payment.
-claim_fragile = {
-    'ClaimID': 1, 'APR_DRG_Code': 137, 'Claim_SOI': 4,
-    'Diag_Codes_Dict': {'J18.9': 2, 'I10': 1, 'J96.00': 4}, # Only one 4
-    'Dropped_Codes': ['J96.00']
+# 2. THE KNOWLEDGE BASE (Simplified for Prototype)
+# In production, this comes from OpenFDA or your SQL DB
+DRUG_RULES = {
+    "J9271": {
+        "name": "Keytruda",
+        "banned_diagnoses": ["C61", "C71.9"], # Prostate, Glioblastoma (Known failures)
+        "approved_keywords": ["Lung", "Melanoma", "Head and Neck", "Hodgkin"]
+    },
+    "J2506": {
+        "name": "Neulasta",
+        "rule_type": "TIMING",
+        "min_days_after_chemo": 14
+    }
 }
 
-# Scenario 2: The "Robust" Claim.
-# Claim has multiple Sev 4 codes. Dropping J96.00 doesn't change much.
-claim_robust = {
-    'ClaimID': 2, 'APR_DRG_Code': 137, 'Claim_SOI': 4,
-    'Diag_Codes_Dict': {'J18.9': 2, 'I50.23': 4, 'N17.9': 4, 'J96.00': 4}, # Three 4s
-    'Dropped_Codes': [] # Not dropped because the claim stays Sev 4 anyway
-}
+# 3. THE LOGIC ENGINES
 
-# Add more data to reinforce the pattern
-data = [
-    claim_fragile, 
-    claim_robust,
-    # Another fragile case reinforcing the rule
-    {'ClaimID': 3, 'APR_DRG_Code': 137, 'Claim_SOI': 4, 
-     'Diag_Codes_Dict': {'E11.9': 2, 'J96.00': 4}, 'Dropped_Codes': ['J96.00']}, 
-    # Another robust case reinforcing the rule
-    {'ClaimID': 4, 'APR_DRG_Code': 137, 'Claim_SOI': 4, 
-     'Diag_Codes_Dict': {'I50.23': 4, 'J96.00': 4}, 'Dropped_Codes': []}
+def check_keytruda_indication(diagnosis_code, diagnosis_desc):
+    """
+    Checks if Keytruda is being used for a 'Banned' cancer type.
+    """
+    print(f"   [Logic] Checking Indication for {diagnosis_desc} ({diagnosis_code})...")
+    
+    # A. Hard Fail Check (The "Trap" List)
+    if diagnosis_code in DRUG_RULES["J9271"]["banned_diagnoses"]:
+        return "❌ DENY: Diagnosis is clinically unsupported (Failed Phase 3 Trials)."
+    
+    # B. Biopython Check (The "Safety Net")
+    # If it's not explicitly banned, ask PubMed if it's approved.
+    try:
+        query = f'(Pembrolizumab) AND ({diagnosis_desc}) AND ("Phase III" OR "NCCN Category 1")'
+        handle = Entrez.esearch(db="pubmed", term=query, retmax=1)
+        record = Entrez.read(handle)
+        
+        if int(record["Count"]) == 0:
+            return "⚠️ FLAG: No Phase III evidence found in PubMed. Potential Off-Label."
+        else:
+            return "✅ APPROVE: Valid Phase III Evidence found."
+            
+    except Exception as e:
+        return f"Error: {e}"
+
+def check_neulasta_timing(neulasta_date, last_chemo_date):
+    """
+    Enforces the '14-Day Rule' between Chemo and Neulasta.
+    """
+    print(f"   [Logic] Checking 14-Day Safety Rule...")
+    
+    d1 = datetime.datetime.strptime(neulasta_date, "%Y-%m-%d")
+    d2 = datetime.datetime.strptime(last_chemo_date, "%Y-%m-%d")
+    
+    delta = (d1 - d2).days
+    
+    if 0 <= delta < 14:
+        return f"❌ DENY: Patient Safety Risk. Administered {delta} days after Chemo (Requires 14+)."
+    else:
+        return "✅ APPROVE: Timing is safe."
+
+# 4. MAIN AUDIT RUNNER
+
+def audit_claim(claim_data):
+    j_code = claim_data["j_code"]
+    print(f"\n--- AUDITING CLAIM: {j_code} ({DRUG_RULES.get(j_code, {}).get('name', 'Unknown')}) ---")
+    
+    if j_code == "J9271": # Keytruda Logic
+        result = check_keytruda_indication(claim_data["diag_code"], claim_data["diag_desc"])
+        print(f"RESULT: {result}")
+        
+    elif j_code == "J2506": # Neulasta Logic
+        result = check_neulasta_timing(claim_data["date_of_service"], claim_data["last_chemo_date"])
+        print(f"RESULT: {result}")
+
+# --- TEST DATA (The "Honey Pot") ---
+
+batch_claims = [
+    # Claim 1: Keytruda for Prostate Cancer (Should Deny - High Value Hit)
+    {
+        "j_code": "J9271",
+        "diag_code": "C61",
+        "diag_desc": "Malignant Neoplasm of Prostate",
+        "date_of_service": "2024-01-10"
+    },
+    # Claim 2: Neulasta given 2 days after Chemo (Should Deny - Patient Safety)
+    {
+        "j_code": "J2506", 
+        "last_chemo_date": "2024-02-01",
+        "date_of_service": "2024-02-03", # Only 2 days gap!
+        "diag_desc": "Breast Cancer"
+    }
 ]
 
-df = pd.DataFrame(data)
-
-# ==========================================
-# 2. RUN ENGINE
-# ==========================================
-
-engine = APR_DRG_Audit_Engine(df)
-engine.preprocess_and_train()
-recommendations = engine.generate_smart_recommendations()
-
-print("\n--- OUTPUT ---")
-for r in recommendations:
-    print(r)
+# Run the Batch
+for claim in batch_claims:
+    audit_claim(claim)
