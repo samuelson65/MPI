@@ -1,100 +1,100 @@
-import datetime
-from Bio import Entrez
+import pandas as pd
 
-# 1. SETUP
-Entrez.email = "auditor@insurance.com"  # Required by NCBI
+# --- KNOWLEDGE BASE (The "Brain") ---
 
-# 2. THE KNOWLEDGE BASE (Simplified for Prototype)
-# In production, this comes from OpenFDA or your SQL DB
-DRUG_RULES = {
-    "J9271": {
-        "name": "Keytruda",
-        "banned_diagnoses": ["C61", "C71.9"], # Prostate, Glioblastoma (Known failures)
-        "approved_keywords": ["Lung", "Melanoma", "Head and Neck", "Hodgkin"]
+# 1. REGIMEN RULES: "If you have Key, you MUST have Value"
+REGIMEN_MANDATES = {
+    "J9299": { # Opdivo
+        "required_combinations": {
+            "C64": "J9480" # If Renal Cancer (C64), require Yervoy (J9480)
+        }
     },
-    "J2506": {
-        "name": "Neulasta",
-        "rule_type": "TIMING",
-        "min_days_after_chemo": 14
+    "J9041": { # Velcade
+        "required_combinations": {
+            "C90": "J9171" # If Multiple Myeloma, often requires Dexamethasone/Revlimid
+        }
     }
 }
 
-# 3. THE LOGIC ENGINES
+# 2. VIAL DATABASE: "Is this drug a Multi-Dose Vial?"
+# (In prod, fetch this from OpenFDA NDC directory)
+NDC_METADATA = {
+    "50242-051-21": {"drug": "Rituxan", "type": "SDV", "size_mg": 100}, # Single Dose (Waste OK)
+    "00002-7510-01": {"drug": "Humalog", "type": "MDV", "size_ml": 10}, # Multi Dose (Waste ILLEGAL)
+}
 
-def check_keytruda_indication(diagnosis_code, diagnosis_desc):
+# --- THE ADVANCED LOGIC ---
+
+def audit_claim_advanced(claim_df):
     """
-    Checks if Keytruda is being used for a 'Banned' cancer type.
+    Input: Pandas DataFrame representing ONE claim (multiple lines).
     """
-    print(f"   [Logic] Checking Indication for {diagnosis_desc} ({diagnosis_code})...")
+    audits = []
     
-    # A. Hard Fail Check (The "Trap" List)
-    if diagnosis_code in DRUG_RULES["J9271"]["banned_diagnoses"]:
-        return "❌ DENY: Diagnosis is clinically unsupported (Failed Phase 3 Trials)."
+    # Get all J-Codes and Diagnosis on this claim
+    all_j_codes = set(claim_df['j_code'].unique())
+    primary_diag = claim_df['diagnosis'].iloc[0] # Assuming claim-level diag
     
-    # B. Biopython Check (The "Safety Net")
-    # If it's not explicitly banned, ask PubMed if it's approved.
-    try:
-        query = f'(Pembrolizumab) AND ({diagnosis_desc}) AND ("Phase III" OR "NCCN Category 1")'
-        handle = Entrez.esearch(db="pubmed", term=query, retmax=1)
-        record = Entrez.read(handle)
-        
-        if int(record["Count"]) == 0:
-            return "⚠️ FLAG: No Phase III evidence found in PubMed. Potential Off-Label."
-        else:
-            return "✅ APPROVE: Valid Phase III Evidence found."
+    print(f"🕵️ Auditing Claim with codes: {all_j_codes} for {primary_diag}")
+
+    # --- CHECK 1: REGIMEN COMPLETENESS ---
+    for j_code in all_j_codes:
+        if j_code in REGIMEN_MANDATES:
+            rule = REGIMEN_MANDATES[j_code]
             
-    except Exception as e:
-        return f"Error: {e}"
+            # Check if this diagnosis triggers a mandated combo
+            # (Using 'startswith' to handle ICD-10 sub-codes like C64.1)
+            matched_diag = next((d for d in rule["required_combinations"] if primary_diag.startswith(d)), None)
+            
+            if matched_diag:
+                required_drug = rule["required_combinations"][matched_diag]
+                if required_drug not in all_j_codes:
+                    audits.append({
+                        "status": "DENY",
+                        "code": j_code,
+                        "reason": f"Regimen Failure. {j_code} for {primary_diag} requires {required_drug}, but it is missing."
+                    })
 
-def check_neulasta_timing(neulasta_date, last_chemo_date):
-    """
-    Enforces the '14-Day Rule' between Chemo and Neulasta.
-    """
-    print(f"   [Logic] Checking 14-Day Safety Rule...")
+    # --- CHECK 2: WASTAGE (JW) INTEGRITY ---
+    # Filter for lines with 'JW' modifier
+    wastage_lines = claim_df[claim_df['modifier'] == 'JW']
     
-    d1 = datetime.datetime.strptime(neulasta_date, "%Y-%m-%d")
-    d2 = datetime.datetime.strptime(last_chemo_date, "%Y-%m-%d")
-    
-    delta = (d1 - d2).days
-    
-    if 0 <= delta < 14:
-        return f"❌ DENY: Patient Safety Risk. Administered {delta} days after Chemo (Requires 14+)."
-    else:
-        return "✅ APPROVE: Timing is safe."
+    for _, row in wastage_lines.iterrows():
+        ndc = row['ndc']
+        if ndc in NDC_METADATA:
+            vial_info = NDC_METADATA[ndc]
+            
+            # A. The "Multi-Dose" Check
+            if vial_info['type'] == 'MDV':
+                audits.append({
+                    "status": "DENY",
+                    "code": row['j_code'],
+                    "reason": f"Illegal Wastage. {ndc} is a Multi-Dose Vial (MDV). Waste (JW) is never payable."
+                })
+                
+            # B. The "Impossible Waste" Check (Math)
+            # Example: Vial is 100mg. Doctor billed 110mg waste. Impossible.
+            # (Simplified logic for demo)
+            billed_waste_units = row['units']
+            if billed_waste_units > vial_info['size_mg']: # Assuming 1 unit = 1 mg
+                 audits.append({
+                    "status": "DENY",
+                    "code": row['j_code'],
+                    "reason": f"Impossible Waste. Billed {billed_waste_units} units waste, but vial is only {vial_info['size_mg']} units."
+                })
 
-# 4. MAIN AUDIT RUNNER
+    return audits
 
-def audit_claim(claim_data):
-    j_code = claim_data["j_code"]
-    print(f"\n--- AUDITING CLAIM: {j_code} ({DRUG_RULES.get(j_code, {}).get('name', 'Unknown')}) ---")
-    
-    if j_code == "J9271": # Keytruda Logic
-        result = check_keytruda_indication(claim_data["diag_code"], claim_data["diag_desc"])
-        print(f"RESULT: {result}")
-        
-    elif j_code == "J2506": # Neulasta Logic
-        result = check_neulasta_timing(claim_data["date_of_service"], claim_data["last_chemo_date"])
-        print(f"RESULT: {result}")
+# --- TEST DATA ---
 
-# --- TEST DATA (The "Honey Pot") ---
+# Scenario: Renal Cancer patient. Doctor billed Opdivo (J9299) but forgot Yervoy.
+# Also billed waste on an Insulin MDV (illegal).
+claim_data = pd.DataFrame([
+    {"line": 1, "j_code": "J9299", "diagnosis": "C64.9", "modifier": "None", "ndc": "99999-999-99", "units": 240},
+    {"line": 2, "j_code": "J1817", "diagnosis": "E11.9", "modifier": "JW", "ndc": "00002-7510-01", "units": 5} 
+])
 
-batch_claims = [
-    # Claim 1: Keytruda for Prostate Cancer (Should Deny - High Value Hit)
-    {
-        "j_code": "J9271",
-        "diag_code": "C61",
-        "diag_desc": "Malignant Neoplasm of Prostate",
-        "date_of_service": "2024-01-10"
-    },
-    # Claim 2: Neulasta given 2 days after Chemo (Should Deny - Patient Safety)
-    {
-        "j_code": "J2506", 
-        "last_chemo_date": "2024-02-01",
-        "date_of_service": "2024-02-03", # Only 2 days gap!
-        "diag_desc": "Breast Cancer"
-    }
-]
+results = audit_claim_advanced(claim_data)
 
-# Run the Batch
-for claim in batch_claims:
-    audit_claim(claim)
+for r in results:
+    print(f"🚨 {r['status']}: {r['reason']}")
