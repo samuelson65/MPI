@@ -1,62 +1,121 @@
-This is a Director-Level Market Intelligence Report designed to justify your product roadmap. It covers the Financial Landscape, the Pareto of Spend, and the Exhaustive Leakage Vectors where your Payment Integrity (PI) tools will hunt.
-​Market Intelligence: The 2026 Drug Spend Landscape
-​1. Executive Summary: The "Two-Speed" Market
-​The US drug market is currently experiencing a "Two-Speed" inflation.
-​Traditional Drugs: Growing slowly (3–5%).
-​Specialty & Lifestyle Drugs: Exploding (10–15% annually), driven primarily by the GLP-1 (Obesity) revolution and Oncology innovations.
-​Total Spend: US prescription spend hit ~$806 Billion in 2024 and is projected to grow 9–11% through 2026.  
-​The Strategic Consequence:
-Old-school PI (checking if a generic drug was priced right) is now low-value. The new money is in Utilization Management (Did they need it?) and Site-of-Care (Did we pay a hospital markup?).
-​2. The Pareto Analysis (The "Billion Dollar" Club)
-​In 2025/2026, 5% of drugs drive 90% of the spend trend. You must focus your "Audit Scripts" here.
-​Tier 1: The "Budget Breakers" (High Volume, High Cost)
-​These are the drugs that bankrupt self-insured plans.
-​GLP-1 Agonists (The #1 Driver):
-​Drugs: Ozempic, Wegovy, Mounjaro, Zepbound.  
-​The Trend: Spend rose 500% from 2018–2024. In 2025, employers saw a 30% spike in pharmacy benefit costs solely due to this class.  
-​The Risk: "Off-label" use for weight loss (when only covered for Diabetes) and "Poly-pharmacy" (patients staying on it forever).
-​Autoimmune (The "Humira" Cliff):
-​Drugs: Humira, Stelara, Skyrizi, Rinvoq.
-​The Trend: Spend is technically dropping for Humira due to biosimilars (generic versions like Hyrimoz), but providers still push the brand name to keep rebates high.
-​The Risk: Paying for Brand when a Biosimilar (60% cheaper) was available.
-​Tier 2: The "Jackpot" Claims (Low Volume, Massive Cost)
-​These are the "J-Codes" (Medical Benefit) your Python scripts will target.
-​Oncology (The J-Code Giants):
-​Drugs: Keytruda (J9271), Opdivo (J9299), Darzalex (J9145).
-​The Trend: Double-digit growth.
-​The Risk: Indication Creep (using Lung Cancer drugs for unapproved Brain Cancers).
-​Gene Therapy (The "Lightning Strikes"):
-​Drugs: Zolgensma ($2.1M), Hemgenix ($3.5M).
-​The Trend: Rare, but one claim ruins a payer's quarter.
-​The Risk: "Outcome Failure" (paying $3M for a cure that didn't work).
-​3. Exhaustive Leakage Matrix (Where Money is Lost)
-​This is your "Hunting Ground." Overpayment isn't just "wrong price"; it's a multi-dimensional failure.
+import pandas as pd
+import numpy as np
 
-Leakage Vector Description The "Python" Solution
-1. Clinical Necessity (The Biggest Leak) Paying for drugs that don't match the diagnosis or medical evidence. Biopython Script: Check Diagnosis vs. FDA Label/Clinical Trials.
-2. "Time Travel" (Retroactive Billing) Billing a drug before FDA approval or after it was discontinued. OpenFDA Script: Compare Service_Date to Approval_Date.
-3. Wastage Gaming (JW Modifier) Billing for "discarded" drug from a Multi-Dose Vial (where waste is illegal). NDC Metadata Script: If Package_Type == MDV and Modifier == JW, Deny.
-4. Site-of-Care Arbitrage Paying $10k for a drug at a Hospital that costs $4k at a Home Infusion center. NPI/Taxonomy Check: Flag high-cost J-codes billed by "Hospital Outpatient" NPIs.
-5. Biosimilar Evasion Provider uses the cheap Biosimilar but bills the expensive Brand code. NDC-to-JCode Crosswalk: Verify the NDC on the claim matches the J-code description.
-6. The "Unlisted" Black Hole Billing J3490 (Unclassified) to hide the price of a standard drug. Description Parsing: If Desc="Rituximab" but Code="J3490", Flag for "Upcoding."
-7. Weight-Based Math Errors Rounding "Up" to the next vial size instead of the nearest billing unit.
+# ==========================================
+# 1. GENERATE SAMPLE DATA (Replace this with your pd.read_csv)
+# ==========================================
+data = {
+    'claimnumber': [f'CLM{i}' for i in range(1001, 1011)],
+    'hcpccode': ['J9271', 'J9271', 'J9271', 'J0896', 'J0896', 'L0650', 'L0650', '99213', '99213', '99213'],
+    # Modifiers: Some empty (NaN), some with high-impact mods like JW, 25, TB
+    'mod1': ['None', 'JW', 'None', 'JZ', 'JZ', 'NU', 'NU', '25', 'None', '25'],
+    'mod2': [None, None, None, 'JB', 'JB', 'RT', 'LT', None, None, None],
+    'mod3': [None, None, None, 'TB', None, None, None, None, None, None],
+    'mod4': [None, None, None, 'PO', None, None, None, None, None, None],
+    'mod5': [None, None, None, None, None, None, None, None, None, None],
+    'paidamount': [5000, 500, 5000, 1500, 2000, 800, 800, 150, 100, 150], # Note variance in J0896 ($1500 vs $2000)
+    'chargedamount': [12000, 1200, 12000, 5000, 6000, 2500, 2500, 300, 200, 300],
+    'date_of_service': pd.date_range(start='1/1/2024', periods=10),
+    'unitcount': [10, 1, 10, 50, 50, 1, 1, 1, 1, 1]
+}
 
-. The "Payer Policy" Impact (The Lag Effect)
-​Payer policies are the "Rulebook," but they are currently failing in three ways:
-​The "6-Month Lag":
-​Reality: It takes payers ~6 months to write a policy for a new drug.
-​Impact: During this "gap," claims are often paid automatically because there is no rule to deny them.
-​Your Opportunity: Your tool uses Live FDA Data, beating the payer's internal policy team by 6 months.
-​Medical vs. Pharmacy Split:
-​Reality: ~35% of specialty drugs are paid under Medical (J-Codes), and 65% under Pharmacy (NDC).  
-​Impact: Providers "Shop" the benefit. If the Pharmacy Benefit requires Prior Auth, they buy the drug themselves and bill it to Medical (J-Code) to bypass the check.
-​Your Opportunity: A "Cross-Benefit" check that ensures if a drug is blocked on Pharmacy, it isn't sneaking through Medical.
-​Biosimilar Inertia:
-​Reality: Payers want providers to use Biosimilars (Cheaper), but providers resist because they make less margin.
-​Impact: 60% of potential savings are lost because policies aren't enforced strictly.
-​5. Strategic Recommendation for You
-​Based on this market study, here is where you should position your Product:
-​Don't build for: Generic drugs (Lisinopril/Antibiotics). The leakage is low ($5 errors), and PBMs already handle this.
-​Build for: The "J-Code" Space (Medical Benefit Oncology).
-​Why: High Cost ($20k+ claims), High Complexity (Rules are confusing), High Waste (Wastage/Unlisted codes).
-​The Pitch: "We catch the leakage that happens between the Medical and Pharmacy benefits, focusing on the top 1% of claims that drive 50% of the trend."
+df = pd.DataFrame(data)
+
+# ==========================================
+# 2. DATA PRE-PROCESSING (The "Explosion")
+# ==========================================
+def preprocess_claims(df):
+    # Combine all modifier columns into a single "Signature" for row-level context
+    # This helps distinct "J9271" from "J9271 with JW"
+    mod_cols = ['mod1', 'mod2', 'mod3', 'mod4', 'mod5']
+    
+    # Create a clean list of modifiers for each row (removing None/NaN)
+    df['modifier_signature'] = df[mod_cols].apply(
+        lambda x: ','.join(x.dropna().astype(str)), axis=1
+    )
+    
+    # Calculate Unit Cost (Critical for variance analysis)
+    df['unit_cost'] = df['paidamount'] / df['unitcount'].replace(0, 1)
+    
+    return df
+
+df = preprocess_claims(df)
+
+# ==========================================
+# 3. ANALYSIS: TOP DRUGS BY SPEND
+# ==========================================
+def analyze_top_drugs(df):
+    print("\n🏆 TOP 5 DRUGS BY TOTAL SPEND")
+    print("-" * 50)
+    
+    # Group by Code
+    stats = df.groupby('hcpccode').agg(
+        total_spend=('paidamount', 'sum'),
+        total_units=('unitcount', 'sum'),
+        avg_unit_cost=('unit_cost', 'mean'),
+        claim_count=('claimnumber', 'count')
+    ).sort_values('total_spend', ascending=False).head(5)
+    
+    print(stats)
+    return stats
+
+# ==========================================
+# 4. ANALYSIS: THE MODIFIER IMPACT (The "Insight")
+# ==========================================
+def analyze_modifier_context(df):
+    print("\n🔍 MODIFIER IMPACT ANALYSIS")
+    print("-" * 50)
+    
+    # A. WASTAGE ANALYSIS (JW Modifier)
+    # Filter rows where ANY modifier column contains 'JW'
+    waste_mask = df['modifier_signature'].str.contains('JW')
+    waste_spend = df[waste_mask]['paidamount'].sum()
+    total_spend = df['paidamount'].sum()
+    
+    print(f"🗑️  Total Wastage Spend (JW): ${waste_spend:,.2f}")
+    print(f"📊 % of Spend Wasted: {(waste_spend/total_spend)*100:.1f}%")
+    
+    # B. PRICING VARIANCE (Did Modifiers change the price?)
+    # We group by Code AND Modifier Signature to see price tiers
+    print("\n📉 UNIT COST VARIANCE BY MODIFIER (Are you paying more for specific mods?)")
+    variance = df.groupby(['hcpccode', 'modifier_signature']).agg(
+        avg_unit_cost=('unit_cost', 'mean'),
+        total_paid=('paidamount', 'sum'),
+        claims=('claimnumber', 'count')
+    ).reset_index()
+    
+    # Filter for interesting variances (e.g., J0896)
+    variance['hcpccode'] = variance['hcpccode'].astype(str)
+    print(variance.sort_values(['hcpccode', 'avg_unit_cost']))
+
+    return variance
+
+# ==========================================
+# 5. ANALYSIS: SPECIALTY FLAGS (TB, PO, 25)
+# ==========================================
+def analyze_red_flags(df):
+    print("\n🚩 RED FLAG REPORT")
+    print("-" * 50)
+    
+    # 340B Discount Check (TB Modifier)
+    tb_claims = df[df['modifier_signature'].str.contains('TB')]
+    if not tb_claims.empty:
+        print(f"⚠️  340B CLAIMS DETECTED: {len(tb_claims)} claims.")
+        print(f"    Avg Unit Cost for TB: ${tb_claims['unit_cost'].mean():.2f}")
+        print("    (Action: Verify these were paid at the lower 340B rate)")
+        
+    # Unbundling Check (Modifier 25 on E&M Codes)
+    em_codes = df[df['hcpccode'].str.startswith('99')] # Office visits
+    mod_25_count = em_codes['modifier_signature'].str.contains('25').sum()
+    total_em = len(em_codes)
+    
+    if total_em > 0:
+        print(f"\n⚠️  MODIFIER 25 USAGE RATE: {(mod_25_count/total_em)*100:.1f}% of Office Visits")
+        print("    (Benchmark: If > 50%, audit for unbundling)")
+
+# ==========================================
+# EXECUTE
+# ==========================================
+analyze_top_drugs(df)
+variance_df = analyze_modifier_context(df)
+analyze_red_flags(df)
