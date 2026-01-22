@@ -2,120 +2,131 @@ import pandas as pd
 import numpy as np
 
 # ==========================================
-# 1. GENERATE SAMPLE DATA (Replace this with your pd.read_csv)
+# 1. SAMPLE DATA (Simulating "Messy" Real World Data)
 # ==========================================
-data = {
-    'claimnumber': [f'CLM{i}' for i in range(1001, 1011)],
-    'hcpccode': ['J9271', 'J9271', 'J9271', 'J0896', 'J0896', 'L0650', 'L0650', '99213', '99213', '99213'],
-    # Modifiers: Some empty (NaN), some with high-impact mods like JW, 25, TB
-    'mod1': ['None', 'JW', 'None', 'JZ', 'JZ', 'NU', 'NU', '25', 'None', '25'],
-    'mod2': [None, None, None, 'JB', 'JB', 'RT', 'LT', None, None, None],
-    'mod3': [None, None, None, 'TB', None, None, None, None, None, None],
-    'mod4': [None, None, None, 'PO', None, None, None, None, None, None],
-    'mod5': [None, None, None, None, None, None, None, None, None, None],
-    'paidamount': [5000, 500, 5000, 1500, 2000, 800, 800, 150, 100, 150], # Note variance in J0896 ($1500 vs $2000)
-    'chargedamount': [12000, 1200, 12000, 5000, 6000, 2500, 2500, 300, 200, 300],
-    'date_of_service': pd.date_range(start='1/1/2024', periods=10),
-    'unitcount': [10, 1, 10, 50, 50, 1, 1, 1, 1, 1]
+# Note: I've included string formatting errors ('$5,000') to test the cleaning logic
+raw_data = {
+    'claimnumber': [f'CLM{i}' for i in range(1001, 1016)],
+    'hcpccode': [
+        'J9271', 'J9271', 'J9271',  # Keytruda (High Variance)
+        'J0896', 'J0896', 'J0896',  # Reblozyl (Modifier Impact)
+        'L0650', 'L0650',           # DME (Cheap)
+        '99213', '99213', '99213', '99213', # Office Visits (Unbundling)
+        'J9999', 'J9999', 'J9999'   # Unlisted (High Risk)
+    ],
+    'mod1': ['None', 'JW', 'None', 'JZ', 'JZ', 'JZ', 'NU', 'NU', '25', 'None', '25', 'None', None, None, 'JW'],
+    'mod2': [None, None, None, 'JB', 'JB', 'JB', 'RT', 'LT', None, None, None, None, None, None, None],
+    'mod3': [None, None, None, 'TB', None, 'TB', None, None, None, None, None, None, None, None, None],
+    'mod4': [None, None, None, 'PO', None, 'PO', None, None, None, None, None, None, None, None, None],
+    'mod5': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+    # Messy Types: Strings with $, commas, etc.
+    'paidamount': ['$5,000.00', '500', 5000, 1500, 2000, '1500', 800, 800, 150, 100, 150, 100, 3000, 3200, 400],
+    'chargedamount': ['12000', 1200, 12000, 5000, 6000, 5000, 2500, 2500, 300, 200, 300, 200, 9000, 9500, 1200],
+    'date_of_service': [
+        '2024-01-01', '01/02/2024', '2024-01-03', '2024-01-05', '2024-01-05', '2024-01-06',
+        '2024/02/01', '2024-02-01', '2024-03-01', '2024-03-01', '2024-03-02', '2024-03-03',
+        '2024-04-01', '2024-04-02', '2024-04-03'
+    ],
+    'unitcount': ['10', 1, 10, 50, 50, 50, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 }
 
-df = pd.DataFrame(data)
+df_raw = pd.DataFrame(raw_data)
 
 # ==========================================
-# 2. DATA PRE-PROCESSING (The "Explosion")
+# 2. PRE-PROCESSING (Fix Data Types)
 # ==========================================
-def preprocess_claims(df):
-    # Combine all modifier columns into a single "Signature" for row-level context
-    # This helps distinct "J9271" from "J9271 with JW"
+def clean_and_fix_types(df):
+    print("🛠️  STARTING PRE-PROCESSING...")
+    
+    # 1. Clean Modifiers (Replace NaNs with empty string, uppercase)
     mod_cols = ['mod1', 'mod2', 'mod3', 'mod4', 'mod5']
+    for col in mod_cols:
+        df[col] = df[col].fillna('').astype(str).str.upper().str.replace('NONE', '')
     
-    # Create a clean list of modifiers for each row (removing None/NaN)
-    df['modifier_signature'] = df[mod_cols].apply(
-        lambda x: ','.join(x.dropna().astype(str)), axis=1
-    )
+    # Create Signature (Context)
+    df['modifier_signature'] = df[mod_cols].apply(lambda x: ','.join(filter(None, x)), axis=1)
     
-    # Calculate Unit Cost (Critical for variance analysis)
+    # 2. Fix Numeric Columns (Remove '$', ',', convert to float/int)
+    numeric_cols = ['paidamount', 'chargedamount', 'unitcount']
+    for col in numeric_cols:
+        # Convert to string first, strip bad chars, then to numeric
+        df[col] = df[col].astype(str).str.replace(r'[$,]', '', regex=True)
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # User Request: "Amount units should all be int" -> Be careful with cents, but rounding to int for view
+    # Note: Keeping float for calculations, can display as int later.
+    
+    # 3. Fix Date Column
+    df['date_of_service'] = pd.to_datetime(df['date_of_service'], errors='coerce')
+    
+    # 4. Calculate Derived Metrics
+    # Avoid division by zero by replacing 0 units with 1 temporarily
     df['unit_cost'] = df['paidamount'] / df['unitcount'].replace(0, 1)
-    
+    df['markup_ratio'] = df['chargedamount'] / df['paidamount'].replace(0, 1)
+
+    print("✅ TYPES FIXED. Date range:", df['date_of_service'].min().date(), "to", df['date_of_service'].max().date())
     return df
 
-df = preprocess_claims(df)
+df = clean_and_fix_types(df_raw)
 
 # ==========================================
-# 3. ANALYSIS: TOP DRUGS BY SPEND
+# 3. INSIGHT GENERATION
 # ==========================================
-def analyze_top_drugs(df):
-    print("\n🏆 TOP 5 DRUGS BY TOTAL SPEND")
-    print("-" * 50)
-    
-    # Group by Code
-    stats = df.groupby('hcpccode').agg(
-        total_spend=('paidamount', 'sum'),
-        total_units=('unitcount', 'sum'),
-        avg_unit_cost=('unit_cost', 'mean'),
-        claim_count=('claimnumber', 'count')
-    ).sort_values('total_spend', ascending=False).head(5)
-    
-    print(stats)
-    return stats
 
-# ==========================================
-# 4. ANALYSIS: THE MODIFIER IMPACT (The "Insight")
-# ==========================================
-def analyze_modifier_context(df):
-    print("\n🔍 MODIFIER IMPACT ANALYSIS")
-    print("-" * 50)
+def generate_insights(df):
+    print("\n" + "="*50)
+    print("📊 DIRECTOR-LEVEL SPEND INSIGHTS")
+    print("="*50)
+
+    # --- INSIGHT 1: TOP 5 DRUGS BY SPEND (Pareto Analysis) ---
+    top_drugs = df.groupby('hcpccode').agg(
+        Total_Spend=('paidamount', 'sum'),
+        Claim_Count=('claimnumber', 'count'),
+        Avg_Unit_Cost=('unit_cost', 'mean')
+    ).sort_values('Total_Spend', ascending=False).head(5)
     
-    # A. WASTAGE ANALYSIS (JW Modifier)
-    # Filter rows where ANY modifier column contains 'JW'
-    waste_mask = df['modifier_signature'].str.contains('JW')
-    waste_spend = df[waste_mask]['paidamount'].sum()
+    print("\n1️⃣  TOP SPEND DRIVERS (Pareto)")
+    print(top_drugs)
+
+    # --- INSIGHT 2: PRICING VARIANCE (The "Messy Contract" Check) ---
+    # High Standard Deviation in Unit Cost means we are paying inconsistent rates
+    variance = df.groupby('hcpccode')['unit_cost'].agg(['mean', 'std', 'min', 'max'])
+    variance['CV'] = variance['std'] / variance['mean'] # Coefficient of Variation
+    high_variance = variance[variance['CV'] > 0.1] # Flag if variance > 10%
+    
+    print("\n2️⃣  PRICING CONSISTENCY ALERTS (High Variance)")
+    if not high_variance.empty:
+        print(high_variance[['mean', 'min', 'max', 'CV']].sort_values('CV', ascending=False))
+    else:
+        print("   No significant pricing anomalies found.")
+
+    # --- INSIGHT 3: MODIFIER IMPACT (Contextual Pricing) ---
+    # Does 'TB' (340B) actually lower the price?
+    print("\n3️⃣  MODIFIER PRICE IMPACT (Context)")
+    mod_impact = df.groupby(['hcpccode', 'modifier_signature'])['unit_cost'].mean().reset_index()
+    
+    # Pivot to see base price vs modified price side-by-side
+    # Identify codes that appear with different modifiers
+    dup_codes = mod_impact[mod_impact.duplicated('hcpccode', keep=False)]
+    if not dup_codes.empty:
+        print(dup_codes.sort_values(['hcpccode', 'modifier_signature']))
+    else:
+        print("   No differential pricing by modifier found.")
+
+    # --- INSIGHT 4: WASTAGE (JW) LEAKAGE ---
+    jw_spend = df[df['modifier_signature'].str.contains('JW')]['paidamount'].sum()
     total_spend = df['paidamount'].sum()
     
-    print(f"🗑️  Total Wastage Spend (JW): ${waste_spend:,.2f}")
-    print(f"📊 % of Spend Wasted: {(waste_spend/total_spend)*100:.1f}%")
+    print("\n4️⃣  WASTAGE REPORT (JW Modifier)")
+    print(f"   Total Spend on Discarded Drugs: ${jw_spend:,.2f}")
+    print(f"   % of Total Spend: {(jw_spend/total_spend)*100:.2f}%")
     
-    # B. PRICING VARIANCE (Did Modifiers change the price?)
-    # We group by Code AND Modifier Signature to see price tiers
-    print("\n📉 UNIT COST VARIANCE BY MODIFIER (Are you paying more for specific mods?)")
-    variance = df.groupby(['hcpccode', 'modifier_signature']).agg(
-        avg_unit_cost=('unit_cost', 'mean'),
-        total_paid=('paidamount', 'sum'),
-        claims=('claimnumber', 'count')
-    ).reset_index()
-    
-    # Filter for interesting variances (e.g., J0896)
-    variance['hcpccode'] = variance['hcpccode'].astype(str)
-    print(variance.sort_values(['hcpccode', 'avg_unit_cost']))
+    # --- INSIGHT 5: THE "MARKUP" TRAP (OON Detection) ---
+    # Who is charging 10x what we pay? (Likely Out of Network)
+    high_markup = df[df['markup_ratio'] > 5.0] # 500% Markup
+    if not high_markup.empty:
+        print(f"\n5️⃣  EGREGIOUS MARKUPS (>500% Charge/Paid Ratio)")
+        print(high_markup[['claimnumber', 'hcpccode', 'paidamount', 'chargedamount', 'markup_ratio']])
 
-    return variance
-
-# ==========================================
-# 5. ANALYSIS: SPECIALTY FLAGS (TB, PO, 25)
-# ==========================================
-def analyze_red_flags(df):
-    print("\n🚩 RED FLAG REPORT")
-    print("-" * 50)
-    
-    # 340B Discount Check (TB Modifier)
-    tb_claims = df[df['modifier_signature'].str.contains('TB')]
-    if not tb_claims.empty:
-        print(f"⚠️  340B CLAIMS DETECTED: {len(tb_claims)} claims.")
-        print(f"    Avg Unit Cost for TB: ${tb_claims['unit_cost'].mean():.2f}")
-        print("    (Action: Verify these were paid at the lower 340B rate)")
-        
-    # Unbundling Check (Modifier 25 on E&M Codes)
-    em_codes = df[df['hcpccode'].str.startswith('99')] # Office visits
-    mod_25_count = em_codes['modifier_signature'].str.contains('25').sum()
-    total_em = len(em_codes)
-    
-    if total_em > 0:
-        print(f"\n⚠️  MODIFIER 25 USAGE RATE: {(mod_25_count/total_em)*100:.1f}% of Office Visits")
-        print("    (Benchmark: If > 50%, audit for unbundling)")
-
-# ==========================================
-# EXECUTE
-# ==========================================
-analyze_top_drugs(df)
-variance_df = analyze_modifier_context(df)
-analyze_red_flags(df)
+# Run the Analysis
+generate_insights(df)
