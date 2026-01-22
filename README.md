@@ -1,132 +1,102 @@
 import pandas as pd
 import numpy as np
+from pyspark.sql import SparkSession
 
 # ==========================================
-# 1. SAMPLE DATA (Simulating "Messy" Real World Data)
+# 1. SAMPLE DATA LOADING (Messy Data)
 # ==========================================
-# Note: I've included string formatting errors ('$5,000') to test the cleaning logic
 raw_data = {
-    'claimnumber': [f'CLM{i}' for i in range(1001, 1016)],
+    'claimnumber': [f'CLM{i}' for i in range(1001, 1021)],
     'hcpccode': [
-        'J9271', 'J9271', 'J9271',  # Keytruda (High Variance)
-        'J0896', 'J0896', 'J0896',  # Reblozyl (Modifier Impact)
-        'L0650', 'L0650',           # DME (Cheap)
-        '99213', '99213', '99213', '99213', # Office Visits (Unbundling)
-        'J9999', 'J9999', 'J9999'   # Unlisted (High Risk)
+        'J9271', 'J9271', 'J9271', 'J9271',  # Keytruda
+        'J0896', 'J0896', 'J0896', 'J0896',  # Reblozyl
+        'L0650', 'L0650', 'L0650',           # DME
+        '99213', '99213', '99213', '99213',  # Office Visits
+        'J9999', 'J9999', 'J3490', 'J3590'   # Unlisted
     ],
-    'mod1': ['None', 'JW', 'None', 'JZ', 'JZ', 'JZ', 'NU', 'NU', '25', 'None', '25', 'None', None, None, 'JW'],
-    'mod2': [None, None, None, 'JB', 'JB', 'JB', 'RT', 'LT', None, None, None, None, None, None, None],
-    'mod3': [None, None, None, 'TB', None, 'TB', None, None, None, None, None, None, None, None, None],
-    'mod4': [None, None, None, 'PO', None, 'PO', None, None, None, None, None, None, None, None, None],
-    'mod5': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
-    # Messy Types: Strings with $, commas, etc.
-    'paidamount': ['$5,000.00', '500', 5000, 1500, 2000, '1500', 800, 800, 150, 100, 150, 100, 3000, 3200, 400],
-    'chargedamount': ['12000', 1200, 12000, 5000, 6000, 5000, 2500, 2500, 300, 200, 300, 200, 9000, 9500, 1200],
-    'date_of_service': [
-        '2024-01-01', '01/02/2024', '2024-01-03', '2024-01-05', '2024-01-05', '2024-01-06',
-        '2024/02/01', '2024-02-01', '2024-03-01', '2024-03-01', '2024-03-02', '2024-03-03',
-        '2024-04-01', '2024-04-02', '2024-04-03'
-    ],
-    'unitcount': ['10', 1, 10, 50, 50, 50, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    'mod1': ['None', 'JW', 'None', 'None', 'JZ', 'JZ', 'JZ', 'JZ', 'NU', 'NU', 'NU', '25', 'None', '25', 'None', None, None, 'JW', None],
+    'mod2': [None, None, None, None, 'JB', 'JB', 'JB', 'JB', 'RT', 'LT', 'RT', None, None, None, None, None, None, None, None],
+    'mod3': [None, None, None, None, 'TB', None, 'TB', None, None, None, None, None, None, None, None, None, None, None, None],
+    'mod4': [None, None, None, None, 'PO', None, 'PO', None, None, None, None, None, None, None, None, None, None, None, None],
+    'mod5': [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+    'paidamount': ['$5,000.00', '500', 5000, 5100, 1500, 2000, 1500, 2000, 800, 800, 850, 150, 100, 150, 100, 3000, 3200, 400, 150],
+    'chargedamount': ['12000', 1200, 12000, 12500, 5000, 6000, 5000, 6000, 2500, 2500, 2600, 300, 200, 300, 200, 9000, 9500, 1200, 5000],
+    'date_of_service': pd.date_range(start='1/1/2024', periods=19).tolist() + ['2024-05-01'],
+    'unitcount': ['10', 1, 10, 10, 50, 50, 50, 50, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 }
 
-df_raw = pd.DataFrame(raw_data)
+# Ensure lists are same length for dataframe
+max_len = max(len(v) for v in raw_data.values())
+for k in raw_data:
+    if len(raw_data[k]) < max_len: raw_data[k] = raw_data[k] * (max_len // len(raw_data[k]) + 1)
+    raw_data[k] = raw_data[k][:max_len]
+
+df = pd.DataFrame(raw_data)
 
 # ==========================================
-# 2. PRE-PROCESSING (Fix Data Types)
+# 2. CLEANING ENGINE
 # ==========================================
-def clean_and_fix_types(df):
-    print("🛠️  STARTING PRE-PROCESSING...")
-    
-    # 1. Clean Modifiers (Replace NaNs with empty string, uppercase)
+def clean_data(df):
     mod_cols = ['mod1', 'mod2', 'mod3', 'mod4', 'mod5']
     for col in mod_cols:
-        df[col] = df[col].fillna('').astype(str).str.upper().str.replace('NONE', '')
-    
-    # Create Signature (Context)
+        df[col] = df[col].fillna('').astype(str).str.upper().str.replace('NONE', '').str.replace('NAN', '')
     df['modifier_signature'] = df[mod_cols].apply(lambda x: ','.join(filter(None, x)), axis=1)
-    
-    # 2. Fix Numeric Columns (Remove '$', ',', convert to float/int)
-    numeric_cols = ['paidamount', 'chargedamount', 'unitcount']
-    for col in numeric_cols:
-        # Convert to string first, strip bad chars, then to numeric
+
+    for col in ['paidamount', 'chargedamount', 'unitcount']:
         df[col] = df[col].astype(str).str.replace(r'[$,]', '', regex=True)
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # User Request: "Amount units should all be int" -> Be careful with cents, but rounding to int for view
-    # Note: Keeping float for calculations, can display as int later.
-    
-    # 3. Fix Date Column
-    df['date_of_service'] = pd.to_datetime(df['date_of_service'], errors='coerce')
-    
-    # 4. Calculate Derived Metrics
-    # Avoid division by zero by replacing 0 units with 1 temporarily
     df['unit_cost'] = df['paidamount'] / df['unitcount'].replace(0, 1)
-    df['markup_ratio'] = df['chargedamount'] / df['paidamount'].replace(0, 1)
-
-    print("✅ TYPES FIXED. Date range:", df['date_of_service'].min().date(), "to", df['date_of_service'].max().date())
     return df
 
-df = clean_and_fix_types(df_raw)
+df_clean = clean_data(df)
 
 # ==========================================
-# 3. INSIGHT GENERATION
+# 3. OUTPUT GENERATION (Use display() for Download)
 # ==========================================
 
-def generate_insights(df):
-    print("\n" + "="*50)
-    print("📊 DIRECTOR-LEVEL SPEND INSIGHTS")
-    print("="*50)
+print("---------------------------------------------------------")
+print("📥 REPORT 1: TOP SPEND DRIVERS (Pareto Chart Data)")
+print("   ACTION: Click the arrow icon below to Download CSV")
+print("---------------------------------------------------------")
+insight1 = df_clean.groupby('hcpccode').agg(
+    Total_Spend=('paidamount', 'sum'),
+    Total_Units=('unitcount', 'sum'),
+    Claim_Count=('claimnumber', 'count')
+).sort_values('Total_Spend', ascending=False).reset_index()
+display(insight1) # <--- Native Databricks Table
 
-    # --- INSIGHT 1: TOP 5 DRUGS BY SPEND (Pareto Analysis) ---
-    top_drugs = df.groupby('hcpccode').agg(
-        Total_Spend=('paidamount', 'sum'),
-        Claim_Count=('claimnumber', 'count'),
-        Avg_Unit_Cost=('unit_cost', 'mean')
-    ).sort_values('Total_Spend', ascending=False).head(5)
-    
-    print("\n1️⃣  TOP SPEND DRIVERS (Pareto)")
-    print(top_drugs)
 
-    # --- INSIGHT 2: PRICING VARIANCE (The "Messy Contract" Check) ---
-    # High Standard Deviation in Unit Cost means we are paying inconsistent rates
-    variance = df.groupby('hcpccode')['unit_cost'].agg(['mean', 'std', 'min', 'max'])
-    variance['CV'] = variance['std'] / variance['mean'] # Coefficient of Variation
-    high_variance = variance[variance['CV'] > 0.1] # Flag if variance > 10%
-    
-    print("\n2️⃣  PRICING CONSISTENCY ALERTS (High Variance)")
-    if not high_variance.empty:
-        print(high_variance[['mean', 'min', 'max', 'CV']].sort_values('CV', ascending=False))
-    else:
-        print("   No significant pricing anomalies found.")
+print("\n---------------------------------------------------------")
+print("📥 REPORT 2: PRICING VARIANCE (Contract Errors)")
+print("   ACTION: Look for High CoV (>0.1)")
+print("---------------------------------------------------------")
+insight2 = df_clean.groupby('hcpccode')['unit_cost'].agg(['mean', 'std', 'min', 'max'])
+insight2['CoV'] = insight2['std'] / insight2['mean']
+insight2 = insight2[insight2['CoV'] > 0.05].sort_values('CoV', ascending=False).reset_index()
+display(insight2)
 
-    # --- INSIGHT 3: MODIFIER IMPACT (Contextual Pricing) ---
-    # Does 'TB' (340B) actually lower the price?
-    print("\n3️⃣  MODIFIER PRICE IMPACT (Context)")
-    mod_impact = df.groupby(['hcpccode', 'modifier_signature'])['unit_cost'].mean().reset_index()
-    
-    # Pivot to see base price vs modified price side-by-side
-    # Identify codes that appear with different modifiers
-    dup_codes = mod_impact[mod_impact.duplicated('hcpccode', keep=False)]
-    if not dup_codes.empty:
-        print(dup_codes.sort_values(['hcpccode', 'modifier_signature']))
-    else:
-        print("   No differential pricing by modifier found.")
 
-    # --- INSIGHT 4: WASTAGE (JW) LEAKAGE ---
-    jw_spend = df[df['modifier_signature'].str.contains('JW')]['paidamount'].sum()
-    total_spend = df['paidamount'].sum()
-    
-    print("\n4️⃣  WASTAGE REPORT (JW Modifier)")
-    print(f"   Total Spend on Discarded Drugs: ${jw_spend:,.2f}")
-    print(f"   % of Total Spend: {(jw_spend/total_spend)*100:.2f}%")
-    
-    # --- INSIGHT 5: THE "MARKUP" TRAP (OON Detection) ---
-    # Who is charging 10x what we pay? (Likely Out of Network)
-    high_markup = df[df['markup_ratio'] > 5.0] # 500% Markup
-    if not high_markup.empty:
-        print(f"\n5️⃣  EGREGIOUS MARKUPS (>500% Charge/Paid Ratio)")
-        print(high_markup[['claimnumber', 'hcpccode', 'paidamount', 'chargedamount', 'markup_ratio']])
+print("\n---------------------------------------------------------")
+print("📥 REPORT 3: MODIFIER IMPACT (340B / Site of Care)")
+print("---------------------------------------------------------")
+insight3 = df_clean.groupby(['hcpccode', 'modifier_signature']).agg(
+    Avg_Price=('unit_cost', 'mean'),
+    Total_Paid=('paidamount', 'sum'),
+    Count=('claimnumber', 'count')
+).reset_index()
+display(insight3)
 
-# Run the Analysis
-generate_insights(df)
+
+print("\n---------------------------------------------------------")
+print("📥 REPORT 4: WASTAGE LOG (JW Modifier Analysis)")
+print("---------------------------------------------------------")
+insight4 = df_clean[df_clean['modifier_signature'].str.contains('JW')][['claimnumber', 'hcpccode', 'paidamount', 'date_of_service', 'modifier_signature']]
+display(insight4)
+
+
+print("\n---------------------------------------------------------")
+print("📥 REPORT 5: UNLISTED CODES (High Risk Audit)")
+print("---------------------------------------------------------")
+insight5 = df_clean[df_clean['hcpccode'].isin(['J3490', 'J3590', 'J9999'])][['claimnumber', 'hcpccode', 'paidamount', 'date_of_service']]
+display(insight5)
