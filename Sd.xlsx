@@ -1,81 +1,61 @@
-Library Placeholder Clinical Category MS-DRG Description
-[ALTERED_MENTAL_STATUS_DELIRIUM_DRG] AMS / Delirium 091 Other Disorders of Nervous System w/ MCC
-(Also covers AMS)   092 Other Disorders of Nervous System w/ CC
-    093 Other Disorders of Nervous System w/o CC/MCC
-    881 Depressive Neuroses
-[AMS_Failure_to_Thrive_Dehydration_DRGs] Metabolic / FTT 640 Misc. Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/ MCC
-(Key for "Social" audits)   641 Misc. Disorders of Nutrition, Metabolism, Fluids/Electrolytes w/o MCC
-    947 Signs & Symptoms w/ MCC
-    948 Signs & Symptoms w/o MCC
-[ANY_Medical_DRG] All Medical 052-103, 175-208, 280-316, etc. Logic Rule: DRG_Type = "Medical" (Use your grouper's flag for this instead of a hardcoded list)
-[Aspiration_PNA_Infection_Tube_Dislodged_DRGs] Aspiration / Comp. 177 Respiratory Infections & Inflammations w/ MCC (Includes Aspiration PNA)
-    178 Respiratory Infections & Inflammations w/ CC
-    179 Respiratory Infections & Inflammations w/o CC/MCC
-    981 Extensive O.R. Procedure Unrelated to Principal Diagnosis w/ MCC
-[Bleeding_GI_Bleed_or_Clotting_Stroke_DVT_PE_DRGs] Anticoagulation Fail 377-379 G.I. Hemorrhage (Bleed)
-(Combined Risk Group)   064-066 Intracranial Hemorrhage (Bleed)
-    061-063 Ischemic Stroke (Clot)
-    175-176 Pulmonary Embolism (Clot)
-    294-295 Deep Vein Thrombophlebitis (Clot)
-[BOWEL_RESECTION_GASTRIC_BYPASS_DRG] GI Surgery 329 Major Small & Large Bowel Procedures w/ MCC
-    330 Major Small & Large Bowel Procedures w/ CC
-    331 Major Small & Large Bowel Procedures w/o CC/MCC
-    326 Stomach, Esophageal & Duodenal Proc w/ MCC
-    327 Stomach, Esophageal & Duodenal Proc w/ CC
-    328 Stomach, Esophageal & Duodenal Proc w/o CC/MCC
-[Complex_Wound_DRGs] Wound Care 570-572 Skin Debridement
-    573-575 Skin Graft for Skin Ulcer or Cellulitis
-    463-465 Wound Debridement & Skin Graft Except Hand
-[STENT_THROMBOSIS_DRG] PCI Complication 280-282 Acute Myocardial Infarction (Thrombosis usually codes to AMI)
-(Often codes to AMI)   314 Other Circulatory System Diagnoses w/ MCC
-    315 Other Circulatory System Diagnoses w/ CC
-[EGD_ERCP_DRGS] GI Procedures 391 Esophagitis, Gastroenteritis & Misc Digest Disorders w/ MCC
-(Inpatient Encounters)   392 Esophagitis, Gastroenteritis & Misc Digest Disorders w/o MCC
-    368 Major Esophageal Disorders w/ MCC
-[Hyperglycemia_DKA_or_Hypoglycemia_DRGs] Diabetes Comp. 637 Diabetes w/ MCC (DKA / Hyperosmolarity)
-    638 Diabetes w/ CC
-    639 Diabetes w/o CC/MCC
-    640-641 Misc. Nutritional/Metabolic (Hypoglycemia often codes here)
-[Ileus_Obstruction_or_Vomiting_DRGs] GI Symptoms 388 G.I. Obstruction w/ MCC
-    389 G.I. Obstruction w/ CC
-    390 G.I. Obstruction w/o CC/MCC
-    391-392 Esophagitis, Gastroenteritis (Vomiting)
-[Infection_Sepsis_Wound_Comp_DRGs] Wound Comp. 856-858 Postoperative or Post-Traumatic Infections
-    862 Postoperative & Post-Traumatic Misc Procedure
-    871-872 Septicemia or Severe Sepsis
-[Lead_Dislodgement_Device_Malfunction_or_Infection_DRGs] Device Fail 314-316 Other Circulatory System Diagnoses (Malfunction codes here)
-    260-262 Cardiac Pacemaker Revision Except Device Replacement
-[Major_Surgery_DRGs_eg_Ortho_Colon] Major Surg 469-470 Major Joint Replacement (Ortho)
-    329-331 Major Bowel Procedures (Colon)
-    353-355 Hernia Procedures
-    417-419 Laparoscopic Cholecystectomy
-[Major_Surgery_esp_Spinal_Ortho_DRGs] Spine / Ortho 453-455 Combined Ant/Post Spinal Fusion
-    459-460 Spinal Fusion Except Cervical
-    471-473 Cervical Spinal Fusion
-    480-482 Hip & Femur Procedures Except Major Joint
-[Pancreatitis_Bleeding_or_Perforation_DRGs] GI Comp. 438 Disorders of Pancreas Except Malignancy w/ MCC
-    439 Disorders of Pancreas Except Malignancy w/ CC
-    440 Disorders of Pancreas Except Malignancy w/o CC/MCC
-    377-379 G.I. Hemorrhage
-[PEG_Placement_DRG] Procedures 326-328 Stomach, Esophageal & Duodenal Proc (PEG codes here)
-[Sepsis_Abscess_or_Peritonitis_DRGs] Infection 871-872 Septicemia or Severe Sepsis
-    371 Major G.I. Disorders & Peritoneal Infections w/ MCC
-    372 Major G.I. Disorders & Peritoneal Infections w/ CC
-    373 Major G.I. Disorders & Peritoneal Infections w/o CC/MCC
-[Sepsis_Osteomyelitis_or_Amputation_DRGs] Bone Infection 871-872 Septicemia or Severe Sepsis
-    539 Osteomyelitis w/ MCC
-    540 Osteomyelitis w/ CC
-    541 Osteomyelitis w/o CC/MCC
-    616-618 Amputation for Circulatory System Disorders
-[Uncontrolled_Pain_Failure_to_Rehab_DRGs] Pain / Rehab 947 Signs & Symptoms w/ MCC (Pain)
-    948 Signs & Symptoms w/o MCC (Pain)
-    949 Aftercare w/ CC/MCC (Rehab)
-    950 Aftercare w/o CC/MCC (Rehab)
-[Uncontrolled_Pain_Radiculopathy_DRGs] Spine Pain 551 Medical Back Problems w/ MCC
-    552 Medical Back Problems w/o MCC
-[Urinary_Retention_DRGs] GU Comp. 698 Other Kidney & Urinary Tract Diagnoses w/ MCC
-    699 Other Kidney & Urinary Tract Diagnoses w/ CC
-    700 Other Kidney & Urinary Tract Diagnoses w/o CC/MCC
-[WOUND_DEHISCENCE_DRG] Wound Comp. 856-858 Postoperative or Post-Traumatic Infections
-    981-983 Extensive O.R. Procedure Unrelated to Principal Diagnosis
-    (Note: Dehiscence is often a secondary dx code, typically grouping to 981-983 if re-operated)
+Drug Code Intent (The Audit Concept) Logic (SQL / Python Rule) Citation / Reference Director Comments
+J0178
+(Eylea) Bilateral Anatomical Cap
+Prevents billing >2 eyes per session. WHERE units > 2
+(Logic: Humans only have 2 eyes. Max dose is 2mg/eye. 1 Unit = 1mg. Max Total = 2 units.) Regeneron Prescribing Info, Sec 2.2;
+AAO Guidelines (Intravitreal Injection) High Volume Hit. Providers often bill the "Vial Size" (e.g., 4 units) instead of the administered dose (2 units). Instant denial.
+J9271
+(Keytruda) Max Flat Dose Ceiling
+Stops claims exceeding the absolute FDA max/session. WHERE units > 400
+(Logic: Max approved dose is 400mg Q6W. 1 Unit = 1mg.) FDA Label, Sec 2.1
+(Recommended Dosage: 200mg or 400mg) The "Free Money" Audit. Fixed-dose drugs have zero variance. Any claim >400 is erroneous.
+J9299
+(Opdivo) Stratified Weight Outlier
+Detects impossible weights based on Gender/BMI. CASE WHEN gender='F' AND (units/3.0) > 135 THEN 'FAIL'
+(Trigger: Implied Weight > 99.7th %ile for Females) CDC Anthropometric Data (2015-2018);
+BMS Label (3 mg/kg or Flat 240/480mg) Precision Strike. Don't use a generic 150kg limit. Using a female-specific limit (135kg) captures ~20% more errors.
+J0897
+(Prolia) Frequency Lock (6 Months)
+Prevents early refills or double billing. WHERE days_since_last_claim < 150
+(Logic: Dosed once every 6 months. Claims <5 months apart are duplicates or errors.) Amgen Prescribing Info, Sec 2.1
+(60mg SQ every 6 months) Timing Audit. Providers often accidentally bill the same shot twice or schedule patients too early.
+J2357
+(Xolair) IgE / Weight Matrix Cap
+Validates complex dosing grid. WHERE units > 600
+(Logic: Max FDA dose is 600mg [4 vials] every 2 weeks, regardless of weight/IgE levels.) Genentech Dosing Table 1;
+FDA Label (Max 600mg per session) Complexity Trap. The dosing table is confusing (Weight vs IgE). Providers often guess. The hard cap (600mg) is the safety net.
+J9312
+(Rituxan) BSA "Giant" Check
+Implied Body Surface Area > 3.0 m^2. WHERE (units * 10 / 375) > 3.0
+(Logic: Dosed at 375 mg/m². Implied BSA > 3.0 is statistically impossible.) Biogen Label (375 mg/m²);
+Sacco et al. "Average BSA across US Population" Math Error Target. Providers often confuse 1 Unit = 10mg vs 1mg. This check catches the 10x coding errors.
+J2506
+(Neulasta) Impossible Wastage (Syringe)
+Denies waste on single-dose forms. WHERE modifier = 'JW' AND units > 0
+(Logic: Pre-filled 6mg syringe. You administer all or nothing. Waste is physically impossible.) CMS Manual Ch 17 Sec 40;
+Amgen Label (Dosage Forms) Policy Enforcement. You cannot waste part of a pre-filled syringe. All JW claims here are invalid.
+J2778
+(Lucentis) Vial Size vs. Admin
+Billing full vial volume vs. actual injection. WHERE units > 5
+(Logic: Dose is 0.5mg [5 units]. Vial contains more for priming, but you only bill what enters the eye.) Genentech Label, Sec 2.2
+(0.5 mg intravitreal injection) "Overfill" Abuse. Providers bill the "Overfill" left in the vial. Medicare pays for the dose, not the trash (unless Multi-Use).
+J1745
+(Remicade) Maintenance Phase Drift
+High induction dose used in maintenance. WHERE units > 500 AND claim_count_6m > 3
+(Logic: Dose drops from 5mg/kg to 3mg/kg after Week 6.) Janssen Label, Sec 2.1
+(Induction vs Maintenance Dosing) Chronic Leakage. Patients stay on this drug for years. Ensure the dose drops down after the first 3 visits.
+J9035
+(Avastin) The "Obesity Paradox"
+High weight asserted without ICD-10 code. WHERE implied_kg > 120 AND diag NOT LIKE '%E66%'
+(Logic: If patient is >120kg, coding guidelines require Obesity Diagnosis.) ICD-10-CM Official Guidelines;
+FDA Label (Weight-based dosing) Audit Trigger. If they claim the patient is huge to get paid more units, make them prove it with the diagnosis code.
+J0585
+(Botox) Migraine Unit Cap
+Migraine protocol vs. cosmetic/muscle. WHERE diag LIKE 'G43%' AND units > 200
+(Logic: FDA Max for Chronic Migraine is 155-195 Units. >200 is excessive.) Allergan Label, Sec 2.2
+(Chronic Migraine: 155 Units) Off-Label Check. Prevents billing for "wasted" Botox or mixing cosmetic use with medical billing.
+J9190
+(5-FU) Multi-Day Date Span
+Ensures "From" and "To" dates match units. WHERE units > 2000 AND (date_to - date_from) < 2
+(Logic: 2000mg+ is a lethal daily dose. Must be spread over days.) FDA Label (Max Daily Dose 800mg);
+NCCN Guidelines (Colon Cancer) Safety/Billing check. Forces providers to report the correct date span, which affects "Site of Service" payments.
