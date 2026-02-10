@@ -1,114 +1,112 @@
 import pandas as pd
 import numpy as np
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import LabelEncoder
 
 # ==========================================
-# 1. SMART TRAINING (With Hierarchy)
+# 1. GENERATE REALISTIC RAW DATA
 # ==========================================
-# We train TWO models: one for specific codes, one for broad categories.
+# Notice: We use FULL ICD-10 codes here (e.g., E11.9, J45.909)
+# The model will automatically "learn" that these belong to the same parent.
 
-# Mock History:
-# - E11 (General Diabetes) uses Insulin
-# - J45.909 (Specific Asthma) uses Albuterol
-history_data = {
-    'Diagnosis_Code': (
-        ['E11'] * 1000 +        # General code used in history
-        ['J45.909'] * 1000      # Specific code used in history
-    ),
-    'J_Code': (
-        ['J_INSULIN'] * 1000 +  # Valid for E11
-        ['J_ALBUTEROL'] * 1000  # Valid for J45.909
-    )
-}
-df_history = pd.DataFrame(history_data)
+np.random.seed(42)
 
-# Create Parent Column (First 3 chars)
-df_history['Parent_Code'] = df_history['Diagnosis_Code'].str[:3]
+# Group A: Diabetes Variations (E11.9, E11.65, E11.2) -> Insulin
+df_diabetes = pd.DataFrame({
+    'Raw_Diagnosis': np.random.choice(['E11.9', 'E11.65', 'E11.2', 'E11.4'], 4000),
+    'J_Code': ['J1815'] * 4000,
+    'Units': np.random.normal(30, 5, 4000)
+})
 
-# --- MODEL A: EXACT MATCH (High Precision) ---
-model_exact = df_history.groupby(['Diagnosis_Code', 'J_Code']).size().reset_index(name='Count')
-total_exact = df_history.groupby('Diagnosis_Code').size().reset_index(name='Total')
-model_exact = model_exact.merge(total_exact, on='Diagnosis_Code')
-model_exact['Exact_Score'] = (model_exact['Count'] / model_exact['Total']) * 100
+# Group B: Asthma Variations (J45.909, J45.901) -> Albuterol
+df_asthma = pd.DataFrame({
+    'Raw_Diagnosis': np.random.choice(['J45.909', 'J45.901', 'J45.4'], 4000),
+    'J_Code': ['J7613'] * 4000,
+    'Units': np.random.normal(10, 2, 4000)
+})
 
-# --- MODEL B: PARENT ROLL-UP (Broad Coverage) ---
-# Group by Parent Code (e.g., 'E11') instead of specific code
-model_parent = df_history.groupby(['Parent_Code', 'J_Code']).size().reset_index(name='Count')
-total_parent = df_history.groupby('Parent_Code').size().reset_index(name='Total')
-model_parent = model_parent.merge(total_parent, on='Parent_Code')
-model_parent['Parent_Score'] = (model_parent['Count'] / model_parent['Total']) * 100
+# Group C: Anomalies (Random Noise for training)
+df_noise = pd.DataFrame({
+    'Raw_Diagnosis': np.random.choice(['E11.9', 'J45.909', 'S82.1'], 500),
+    'J_Code': np.random.choice(['J9999', 'J3490'], 500),
+    'Units': np.random.uniform(50, 100, 500)
+})
 
-print("--- Trained Models ---")
-print(f"Exact Rules: {len(model_exact)} | Parent Rules: {len(model_parent)}")
+df_train = pd.concat([df_diabetes, df_asthma, df_noise]).sample(frac=1).reset_index(drop=True)
+
+# ==========================================
+# 2. SMART PRE-PROCESSING (The 3-Digit Logic)
+# ==========================================
+
+def preprocess_diagnosis(df):
+    # logic: Convert to string -> Slice first 3 chars -> Uppercase
+    df['Diag_Category'] = df['Raw_Diagnosis'].astype(str).str[:3].str.upper()
+    return df
+
+# Apply the logic
+df_train = preprocess_diagnosis(df_train)
+
+# ==========================================
+# 3. ENCODING & TRAINING
+# ==========================================
+le_diag = LabelEncoder()
+le_jcode = LabelEncoder()
+
+# Fit the encoders on the GENERALIZED 3-digit codes
+df_train['Diag_Encoded'] = le_diag.fit_transform(df_train['Diag_Category'])
+df_train['JCode_Encoded'] = le_jcode.fit_transform(df_train['J_Code'])
+
+# Features: [Generalized Diag, Exact Drug, Quantity]
+features = ['Diag_Encoded', 'JCode_Encoded', 'Units']
+
+# Train the "Brain"
+iso_forest = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+iso_forest.fit(df_train[features])
+
+print(f"--- Model Trained on {len(df_train)} Claims ---")
+print(f"Learned Categories: {le_diag.classes_}") # Should see 'E11', 'J45', 'S82'
 print("-" * 30)
 
 # ==========================================
-# 2. THE INPUT (New Claims)
+# 4. PREDICT NEW (UNSEEN) CLAIMS
 # ==========================================
-raw_new_claims = [
-    {
-        'Claim_ID': 101,
-        'Member_ID': 'MEM_Specific',
-        'Diagnoses': ['E11.9'],  # Specific Code (Not in history, but E11 is)
-        'J_Codes':   ['J_INSULIN'] # Should Pass via Roll-Up
-    },
-    {
-        'Claim_ID': 102,
-        'Member_ID': 'MEM_Mismatch',
-        'Diagnoses': ['J45'],      # General Code
-        'J_Codes':   ['J_INSULIN'] # Invalid (Asthma != Insulin)
-    }
+# Let's test with a NEW, highly specific diagnosis code the model has NEVER seen.
+# e.g., 'E11.319' (Diabetes w/ Retinopathy) - The model only knows 'E11'
+new_claims = [
+    # Case 1: New Specific Code (E11.319) + Correct Drug
+    # Result: SHOULD APPROVE (Because E11.319 becomes E11)
+    {'Raw_Diagnosis': 'E11.319', 'J_Code': 'J1815', 'Units': 30},
+    
+    # Case 2: New Specific Code (J45.2) + Wrong Drug (Insulin)
+    # Result: SHOULD FLAG (Because J45 + Insulin is rare)
+    {'Raw_Diagnosis': 'J45.2', 'J_Code': 'J1815', 'Units': 10},
+    
+    # Case 3: Totally Random Code (R51 Headache) + Chemo
+    # Result: SHOULD FLAG (New Category + New Pattern)
+    {'Raw_Diagnosis': 'R51', 'J_Code': 'J9000', 'Units': 5}
 ]
-df_new = pd.DataFrame(raw_new_claims)
+
+df_new = pd.DataFrame(new_claims)
+
+# 1. Apply same 3-digit logic
+df_new = preprocess_diagnosis(df_new)
+
+# 2. Encode (Handle unknown categories safely)
+# If a category is brand new (e.g., R51), we assign a special "Unknown" code or -1
+# For this demo, we use a helper to handle unseen labels
+def safe_transform(encoder, series):
+    return series.map(lambda x: encoder.transform([x])[0] if x in encoder.classes_ else -1)
+
+df_new['Diag_Encoded'] = safe_transform(le_diag, df_new['Diag_Category'])
+df_new['JCode_Encoded'] = safe_transform(le_jcode, df_new['J_Code'])
+
+# 3. Predict
+df_new['Anomaly_Score'] = iso_forest.decision_function(df_new[features])
+df_new['Prediction'] = iso_forest.predict(df_new[features])
 
 # ==========================================
-# 3. PROCESSING WITH ROLL-UP LOOKUP
+# 5. GENERATE SMART OUTPUT
 # ==========================================
+df_new['Status'] = np.where(df_new['Prediction'] == 1, 'APPROVED', 'FLAGGED')
 
-# Explode lists to rows
-df_exploded = df_new.explode('J_Codes').explode('Diagnoses')
-
-# Create Parent Column for New Claims
-df_exploded['Parent_Code'] = df_exploded['Diagnoses'].str[:3]
-
-# STEP A: Try Exact Match First
-df_scored = df_exploded.merge(
-    model_exact[['Diagnosis_Code', 'J_Code', 'Exact_Score']], 
-    left_on=['Diagnoses', 'J_Codes'], 
-    right_on=['Diagnosis_Code', 'J_Code'], 
-    how='left'
-)
-
-# STEP B: Try Parent Match Second (The Roll-Up)
-df_scored = df_scored.merge(
-    model_parent[['Parent_Code', 'J_Code', 'Parent_Score']], 
-    left_on=['Parent_Code', 'J_Code'], 
-    right_on=['Parent_Code', 'J_Code'], 
-    how='left'
-)
-
-# Fill NaNs with 0
-df_scored['Exact_Score'] = df_scored['Exact_Score'].fillna(0)
-df_scored['Parent_Score'] = df_scored['Parent_Score'].fillna(0)
-
-# STEP C: The Decision Logic (Prioritize Exact, Fallback to Parent)
-def determine_final_status(row):
-    # 1. If Exact Match exists and is good -> APPROVED
-    if row['Exact_Score'] > 5.0:
-        return "APPROVED (Exact Match)"
-    
-    # 2. If Exact Match failed, check Parent -> APPROVED
-    if row['Parent_Score'] > 5.0:
-        return "APPROVED (Roll-Up Match)"
-    
-    # 3. If both fail -> FLAG
-    return "FLAGGED (Mismatch)"
-
-df_scored['Status'] = df_scored.apply(determine_final_status, axis=1)
-
-# ==========================================
-# 4. FINAL REPORT
-# ==========================================
-final_output = df_scored[['Claim_ID', 'Diagnoses', 'J_Codes', 'Exact_Score', 'Parent_Score', 'Status']]
-
-print("\n--- FINAL ROLL-UP REPORT ---")
-print(final_output.to_string(index=False))
+print(df_new[['Raw_Diagnosis', 'Diag_Category', 'J_Code', 'Units', 'Status', 'Anomaly_Score']])
