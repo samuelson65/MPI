@@ -4,30 +4,41 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder
 
 # ==========================================
-# 1. SETUP TRAIN DATA (No changes here)
+# 1. ROBUST DATA GENERATION (Training Phase)
 # ==========================================
 np.random.seed(42)
 
-# Training Data
-df_train = pd.DataFrame({
-    'Raw_Diagnosis': (['E11.9'] * 2000 + ['J45.909'] * 2000 + ['C34.90'] * 2000),
-    'J_Code':        (['J1815'] * 2000 + ['J7613'] * 2000 + ['J9000'] * 2000),
-    'Units':         (np.random.normal(30, 2, 2000).tolist() + 
-                      np.random.normal(10, 2, 2000).tolist() + 
-                      np.random.normal(50, 5, 2000).tolist())
+# Create "Normal" Patterns for the AI to learn
+# Pattern A: Diabetes (E11) -> Insulin (J1815)
+df_diabetes = pd.DataFrame({
+    'Raw_Diagnosis': np.random.choice(['E11.9', 'E11.2', 'E11.65'], 2000),
+    'J_Code': ['J1815'] * 2000,
+    'Units': np.random.normal(30, 5, 2000)
 })
 
-# Preprocessing
-def smart_preprocess(df):
-    df['Diag_Category'] = df['Raw_Diagnosis'].astype(str).str[:3].str.upper()
+# Pattern B: Asthma (J45) -> Albuterol (J7613)
+df_asthma = pd.DataFrame({
+    'Raw_Diagnosis': np.random.choice(['J45.909', 'J45.4'], 2000),
+    'J_Code': ['J7613'] * 2000,
+    'Units': np.random.normal(10, 2, 2000)
+})
+
+# Combine into training set
+df_train = pd.concat([df_diabetes, df_asthma]).sample(frac=1).reset_index(drop=True)
+
+# --- PREPROCESSING HELPER ---
+def clean_diagnosis(df, col_name):
+    # Ensure string, strip whitespace, take first 3 chars, uppercase
+    df['Diag_Category'] = df[col_name].astype(str).str.strip().str[:3].str.upper()
     return df
 
-df_train = smart_preprocess(df_train)
+df_train = clean_diagnosis(df_train, 'Raw_Diagnosis')
 
-# Encoding
+# --- ROBUST ENCODING ---
+# Handles "New" codes without crashing
 class SafeEncoder(LabelEncoder):
     def transform(self, y):
-        # Handle unseen codes safely
+        # Check if the code is known. If yes, encode. If no, assign -1.
         return np.array([super().transform([x])[0] if x in self.classes_ else -1 for x in y])
 
 le_diag = SafeEncoder()
@@ -38,71 +49,85 @@ df_train['JCode_Encoded'] = le_jcode.fit_transform(df_train['J_Code'])
 
 features = ['Diag_Encoded', 'JCode_Encoded', 'Units']
 
-# Train Model
+# --- TRAIN MODEL ---
 iso_forest = IsolationForest(n_estimators=100, contamination=0.02, random_state=42)
 iso_forest.fit(df_train[features])
-print("--- AI Model Trained ---")
+print("--- AI Trained on Normal Patterns ---")
 
 # ==========================================
-# 2. COMPLEX INPUT (The Fix is below)
+# 2. COMPLEX INPUT (The "Unequal Lists" Scenario)
 # ==========================================
-raw_claims = [
+# Scenario: 
+# - 2 Diagnoses (Diabetes, Asthma)
+# - 3 Procedures (Insulin, Chemo, Albuterol)
+# - 3 Units (Matches Procedures)
+# NOTE: Diagnoses length (2) != J_Codes length (3). This usually breaks Pandas.
+
+raw_data = [
     {
-        'Claim_ID': 'CLM_ERROR_FIXED',
-        'Diagnoses': ['E11.9', 'J45.909'],  # Length 2
-        'J_Codes':   ['J1815', 'J9000', 'J7613'], # Length 3
-        'Units':     [30, 50, 500]        # Length 3 (Matches J_Codes)
+        'Claim_ID': 'CLM_001',
+        'Diagnoses': ['E11.9', 'J45.909'], 
+        'J_Codes':   ['J1815', 'J9000', 'J7613'], 
+        'Units':     [30, 50, 600] 
     }
 ]
 
-df_input = pd.DataFrame(raw_claims)
+df_input = pd.DataFrame(raw_data)
 
 # ==========================================
-# 3. THE FIXED EXPLOSION LOGIC
+# 3. THE ROBUST FIX (Step-by-Step Explosion)
 # ==========================================
 
-# FIX: Do NOT explode everything at once.
-# Step A: Explode the "Line Items" (J_Codes and Units must match)
-# We leave 'Diagnoses' as a list for a moment.
-df_line_items = df_input.explode(['J_Codes', 'Units']).reset_index(drop=True)
+# STEP A: Explode the LINE ITEMS first (J_Codes + Units)
+# These lists MUST be the same length. We explode them together.
+# 'Diagnoses' remains a list on every row for now.
+df_lines = df_input.explode(['J_Codes', 'Units']).reset_index(drop=True)
 
-# Step B: Explode the "Context" (Diagnoses)
-# Now we explode the diagnoses so that every Drug Line gets paired with every Diagnosis.
-df_pairs = df_line_items.explode('Diagnoses').reset_index(drop=True)
+# STEP B: Explode the CONTEXT (Diagnoses)
+# Now we explode Diagnoses. This creates a "Cross Join" effect.
+# (Row 1: Insulin) x (Diag A, Diag B) = 2 Rows to check.
+df_pairs = df_lines.explode('Diagnoses').reset_index(drop=True)
 
-# Rename for clarity
+# Rename for processing
 df_pairs = df_pairs.rename(columns={'Diagnoses': 'Raw_Diagnosis', 'J_Codes': 'J_Code'})
+
+# Ensure data types are correct after explosion
+df_pairs['Units'] = pd.to_numeric(df_pairs['Units'])
 
 # ==========================================
 # 4. PREDICT & AGGREGATE
 # ==========================================
 
-# Preprocess & Encode
-df_pairs = smart_preprocess(df_pairs)
+# Preprocess New Data
+df_pairs = clean_diagnosis(df_pairs, 'Raw_Diagnosis')
 df_pairs['Diag_Encoded'] = le_diag.transform(df_pairs['Diag_Category'])
 df_pairs['JCode_Encoded'] = le_jcode.transform(df_pairs['J_Code'])
 
-# Predict
+# AI Prediction
+# Returns: Score > 0 (Normal), Score < 0 (Anomaly)
 df_pairs['Anomaly_Score'] = iso_forest.decision_function(df_pairs[features])
 
-# Aggregation Logic (Find best justifying diagnosis)
+# AGGREGATION LOGIC:
+# For every Line Item (J_Code + Units), we take the BEST score found.
+# If *any* diagnosis makes the drug valid, the Max Score will be high.
 final_report = df_pairs.groupby(['Claim_ID', 'J_Code', 'Units']).agg(
     Best_Score=('Anomaly_Score', 'max')
 ).reset_index()
 
-# Generate Reason
-def generate_audit_reason(row):
-    # Score > 0 is Normal (Inliers)
-    # Score < 0 is Anomaly (Outliers)
+# ==========================================
+# 5. FINAL REASONING LOGIC
+# ==========================================
+def generate_decision(row):
     if row['Best_Score'] > 0:
         return "APPROVED"
-    else:
-        # Simple heuristics for the reason
-        if row['Units'] > 100:
-            return f"FLAG: Excessive Units ({row['Units']})"
-        return "FLAG: Clinical Mismatch"
+    
+    # If flagged, guess the reason based on the input values
+    if row['Units'] > 100:
+        return f"FLAG: Excessive Units ({row['Units']})"
+    
+    return "FLAG: Clinical Mismatch (Orphan Drug)"
 
-final_report['Audit_Decision'] = final_report.apply(generate_audit_reason, axis=1)
+final_report['Decision'] = final_report.apply(generate_decision, axis=1)
 
-print("\n--- FINAL FIXED REPORT ---")
+print("\n--- FINAL ROBUST AUDIT ---")
 print(final_report.to_string(index=False))
