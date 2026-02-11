@@ -3,61 +3,58 @@ import numpy as np
 from sentence_transformers import SentenceTransformer, util
 from sklearn.cluster import AgglomerativeClustering
 
-def analyze_audit_highlights(corpus, claim_amounts=None):
-    # 1. Setup DataFrame
-    df = pd.DataFrame({'comment': corpus})
-    # If no amounts provided, we'll just count occurrences
-    df['amount'] = claim_amounts if claim_amounts else [1] * len(df)
+def cluster_with_highlights(corpus):
+    # 1. Clean data and remove duplicates to avoid bias
+    unique_corpus = list(set([str(c).strip() for c in corpus if c]))
+    df = pd.DataFrame({'comment': unique_corpus})
     
-    # 2. Semantic Embedding (CPU-friendly)
+    # 2. Semantic Embeddings (Understand the meaning, not just words)
     model = SentenceTransformer('all-MiniLM-L6-v2')
-    embeddings = model.encode(df['comment'].astype(str).tolist(), convert_to_tensor=True)
+    embeddings = model.encode(unique_corpus, convert_to_tensor=True)
 
-    # 3. Agglomerative Clustering (Unsupervised)
-    # distance_threshold: 1.2 is a good middle ground for PI audits
-    cluster_model = AgglomerativeClustering(n_clusters=None, distance_threshold=1.2)
-    df['cluster_id'] = cluster_model.fit_predict(embeddings.cpu())
+    # 3. Dynamic Clustering
+    # Adjust distance_threshold (e.g., 1.0 to 1.5) to make clusters tighter or broader
+    clustering_model = AgglomerativeClustering(n_clusters=None, distance_threshold=1.3)
+    df['cluster_id'] = clustering_model.fit_predict(embeddings.cpu())
 
-    # 4. Highlight Extraction (The 'Central' Sentence)
+    # 4. Extract the "Highlight" for each cluster
+    # We find the 'Centroid' sentence—the one most similar to all others in its group
     highlights = {}
-    for cid in df['cluster_id'].unique():
-        idx = df[df['cluster_id'] == cid].index
-        if len(idx) > 0:
-            c_embeds = embeddings[idx]
-            # Find the sentence that best represents the whole group
-            sim_matrix = util.cos_sim(c_embeds, c_embeds)
-            central_idx = sim_matrix.sum(dim=1).argmax().item()
-            actual_text = df.loc[idx[central_idx], 'comment']
+    for cluster_id in df['cluster_id'].unique():
+        cluster_indices = df[df['cluster_id'] == cluster_id].index
+        
+        if len(cluster_indices) == 1:
+            # Only one comment? That comment is the highlight
+            highlights[cluster_id] = df.loc[cluster_indices[0], 'comment']
+        else:
+            # Find the sentence with the highest average similarity to others in the cluster
+            cluster_embeds = embeddings[cluster_indices]
+            cos_scores = util.cos_sim(cluster_embeds, cluster_embeds)
             
-            # Formatting the highlight to be punchy
-            highlights[cid] = (actual_text[:75] + '...') if len(actual_text) > 75 else actual_text
+            # Sum the scores for each sentence (excluding itself)
+            central_idx_in_cluster = cos_scores.sum(dim=1).argmax().item()
+            real_index = cluster_indices[central_idx_in_cluster]
+            
+            # Clean up the highlight (take the first 60 chars or the first sentence)
+            full_text = df.loc[real_index, 'comment']
+            highlight = full_text.split('.')[0][:80] # Get the primary point
+            highlights[cluster_id] = f"Highlight: {highlight}..."
 
-    df['key_highlight'] = df['cluster_id'].map(highlights)
+    # 5. Map back to DataFrame
+    df['cluster_heading'] = df['cluster_id'].map(highlights)
+    
+    # Final output merged back to original list order if needed
+    original_df = pd.DataFrame({'comment': corpus})
+    return original_df.merge(df, on='comment', how='left').fillna("N/A")
 
-    # 5. Summary Aggregation for Storytelling
-    summary = df.groupby('key_highlight').agg(
-        frequency=('comment', 'count'),
-        total_impact=('amount', 'sum')
-    ).sort_values(by='total_impact', ascending=False).reset_index()
-
-    return df, summary
-
-# --- Input for your Hackathon ---
-# Example: Adding claim amounts to show 'Total Impact'
+# --- Example with Audit Data ---
 corpus = [
     "the patient was readmitted to the same hospital and the provider is responsible for such things",
     "provider liability indicated as patient returned to same facility within 48 hours",
     "incorrect DRG applied to the claim, documentation does not support MCC",
     "DRG 291 was billed but the clinical records fail to justify the secondary diagnosis",
-    "documentation gap found: no evidence of sepsis in the lab results for this discharge",
-    "the provider should be held liable for the readmission to the same hospital",
+    "documentation gap found: no evidence of sepsis in the lab results for this discharge"
 ]
-# Mock data representing the financial value of each claim
-amounts = [5400, 4200, 12000, 11500, 8900, 5100]
 
-full_results, summary_table = analyze_audit_highlights(corpus, amounts)
-
-print("--- CLUSTERED DATA ---")
-print(full_results[['key_highlight', 'comment']])
-print("\n--- STORYTELLING SUMMARY (HACKATHON VIEW) ---")
-print(summary_table)
+final_df = cluster_with_highlights(corpus)
+print(final_df[['cluster_heading', 'comment']])
