@@ -1,117 +1,70 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import LabelEncoder
+from sentence_transformers import SentenceTransformer
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-# ==========================================
-# 1. SETUP TRAIN DATA (The "Knowledge Base")
-# ==========================================
-np.random.seed(42)
+def classify_comments_advanced(comments):
+    # --- 1. Data Cleaning & Edge Case: Empty List ---
+    if not comments or len(comments) < 2:
+        return pd.DataFrame({'comment': comments, 'cluster_id': [0]*len(comments), 'heading': ['Insufficient Data']})
 
-# Create "Normal" Patterns
-# Pattern A: Diabetes (E11) -> Insulin (J1815)
-df_diabetes = pd.DataFrame({
-    'Raw_Diagnosis': np.random.choice(['E11.9', 'E11.2'], 2000),
-    'J_Code': ['J1815'] * 2000,
-    'Units': np.random.normal(30, 5, 2000)
-})
+    # Remove duplicates and empty strings to avoid skewing clusters
+    clean_comments = list(dict.fromkeys([str(c).strip() for c in comments if len(str(c).strip()) > 0]))
+    
+    # --- 2. Generate Embeddings ---
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(clean_comments)
 
-# Pattern B: Asthma (J45) -> Albuterol (J7613)
-df_asthma = pd.DataFrame({
-    'Raw_Diagnosis': np.random.choice(['J45.909', 'J45.4'], 2000),
-    'J_Code': ['J7613'] * 2000,
-    'Units': np.random.normal(10, 2, 2000)
-})
+    # --- 3. Find Optimal Number of Clusters (Silhouette Method) ---
+    # We test ranges from 2 up to 10 (or the max possible)
+    max_k = min(len(clean_comments) - 1, 10)
+    best_k = 2
+    if max_k > 2:
+        sil_scores = []
+        for k in range(2, max_k + 1):
+            km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(embeddings)
+            sil_scores.append(silhouette_score(embeddings, km.labels_))
+        best_k = range(2, max_k + 1)[np.argmax(sil_scores)]
+    
+    # --- 4. Final Clustering ---
+    kmeans = KMeans(n_clusters=best_k, n_init=10, random_state=42)
+    clusters = kmeans.fit_predict(embeddings)
+    
+    df = pd.DataFrame({'comment': clean_comments, 'cluster_id': clusters})
 
-df_train = pd.concat([df_diabetes, df_asthma]).sample(frac=1).reset_index(drop=True)
+    # --- 5. Generate Intelligent Headings (using TF-IDF keywords) ---
+    # This finds words that are frequent in one cluster but rare in others
+    vectorizer = TfidfVectorizer(stop_words='english', max_features=5)
+    headings = {}
+    
+    for i in range(best_k):
+        cluster_texts = df[df['cluster_id'] == i]['comment']
+        # Fallback if cluster is too small for TF-IDF
+        try:
+            tfidf_matrix = vectorizer.fit_transform(cluster_texts)
+            keywords = vectorizer.get_feature_names_out()
+            headings[i] = "Topic: " + ", ".join(keywords[:3])
+        except:
+            headings[i] = f"Cluster {i} (General)"
 
-# --- PREPROCESSING ---
-def clean_diagnosis(df, col_name):
-    df['Diag_Category'] = df[col_name].astype(str).str.strip().str[:3].str.upper()
-    return df
+    df['cluster_heading'] = df['cluster_id'].map(headings)
+    
+    # Merge back to original list to preserve original order and duplicates if necessary
+    original_df = pd.DataFrame({'comment': comments})
+    final_df = original_df.merge(df, on='comment', how='left').fillna("Empty/Filtered")
+    
+    return final_df
 
-df_train = clean_diagnosis(df_train, 'Raw_Diagnosis')
-
-# --- ENCODING ---
-class SafeEncoder(LabelEncoder):
-    def transform(self, y):
-        return np.array([super().transform([x])[0] if x in self.classes_ else -1 for x in y])
-
-le_diag = SafeEncoder()
-le_jcode = SafeEncoder()
-
-df_train['Diag_Encoded'] = le_diag.fit_transform(df_train['Diag_Category'])
-df_train['JCode_Encoded'] = le_jcode.fit_transform(df_train['J_Code'])
-
-features = ['Diag_Encoded', 'JCode_Encoded', 'Units']
-
-# --- TRAIN MODEL ---
-iso_forest = IsolationForest(n_estimators=100, contamination=0.02, random_state=42)
-iso_forest.fit(df_train[features])
-print("--- AI Model Trained ---")
-
-# ==========================================
-# 2. COMPLEX INPUT (Uneven Lists)
-# ==========================================
-# Scenario: 2 Diagnoses, 3 Procedures.
-# This caused the crash before because indices got duplicated.
-
-raw_data = [
-    {
-        'Claim_ID': 'CLM_CRASH_FIXED',
-        'Diagnoses': ['E11.9', 'J45.909'],  # Length 2
-        'J_Codes':   ['J1815', 'J9000', 'J7613'], # Length 3
-        'Units':     [30, 50, 600] # Length 3
-    }
+# --- Test Drive ---
+input_data = [
+    "The app keeps crashing on my iPhone", "Crashing constantly", 
+    "I love the new UI design", "The interface looks very modern",
+    "How do I reset my password?", "Password recovery is not working",
+    " ", # Edge case: empty string
+    "The app keeps crashing on my iPhone" # Edge case: duplicate
 ]
 
-df_input = pd.DataFrame(raw_data)
-
-# ==========================================
-# 3. THE CRASH-PROOF EXPLOSION
-# ==========================================
-
-# STEP A: Explode Line Items (J_Codes & Units)
-# CRITICAL FIX: We use .reset_index(drop=True) to fix the duplicate axis error.
-# We assume J_Codes and Units are paired 1-to-1.
-df_lines = df_input.explode(['J_Codes', 'Units'])
-df_lines = df_lines.reset_index(drop=True) # <--- THIS FIXES YOUR ERROR
-
-# STEP B: Explode Context (Diagnoses)
-# Now we cross-join the diagnoses.
-df_pairs = df_lines.explode('Diagnoses')
-df_pairs = df_pairs.reset_index(drop=True) # <--- THIS FIXES YOUR ERROR AGAIN
-
-# Ensure types
-df_pairs = df_pairs.rename(columns={'Diagnoses': 'Raw_Diagnosis', 'J_Codes': 'J_Code'})
-df_pairs['Units'] = pd.to_numeric(df_pairs['Units'])
-
-# ==========================================
-# 4. PREDICT & AGGREGATE
-# ==========================================
-
-# Preprocess
-df_pairs = clean_diagnosis(df_pairs, 'Raw_Diagnosis')
-df_pairs['Diag_Encoded'] = le_diag.transform(df_pairs['Diag_Category'])
-df_pairs['JCode_Encoded'] = le_jcode.transform(df_pairs['J_Code'])
-
-# Predict
-df_pairs['Anomaly_Score'] = iso_forest.decision_function(df_pairs[features])
-
-# Aggregation Logic
-final_report = df_pairs.groupby(['Claim_ID', 'J_Code', 'Units']).agg(
-    Best_Score=('Anomaly_Score', 'max')
-).reset_index()
-
-# Reason Generation
-def get_status(row):
-    if row['Best_Score'] > 0:
-        return "APPROVED"
-    if row['Units'] > 100:
-        return f"FLAG: Excessive Units ({row['Units']})"
-    return "FLAG: Clinical Mismatch"
-
-final_report['Status'] = final_report.apply(get_status, axis=1)
-
-print("\n--- FINAL ROBUST REPORT ---")
-print(final_report.to_string(index=False))
+df_output = classify_comments_advanced(input_data)
+print(df_output)
