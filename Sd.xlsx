@@ -1,61 +1,196 @@
-Drug Code Intent (The Audit Concept) Logic (SQL / Python Rule) Citation / Reference Director Comments
-J0178
-(Eylea) Bilateral Anatomical Cap
-Prevents billing >2 eyes per session. WHERE units > 2
-(Logic: Humans only have 2 eyes. Max dose is 2mg/eye. 1 Unit = 1mg. Max Total = 2 units.) Regeneron Prescribing Info, Sec 2.2;
-AAO Guidelines (Intravitreal Injection) High Volume Hit. Providers often bill the "Vial Size" (e.g., 4 units) instead of the administered dose (2 units). Instant denial.
-J9271
-(Keytruda) Max Flat Dose Ceiling
-Stops claims exceeding the absolute FDA max/session. WHERE units > 400
-(Logic: Max approved dose is 400mg Q6W. 1 Unit = 1mg.) FDA Label, Sec 2.1
-(Recommended Dosage: 200mg or 400mg) The "Free Money" Audit. Fixed-dose drugs have zero variance. Any claim >400 is erroneous.
-J9299
-(Opdivo) Stratified Weight Outlier
-Detects impossible weights based on Gender/BMI. CASE WHEN gender='F' AND (units/3.0) > 135 THEN 'FAIL'
-(Trigger: Implied Weight > 99.7th %ile for Females) CDC Anthropometric Data (2015-2018);
-BMS Label (3 mg/kg or Flat 240/480mg) Precision Strike. Don't use a generic 150kg limit. Using a female-specific limit (135kg) captures ~20% more errors.
-J0897
-(Prolia) Frequency Lock (6 Months)
-Prevents early refills or double billing. WHERE days_since_last_claim < 150
-(Logic: Dosed once every 6 months. Claims <5 months apart are duplicates or errors.) Amgen Prescribing Info, Sec 2.1
-(60mg SQ every 6 months) Timing Audit. Providers often accidentally bill the same shot twice or schedule patients too early.
-J2357
-(Xolair) IgE / Weight Matrix Cap
-Validates complex dosing grid. WHERE units > 600
-(Logic: Max FDA dose is 600mg [4 vials] every 2 weeks, regardless of weight/IgE levels.) Genentech Dosing Table 1;
-FDA Label (Max 600mg per session) Complexity Trap. The dosing table is confusing (Weight vs IgE). Providers often guess. The hard cap (600mg) is the safety net.
-J9312
-(Rituxan) BSA "Giant" Check
-Implied Body Surface Area > 3.0 m^2. WHERE (units * 10 / 375) > 3.0
-(Logic: Dosed at 375 mg/m². Implied BSA > 3.0 is statistically impossible.) Biogen Label (375 mg/m²);
-Sacco et al. "Average BSA across US Population" Math Error Target. Providers often confuse 1 Unit = 10mg vs 1mg. This check catches the 10x coding errors.
-J2506
-(Neulasta) Impossible Wastage (Syringe)
-Denies waste on single-dose forms. WHERE modifier = 'JW' AND units > 0
-(Logic: Pre-filled 6mg syringe. You administer all or nothing. Waste is physically impossible.) CMS Manual Ch 17 Sec 40;
-Amgen Label (Dosage Forms) Policy Enforcement. You cannot waste part of a pre-filled syringe. All JW claims here are invalid.
-J2778
-(Lucentis) Vial Size vs. Admin
-Billing full vial volume vs. actual injection. WHERE units > 5
-(Logic: Dose is 0.5mg [5 units]. Vial contains more for priming, but you only bill what enters the eye.) Genentech Label, Sec 2.2
-(0.5 mg intravitreal injection) "Overfill" Abuse. Providers bill the "Overfill" left in the vial. Medicare pays for the dose, not the trash (unless Multi-Use).
-J1745
-(Remicade) Maintenance Phase Drift
-High induction dose used in maintenance. WHERE units > 500 AND claim_count_6m > 3
-(Logic: Dose drops from 5mg/kg to 3mg/kg after Week 6.) Janssen Label, Sec 2.1
-(Induction vs Maintenance Dosing) Chronic Leakage. Patients stay on this drug for years. Ensure the dose drops down after the first 3 visits.
-J9035
-(Avastin) The "Obesity Paradox"
-High weight asserted without ICD-10 code. WHERE implied_kg > 120 AND diag NOT LIKE '%E66%'
-(Logic: If patient is >120kg, coding guidelines require Obesity Diagnosis.) ICD-10-CM Official Guidelines;
-FDA Label (Weight-based dosing) Audit Trigger. If they claim the patient is huge to get paid more units, make them prove it with the diagnosis code.
-J0585
-(Botox) Migraine Unit Cap
-Migraine protocol vs. cosmetic/muscle. WHERE diag LIKE 'G43%' AND units > 200
-(Logic: FDA Max for Chronic Migraine is 155-195 Units. >200 is excessive.) Allergan Label, Sec 2.2
-(Chronic Migraine: 155 Units) Off-Label Check. Prevents billing for "wasted" Botox or mixing cosmetic use with medical billing.
-J9190
-(5-FU) Multi-Day Date Span
-Ensures "From" and "To" dates match units. WHERE units > 2000 AND (date_to - date_from) < 2
-(Logic: 2000mg+ is a lethal daily dose. Must be spread over days.) FDA Label (Max Daily Dose 800mg);
-NCCN Guidelines (Colon Cancer) Safety/Billing check. Forces providers to report the correct date span, which affects "Site of Service" payments.
+ID Category Guideline Name Logic (Index → Readmit) 3 Distinct Audit Insights & Actionable Ideas Possibility & Feedback (What to look for in Notes)
+1 Cardiology CHF Premature Discharge Index: CHF → Readmit: CHF 
+(Gap ≤ 7 days) 1. Stability: Increasing weight/positive I/Os.
+2. Meds: IV Lasix within 24h.
+3. Signs: "2+ edema" or "crackles" at discharge. Possibility: Nursing notes might document "patient c/o SOB when walking to bathroom" on discharge day, contradicting the MD's "stable" note. Look for a discrepancy between the MD's "dry weight" goal and the actual discharge weight.
+2 Cardiology CHF Medication Failure Index: CHF → Readmit: CHF 
+(Gap 8-30 days) 1. Education: No "teach-back" on diet.
+2. Access: Unfilled meds (cost).
+3. Scale: Patient lacks home scale. Possibility: CM notes might mention "patient expressed concern about cost of Entresto" but no social work consult or coupon was provided. Admission note for readmit might say "patient has been eating canned soup" (diet failure).
+3 Cardiology CHF → Renal (AKI) Index: CHF → Readmit: AKI 
+(Gap ≤ 7 days) 1. Iatrogenic: Aggressive diuresis.
+2. Monitoring: No 48h BMP scheduled.
+3. Safety: "Triple Whammy" meds. Possibility: MD Progress Note might say "pushing Lasix to clear lungs" while the lab sheet shows Creatinine rising from 1.0 to 1.8. Discharge summary might fail to order a "renal function check" in 2 days.
+4 Cardiology CHF → AMI (Demand) Index: CHF → Readmit: AMI 
+(Gap ≤ 7 days) 1. Type 2 MI: Stress vs Thrombus.
+2. Perfusion: Hypotension from diuresis.
+3. Meds: Beta-Blocker held. Possibility: Readmit H&P might call it "NSTEMI likely demand-related due to volume overload." Index stay MAR might show Beta-Blocker was held for "soft BP" and never restarted, leaving the heart unprotected.
+5 Cardiology AMI DAPT Failure Index: AMI → Readmit: Stent Clot 
+(Gap ≤ 30 days) 1. Adherence: Missed DAPT doses.
+2. Handoff: Script not filled.
+3. Education: Risk not explained. Possibility: CM notes might state "script sent to pharmacy" but Pharmacy records show it was "returned to stock" or never picked up. Readmit note might say "patient stopped Plavix because of bruising."
+6 Cardiology Post-PCI Bleed Index: PCI → Readmit: Bleed 
+(Gap ≤ 3 days) 1. Site Care: Check q15m checks.
+2. Vitals: Ignored hypotension.
+3. Education: When to call. Possibility: Post-procedure nursing note might mention "small hematoma noted, pressure applied" but no re-check was documented before discharge. Patient might report "felt pop and wetness" at home.
+7 Cardiology Post-MI Angina Index: AMI → Readmit: Angina 
+(Gap ≤ 7 days) 1. Residual: Untreated stenosis.
+2. Rate: HR > 80 at DC.
+3. Activity: Pain with movement. Possibility: Cath report might say "70% OM lesion deferred for medical management." If readmit is for chest pain, it suggests medical management failed or was inadequate (e.g., low-dose meds).
+8 Cardiology Arrhythmia Bounce Index: Afib → Readmit: Syncope 
+(Gap ≤ 5 days) 1. Rate: HR < 110?
+2. Ortho: BP drops standing?
+3. Anticoag: Stroke risk managed? Possibility: Discharge vitals might show HR 115, but patient sent home anyway. Or, patient started on Sotalol/Beta-blocker without orthostatic BPs checked, leading to a fall at home.
+9 Cardiology HTN Crisis Index: HTN → Readmit: Stroke 
+(Gap ≤ 7 days) 1. Compliance: Side effects?
+2. Titration: DC BP > 140/90?
+3. Access: Cost issues? Possibility: Discharge vitals might show BP 160/95. MD note says "stable on current meds," but readmission for Hypertensive Urgency proves otherwise. Look for lack of titration in the MAR.
+10 Pulmonology PNA Unstable Vitals Index: PNA → Readmit: Sepsis 
+(Gap ≤ 5 days) 1. Fever: Masked by Tylenol?
+2. Oxygen: Sat < 92% room air?
+3. Meds: Oral tolerance? Possibility: Nursing flow sheet might show Tylenol given at 08:00 for "pain" (masking fever) and discharge at 10:00. O2 sat might be 91% on room air, but "home O2" was deemed unnecessary.
+11 Pulmonology PNA Misdiagnosis Index: PNA → Readmit: CHF 
+(Gap ≤ 5 days) 1. Dx: PNA vs CHF (BNP).
+2. Meds: Diuretics held?
+3. Imaging: CXR worsening? Possibility: Index CXR report might say "infiltrate vs edema." MD treated as PNA (antibiotics) and held Lasix. Readmit CXR shows "frank pulmonary edema," proving the first diagnosis was wrong or management caused the CHF.
+12 Pulmonology COPD Action Plan Index: COPD → Readmit: COPD 
+(Gap ≤ 15 days) 1. Plan: Written Green/Red zone?
+2. Teach-back: Inhaler use?
+3. Taper: Steroid rebound? Possibility: CM note says "education provided," but no "Action Plan" is scanned in the chart. Readmit note says "patient ran out of prednisone and breathing worsened," indicating a failed taper plan.
+13 Pulmonology COPD → Resp Failure Index: COPD → Readmit: CO2 High 
+(Gap ≤ 3 days) 1. CO2: High discharge flow?
+2. Sedation: Benzos/Opiates?
+3. Equipment: BiPAP delay? Possibility: Patient discharged on 3L O2 when their baseline is 2L. No ABG checked. Readmission ABG shows pCO2 of 80 (Narcosis). CM notes might show BiPAP wasn't delivered until day 2.
+14 Pulmonology Asthma Crisis Index: Asthma → Readmit: Asthma 
+(Gap ≤ 7 days) 1. Triggers: Pets/Smoke?
+2. Meds: Steroid burst?
+3. Follow-up: Pulm appt made? Possibility: Social work note mentions "heavy smoker in home" but no cessation counseling provided. Patient discharged without a spacer for their inhaler (ineffective delivery).
+15 Sepsis/ID Sepsis Recurrence Index: Sepsis → Readmit: Sepsis 
+(Gap ≤ 10 days) 1. Source: Abscess drained?
+2. Culture: Meds match bug?
+3. Labs: WBC rising? Possibility: Discharge summary lists "Cipro" but final culture report (released after discharge) shows bug is "Resistant to Cipro." No one called the patient to change the med.
+16 Sepsis/ID Sepsis → C. Diff Index: Sepsis → Readmit: C. Diff 
+(Gap ≤ 30 days) 1. Stewardship: Meds too broad?
+2. Hygiene: Hand washing?
+3. Isolation: Appropriate? Possibility: Patient was on IV Clindamycin or Meropenem for 10 days for a simple UTI. Readmit H&P mentions "profuse diarrhea starting 2 days after discharge."
+17 Sepsis/ID Sepsis → CHF Index: Sepsis → Readmit: CHF 
+(Gap ≤ 5 days) 1. Overload: 30cc/kg fluids given.
+2. Exam: Edema at DC.
+3. Weight: Gained >5 lbs. Possibility: Flowsheet shows 4 Liters of fluid given in ER/ICU. No Lasix given during stay. Discharge weight is 10 lbs higher than admit weight. Nursing note mentions "pitting edema" at discharge.
+18 Sepsis/ID UTI Recurrence Index: UTI → Readmit: Urosepsis 
+(Gap ≤ 14 days) 1. Resistance: Bug resistant?
+2. Retention: PVR high?
+3. Hygiene: Perineal care? Possibility: Patient discharged on Bactrim. Final urine culture shows E. Coli resistant to Bactrim. Nursing note mentions "patient has Foley catheter" but discharge plan has no Urology follow-up for removal/change.
+19 Sepsis/ID Cellulitis Failure Index: Cellulitis → Readmit: Sepsis 
+(Gap ≤ 7 days) 1. Marking: Redness spread?
+2. Meds: Dose too low?
+3. Elevation: Edema managed? Possibility: Nursing note on discharge day says "redness extends past marker line." MD note says "improved." Discharged anyway. Readmit note says "erythema progressed up leg."
+20 Renal/Endo AKI Dehydration Index: Medical → Readmit: AKI 
+(Gap ≤ 5 days) 1. Meds: "Triple Whammy"?
+2. Intake: Too weak to drink?
+3. Labs: Re-check scheduled? Possibility: Patient discharged on lisinopril, lasix, and ibuprofen. PT note says "max assist, fatigue." Patient likely couldn't get water at home. Readmit Creatinine is 3.5 (Acute Renal Failure).
+21 Renal/Endo Urinary Retention Index: Surgery → Readmit: Retention 
+(Gap ≤ 3 days) 1. Void Trial: Void >150ml?
+2. Meds: Anticholinergics?
+3. Plan: Urology follow-up? Possibility: Nursing note says "Voided 100cc, PVR 400cc." MD discharged anyway without a catheter or alpha-blocker (Flomax). Patient returns to ER in severe pain unable to void.
+22 Renal/Endo ESRD Missed Dialysis Index: ESRD → Readmit: Overload 
+(Gap ≤ 3 days) 1. Coordination: Chair confirmed?
+2. Diet: Renal Diet?
+3. Access: Clotted graft? Possibility: CM note says "Faxed info to dialysis center" but no confirmation of acceptance or chair time. Patient missed Tuesday run because they "didn't know what time to go."
+23 Renal/Endo DKA / Hyperglycemia Index: Diabetes → Readmit: DKA 
+(Gap ≤ 7 days) 1. Insulin: Sliding scale adjusted?
+2. Education: Educator consult?
+3. Sick Day: Rules taught? Possibility: Patient had high sugars (300+) throughout stay. Discharged on same home dose that failed them before admission. No adjustment made for infection/steroids.
+24 Renal/Endo Hypoglycemia Index: Diabetes → Readmit: Low Sugar 
+(Gap ≤ 3 days) 1. Diet: Poor appetite?
+2. Meds: Sulfonylurea high?
+3. Monitoring: Glucometer? Possibility: Patient noted to have "poor PO intake" (eating 25%). Discharged on full dose of Glipizide or long-acting insulin. Found unresponsive at home with sugar of 30.
+25 Neurology Stroke → Aspiration Index: Stroke → Readmit: PNA 
+(Gap ≤ 14 days) 1. Swallow: Study done?
+2. Diet: Consistency right?
+3. Position: Feeding upright? Possibility: Speech Therapy recommended "Honey Thick" liquids. Discharge orders say "Regular Diet." Readmission is for aspiration pneumonia.
+26 Neurology Stroke → Fall Index: Stroke → Readmit: Fracture 
+(Gap ≤ 30 days) 1. Mobility: Fall Risk?
+2. Home Safety: Eval ordered?
+3. Meds: Sedating meds? Possibility: PT note recommends "SNF for safety," but patient discharged Home. No 24h supervision available. Patient fell trying to go to bathroom.
+27 Neurology Seizure Break-Thru Index: Seizure → Readmit: Seizure 
+(Gap ≤ 10 days) 1. Levels: Sub-therapeutic?
+2. Meds: Cost barrier?
+3. Triggers: Alcohol/Sleep? Possibility: Lab result shows Dilantin level 8 (Low) at discharge. Meds not adjusted. Or, CM note documents patient "lost insurance" but no bridge supply provided.
+28 Gastro GI Bleed Recurrence Index: GI Bleed → Readmit: Anemia 
+(Gap ≤ 7 days) 1. Stability: H&H stable 24h?
+2. Meds: Anticoag held?
+3. Scope: Second look? Possibility: Hemoglobin dropped from 9.0 to 8.0 on morning of discharge. Patient discharged anyway. Readmit Hgb is 6.5. Patient was restarted on Aspirin too soon.
+29 Gastro Encephalopathy Index: Liver → Readmit: AMS 
+(Gap ≤ 14 days) 1. Meds: Lactulose titration?
+2. Diet: Fluid/Na limit?
+3. Labs: Ammonia trend? Possibility: Discharge instructions say "Take Lactulose 30ml daily" instead of "titrate to 3 BMs daily." Patient became constipated, ammonia spiked, causing confusion.
+30 Surgery Surgical Infection Index: Surgery → Readmit: SSI 
+(Gap ≤ 30 days) 1. Care: Instructions specific?
+2. Labs: WBC rising?
+3. Abx: Timely prophylaxis? Possibility: Discharge WBC was 13.5 (High). Nursing note mentioned "slight redness at staple line." Discharged without antibiotics. Readmit is for wound abscess.
+31 Surgery Post-Op Ileus Index: GI Surg → Readmit: Obstruction 
+(Gap ≤ 7 days) 1. Diet: Rushed to solids?
+2. Function: Gas/Stool passed?
+3. Meds: Bowel regimen? Possibility: Nursing note says "No BM x 4 days." MD advanced diet to "Regular" and discharged. Patient returns vomiting. No Colace/Senna was on discharge med list.
+32 Surgery Post-Op DVT/PE Index: Surgery → Readmit: PE 
+(Gap ≤ 30 days) 1. Prophylaxis: Lovenox given?
+2. Home Meds: Xarelto Rx?
+3. Mobility: Ambulation? Possibility: Index MAR shows missed doses of Heparin due to "patient refusal." Discharge plan has no anticoagulant despite high-risk surgery (e.g., hip/knee).
+33 Surgery Wound Dehiscence Index: Surgery → Readmit: Open Wound 
+(Gap ≤ 14 days) 1. Removal: Staples early?
+2. Infection: Redness noted?
+3. Activity: Lifting? Possibility: Staples removed on Day 7 (obese patient). Note mentions "edges approximating well" but wound opened at home. Patient instruction didn't emphasize "splinting with pillow" when coughing.
+34 Surgery Anastomotic Leak Index: Bowel → Readmit: Sepsis 
+(Gap ≤ 10 days) 1. Vitals: Tachycardia/Fever?
+2. Pain: "Out of proportion"?
+3. Diet: Vomiting? Possibility: Patient had HR 110-120 persistently for 24h prior to discharge. Complaint of "new abdominal pain" dismissed as gas. This was a leak.
+35 Ortho Prosthetic Infection Index: TKA → Readmit: PJI 
+(Gap ≤ 30 days) 1. Sterility: Break in OR?
+2. Abx: Timely Ancef?
+3. Wound: Drainage at DC? Possibility: Op Note might list "tourniquet time > 120 mins" (infection risk). Post-op note mentions "serous drainage" from incision. Discharged without specific wound check plan.
+36 Ortho Hip Dislocation Index: THA → Readmit: Dislocation 
+(Gap ≤ 30 days) 1. Education: "Hip Precautions"?
+2. Compliance: Bending?
+3. Equipment: Toilet seat? Possibility: PT note says "Patient needs verbal cues for hip precautions." Discharge summary doesn't confirm family was trained. Patient dislocated tying shoes.
+37 Ortho Spine Pain Crisis Index: Spine → Readmit: Pain 
+(Gap ≤ 7 days) 1. Plan: Multimodal?
+2. Meds: Oral effective?
+3. Follow-up: Surgeon booked? Possibility: Patient required IV Dilaudid up until 4 hours before discharge. Sent home on oral Tramadol (too weak). Returned to ER in 10/10 pain.
+38 Oncology Neutropenic Fever Index: Chemo → Readmit: Sepsis 
+(Gap ≤ 14 days) 1. Risk: Neulasta given?
+2. Education: Fever rules?
+3. Contact: 24h line? Possibility: Patient discharged post-chemo with ANC < 500. No Neulasta (growth factor) given. Discharge instructions didn't explicitly say "Call for fever > 100.4."
+39 Process Project RED Failure Index: Any → Readmit: Any 
+(Gap ≤ 7 days) 1. Checklist: Med rec?
+2. Appt: Made?
+3. Summary: Sent to PCP? Possibility: Discharge summary says "Follow up with PCP in 1 week" but gives no date/time/phone number. No proof summary was faxed. Patient ran out of meds.
+40 Process Failed Post-DC Call Disp: Home → Readmit: Any 
+(Gap ≤ 14 days) 1. Log: Call in 48h?
+2. Action: Symptoms acted on?
+3. Contact: Number correct? Possibility: "Call Log" is blank or shows "Left Voicemail x1." No second attempt made. Patient had questions about meds that went unanswered.
+41 Process Med Rec Failure Index: Polypharm → Readmit: Any 
+(Gap ≤ 7 days) 1. Gap: PharmD review?
+2. Match: MD vs RN orders?
+3. Access: Cost? Possibility: MD discharge order says "Stop Coumadin." Nursing discharge sheet lists "Coumadin" under "Continue these meds." Patient took it and bled.
+42 Process SNF Handoff Fail Disp: SNF → Readmit: Any 
+(Gap ≤ 2 days) 1. Stability: Unstable transfer?
+2. Info: Summary matches?
+3. Reject: SNF sent back? Possibility: Hospital Transfer Summary lists BP 120/80. SNF intake note 1 hour later lists BP 80/50 and "patient unresponsive." Implies hospital dumped an unstable patient.
+43 Process Home Health Fail Disp: HH → Readmit: Any 
+(Gap ≤ 3 days) 1. Confirm: Agency accepted?
+2. Start: Nurse showed?
+3. Orders: Clear? Possibility: CM note says "Agency A declined, trying Agency B." No final confirmation found. Patient went home, no nurse came for 3 days, wound vac failed.
+44 Process 8P Risk Failure Index: Medical → Readmit: Social 1. Screen: Literacy/Support?
+2. Depression: Screened?
+3. Plan: Resources? Possibility: Nursing admission assessment identifies "Lives alone, no help." No Social Work consult was ever ordered. Patient couldn't manage ADLs.
+45 Process SDOH Failure Payer: Medicaid → Readmit: FTT 1. Needs: Food/Housing?
+2. Transport: Ride booked?
+3. Cost: Meds? Possibility: Patient has history of homelessness. Discharged to "Sister's house" (unverified). Readmit note says "Patient living in car."
+46 Process Warfarin Failure Meds: Warfarin → Readmit: Bleed 1. INR: Check in 3 days?
+2. Bridge: Lovenox plan?
+3. Diet: Vit K taught? Possibility: Patient discharged with INR 1.5 (Subtherapeutic). No Lovenox bridge ordered. No INR re-check scheduled for 5 days. Patient clotted.
+47 Geriatric AMS vs Sepsis Index: AMS → Readmit: Sepsis 
+(Gap ≤ 5 days) 1. Dx: Blamed on Dementia?
+2. UA: Done at index?
+3. Labs: Dehydrated? Possibility: Patient confused. MD documented "worsening dementia." No Urinalysis done. Readmit shows roaring UTI and Urosepsis. Missed diagnosis.
+48 Geriatric Fall → Brain Bleed Index: Fall → Readmit: Subdural 
+(Gap ≤ 30 days) 1. Scan: CT done?
+2. Meds: Anticoag?
+3. Safety: Education? Possibility: Patient on Eliquis fell and hit head. MD exam said "no deficit," discharged without CT scan. Patient returns with slow brain bleed (Subdural).
+49 Admin AMA Exclusion Disp: AMA → Readmit: Any 1. Stop: AMA form signed?
+2. Capacity: Documented?
+3. Risk: Explained? Possibility: Check chart for "Against Medical Advice" form. If signed, audit is likely invalid. If NOT signed or capacity not documented, audit might still stand.
+50 Admin Planned Readmit Readmit: Chemo 1. Stop: Planned care?
+2. Doc: "Return for..."
+3. Reason: Related? Possibility: Discharge note says "Patient to return next week for Cycle 2 Chemo." This is a planned readmission, not a failure.
