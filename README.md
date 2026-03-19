@@ -1,99 +1,77 @@
+import re
 import pandas as pd
 
-def clean_value(val):
-    if val is None:
-        return None
-    return val.replace("'", "").replace("(", "").replace(")", "").strip()
+
+def extract_first(pattern, text):
+    """Return first regex group safely"""
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    return match.group(1) if match else None
 
 
-def extract_values_from_in(line):
-    try:
-        start = line.upper().index("IN")
-        vals = line[start:].split("(", 1)[1].rsplit(")", 1)[0]
-        return [clean_value(x) for x in vals.split(",") if x.strip()]
-    except:
-        return []
+def extract_operator_value(pattern, text):
+    """Extract operator + value safely"""
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+def extract_hcpcs(block):
+    # IN clause
+    match = re.search(r"HCPCSCODE\s+IN\s*\((.*?)\)", block, re.IGNORECASE | re.DOTALL)
+    if match:
+        values = match.group(1)
+        return [x.strip().replace("'", "") for x in values.split(",") if x.strip()]
+
+    # = clause
+    match = re.search(r"HCPCSCODE\s*=\s*'(.*?)'", block, re.IGNORECASE)
+    if match:
+        return [match.group(1)]
+
+    return []
+
+
+def extract_modifier(block):
+    # Handles =, <>, IN
+    match = re.search(r"MODIFIER\s*(=|<>|IN)\s*\(?([^)]+)\)?", block, re.IGNORECASE)
+    if match:
+        op = match.group(1)
+        val = match.group(2).replace("'", "").strip()
+        return op, val
+    return None, None
 
 
 def parse_sql(sql_text):
-    results = []
+    # Split by INSERT blocks (better for your structure)
+    blocks = re.split(r"INSERT\s+INTO", sql_text, flags=re.IGNORECASE)
 
-    # Split statements safely
-    statements = sql_text.split(";")
+    rows = []
 
-    for stmt in statements:
-        if "SELECT" not in stmt.upper():
+    for block in blocks:
+        if "SELECT" not in block.upper():
             continue
 
-        lines = stmt.split("\n")
+        # -------- Core fields --------
+        selection = extract_first(r"SELECT\s+DISTINCT\s+'(.*?)'", block)
+        hcpcs_list = extract_hcpcs(block)
 
-        selection_reason = None
-        hcpcs_list = []
-        paid_op = paid_val = None
-        unit_op = unit_val = None
-        mod_op = mod_val = None
+        paid_op, paid_val = extract_operator_value(
+            r"PAIDAMOUNT\s*(>=|<=|<>|=|>|<)\s*(\d+)", block
+        )
 
-        for line in lines:
-            l = line.strip().upper()
+        unit_op, unit_val = extract_operator_value(
+            r"UNITCOUNT\s*(>=|<=|<>|=|>|<)\s*(\d+)", block
+        )
 
-            # SelectionReason
-            if "SELECT DISTINCT" in l:
-                try:
-                    selection_reason = line.split("'")[1]
-                except:
-                    selection_reason = None
+        mod_op, mod_val = extract_modifier(block)
 
-            # HCPCS
-            if "HCPCSCODE IN" in l:
-                hcpcs_list = extract_values_from_in(line)
-
-            elif "HCPCSCODE =" in l:
-                try:
-                    hcpcs_list = [clean_value(line.split("=")[1])]
-                except:
-                    pass
-
-            # PaidAmount
-            if "PAIDAMOUNT" in l:
-                for op in [">=", "<=", "<>", ">", "<", "="]:
-                    if op in line:
-                        try:
-                            paid_op = op
-                            paid_val = clean_value(line.split(op)[1])
-                        except:
-                            pass
-
-            # Unit
-            if "UNITCOUNT" in l:
-                for op in [">=", "<=", "<>", ">", "<", "="]:
-                    if op in line:
-                        try:
-                            unit_op = op
-                            unit_val = clean_value(line.split(op)[1])
-                        except:
-                            pass
-
-            # Modifier
-            if "MODIFIER" in l:
-                for op in ["IN", "<>", "=",]:
-                    if op in line:
-                        try:
-                            mod_op = op
-                            if op == "IN":
-                                vals = extract_values_from_in(line)
-                                mod_val = ",".join(vals)
-                            else:
-                                mod_val = clean_value(line.split(op)[1])
-                        except:
-                            pass
-
-        # ✅ KEY: Never fail even if HCPCS missing
+        # ✅ FIX: don't crash if HCPCS missing
         if not hcpcs_list:
             hcpcs_list = [None]
 
         for code in hcpcs_list:
-            results.append({
-                "SelectionReason": selection_reason,
+            rows.append({
+                "SelectionReason": selection,
                 "HCPCS_operator": "=" if code else None,
                 "HCPCS": code,
                 "Paidamount_operator": paid_op,
@@ -106,10 +84,10 @@ def parse_sql(sql_text):
                 "Diag": None
             })
 
-    df = pd.DataFrame(results)
+    df = pd.DataFrame(rows)
 
-    # Ensure exact column order
-    columns = [
+    # Ensure exact format
+    cols = [
         "SelectionReason",
         "HCPCS_operator",
         "HCPCS",
@@ -123,11 +101,11 @@ def parse_sql(sql_text):
         "Diag"
     ]
 
-    for col in columns:
-        if col not in df:
+    for col in cols:
+        if col not in df.columns:
             df[col] = None
 
-    return df[columns]
+    return df[cols]
 
 
 # -------- RUN --------
@@ -137,4 +115,4 @@ with open("input.sql", "r", encoding="utf-8") as f:
 df = parse_sql(sql_text)
 df.to_excel("output.xlsx", index=False)
 
-print("✅ DONE — output.xlsx generated successfully")
+print("✅ output.xlsx created")
