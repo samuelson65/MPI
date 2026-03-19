@@ -2,104 +2,71 @@ import re
 import pandas as pd
 import logging
 
-# Setup logging to track errors without crashing the script
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-def extract_sql_blocks(full_script):
-    """Splits a large SQL file into individual INSERT/SELECT blocks."""
-    # Matches starting from INSERT INTO up until the next block or end of string
-    blocks = re.split(r'(?=INSERT INTO)', full_script)
-    return [b.strip() for b in blocks if b.strip()]
+def clean_sql(sql):
+    """Removes SQL comments and standardizes whitespace to prevent parsing errors."""
+    sql = re.sub(r'--.*', '', sql) # Remove single line comments
+    sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.S) # Remove block comments
+    return " ".join(sql.split())
 
-def robust_sql_to_dataframe(sql_query):
+def parse_sql_to_dataframe(raw_sql):
     try:
-        # 1. SelectionReason (Case-insensitive search)
-        reason_match = re.search(r"SELECT\s+DISTINCT\s+'([^']+)'", sql_query, re.I)
-        selection_reason = reason_match.group(1) if reason_match else "Unknown"
+        clean_text = clean_sql(raw_sql)
+        
+        # 1. Extract SelectionReason
+        reason_match = re.search(r"SELECT\s+DISTINCT\s+'([^']+)'", clean_text, re.I)
+        reason = reason_match.group(1) if reason_match else "Unknown"
 
-        # 2. HCPCS codes (Handles single quotes and spaces)
-        hcpcs_match = re.search(r"HCPCCODE\s+IN\s*\((.*?)\)", sql_query, re.I | re.S)
-        if not hcpcs_match:
-            logging.warning(f"No HCPCS codes found for {selection_reason}")
+        # 2. Extract ALL HCPCS codes
+        # This regex looks for everything between 'HCPCCODE IN (' and the closing ')'
+        hcpcs_block = re.search(r"HCPCCODE\s+IN\s*\((.*?)\)", clean_text, re.I)
+        if not hcpcs_block:
+            logging.warning(f"No HCPCS block found for {reason}")
             return pd.DataFrame()
+
+        # Split by comma, strip spaces, and remove single quotes
+        hcpcs_list = [c.strip().replace("'", "") for c in hcpcs_block.group(1).split(',')]
+        # Filter out empty strings
+        hcpcs_list = [c for c in hcpcs_list if c]
+
+        # 3. Extract Operators and Values
+        def get_val(field):
+            # Handles field > 10, field>=10, field = 10
+            m = re.search(rf"{field}\s*([>=<]+)\s*(\d+)", clean_text, re.I)
+            return (m.group(1), m.group(2)) if m else ("", "")
+
+        paid_op, paid_val = get_val("PAIDAMOUNT")
+        unit_op, unit_val = get_val("UNITCOUNT")
+
+        # 4. Create the flat structure
+        data = [{
+            "SelectionReason": reason,
+            "HCPCS_operator": "=",
+            "HCPCS": code,
+            "Paidamount_operator": paid_op,
+            "Paidamount": paid_val,
+            "Modifier_operator": "", 
+            "Modifier": "",
+            "Unit_operator": unit_op,
+            "Unit": unit_val,
+            "Diag_operator": "",
+            "Diag": ""
+        } for code in hcpcs_list]
         
-        hcpcs_list = [c.strip().strip("'") for c in hcpcs_match.group(1).split(',')]
-
-        # 3. Numeric Filters (Paid Amount & Unit Count)
-        # Regex explanation: (Field Name) (Operator: >=, >, <, =, etc.) (Value: Digits)
-        def get_filter(field_name):
-            pattern = rf"{field_name}\s*([>=<]+)\s*(\d+)"
-            match = re.search(pattern, sql_query, re.I)
-            return (match.group(1), match.group(2)) if match else ("", "")
-
-        paid_op, paid_val = get_filter("PAIDAMOUNT")
-        unit_op, unit_val = get_filter("UNITCOUNT")
-
-        # 4. Build Data
-        rows = []
-        for code in hcpcs_list:
-            rows.append({
-                "SelectionReason": selection_reason,
-                "HCPCS_operator": "=",
-                "HCPCS": code,
-                "Paidamount_operator": paid_op,
-                "Paidamount": paid_val,
-                "Modifier_operator": "", 
-                "Modifier": "",
-                "Unit_operator": unit_op,
-                "Unit": unit_val,
-                "Diag_operator": "",
-                "Diag": ""
-            })
-        
-        return pd.DataFrame(rows)
+        return pd.DataFrame(data)
 
     except Exception as e:
-        logging.error(f"Failed to parse block: {str(e)}")
+        logging.error(f"Error parsing SQL: {e}")
         return pd.DataFrame()
 
-def process_queries(raw_sql_text):
-    """Main Orchestrator"""
-    blocks = extract_sql_blocks(raw_sql_text)
-    all_dfs = []
-    
-    for block in blocks:
-        df_block = robust_sql_to_dataframe(block)
-        if not df_block.empty:
-            all_dfs.append(df_block)
-    
-    if all_dfs:
-        final_df = pd.concat(all_dfs, ignore_index=True)
-        # Ensure 'Paidamount' and 'Unit' are treated as numbers where possible
-        final_df['Paidamount'] = pd.to_numeric(final_df['Paidamount'], errors='coerce')
-        final_df['Unit'] = pd.to_numeric(final_df['Unit'], errors='coerce')
-        return final_df
-    
-    return pd.DataFrame()
-
-# --- Execution ---
-# You can paste the entire content of your SQL file here
-raw_input = """
--- EnteralNutrition
-INSERT INTO ${temp.schema}.dme_ssp_final
-SELECT DISTINCT 'EnteralNutrition' AS SELECTIONREASON, ...
-WHERE C1.HCPCCODE IN ('B4149', 'B4150', 'B4152')
-AND C1.UNITCOUNT > 15
-AND C1.PAIDAMOUNT >= 500;
-
--- ParenteralNutrition
-INSERT INTO ${temp.schema}.dme_ssp_final
-SELECT DISTINCT 'ParenteralNutrition' AS SELECTIONREASON, ...
-WHERE C1.HCPCCODE IN ('B4185', 'B4189')
-AND C1.UNITCOUNT > 20
-AND C1.PAIDAMOUNT >= 200;
+# --- Test with your exact image data ---
+sql_input = """
+WHERE C1.HCPCCODE IN ('B4149', 'B4150', 'B4152', 'B4153', 'B4154', 'B4155', 'B4164')
+and C1.UNITCOUNT > 15
+AND C1.PAIDAMOUNT >= 500
 """
 
-final_output = process_queries(raw_input)
-
-# Save to Excel
-if not final_output.empty:
-    final_output.to_excel("Selection_Criteria_Output.xlsx", index=False)
-    print("Success! File saved as Selection_Criteria_Output.xlsx")
-else:
-    print("No data was parsed. Check your SQL input format.")
+df = parse_sql_to_dataframe(sql_input)
+print(f"Total codes captured: {len(df)}")
+print(df.head(10))
