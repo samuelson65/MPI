@@ -1,59 +1,86 @@
 import re
 import pandas as pd
 
-def parse_sql_to_excel_format(sql):
-    # -------- Selection Reason --------
-    selection_match = re.search(r"SELECT DISTINCT\s+'(.*?)'", sql, re.IGNORECASE)
-    selection_reason = selection_match.group(1) if selection_match else None
+# -------------------------------
+# Helper Functions
+# -------------------------------
 
-    # -------- HCPCS Codes --------
-    hcpcs_match = re.search(r"HCPCSCODE\s+IN\s*\((.*?)\)", sql, re.IGNORECASE)
-    hcpcs_codes = []
-    if hcpcs_match:
-        hcpcs_codes = [x.strip().replace("'", "") for x in hcpcs_match.group(1).split(",")]
+def extract_selection_reason(block):
+    match = re.search(r"SELECT DISTINCT\s+'(.*?)'", block, re.IGNORECASE)
+    return match.group(1) if match else None
 
-    # -------- Paid Amount --------
-    paid_match = re.search(r"PAIDAMOUNT\s*(>=|>|=|<=|<)\s*(\d+)", sql, re.IGNORECASE)
-    paid_op, paid_val = (paid_match.group(1), paid_match.group(2)) if paid_match else (None, None)
 
-    # -------- Unit --------
-    unit_match = re.search(r"UNITCOUNT\s*(>=|>|=|<=|<)\s*(\d+)", sql, re.IGNORECASE)
-    unit_op, unit_val = (unit_match.group(1), unit_match.group(2)) if unit_match else (None, None)
+def extract_hcpcs(block):
+    # IN clause
+    in_match = re.search(r"HCPCSCODE\s+IN\s*\((.*?)\)", block, re.IGNORECASE)
+    if in_match:
+        return [x.strip().replace("'", "") for x in in_match.group(1).split(",")]
 
-    # -------- Modifier (optional) --------
-    modifier_match = re.search(r"MODIFIER\s*(=|<>|IN)\s*(.*)", sql, re.IGNORECASE)
-    modifier_op, modifier_val = (None, None)
-    if modifier_match:
-        modifier_op = modifier_match.group(1)
-        modifier_val = modifier_match.group(2).strip()
+    # = clause
+    eq_match = re.search(r"HCPCSCODE\s*=\s*'(.*?)'", block, re.IGNORECASE)
+    if eq_match:
+        return [eq_match.group(1)]
 
-    # -------- Diagnosis (optional) --------
-    diag_match = re.search(r"DIAG\s*(=|<>|IN)\s*(.*)", sql, re.IGNORECASE)
-    diag_op, diag_val = (None, None)
-    if diag_match:
-        diag_op = diag_match.group(1)
-        diag_val = diag_match.group(2).strip()
+    return []
 
-    # -------- Build Output --------
-    rows = []
-    for code in hcpcs_codes:
-        rows.append({
-            "SelectionReason": selection_reason,
-            "HCPCS_operator": "=",
-            "HCPCS": code,
-            "Paidamount_operator": paid_op,
-            "Paidamount": paid_val,
-            "Modifier_operator": modifier_op,
-            "Modifier": modifier_val,
-            "Unit_operator": unit_op,
-            "Unit": unit_val,
-            "Diag_operator": diag_op,
-            "Diag": diag_val
-        })
 
-    df = pd.DataFrame(rows)
+def extract_condition(block, field):
+    match = re.search(fr"{field}\s*(>=|<=|<>|=|>|<)\s*'?([\w\.]+)'?", block, re.IGNORECASE)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
 
-    # Ensure column order matches EXACT Excel
+
+def extract_modifier(block):
+    match = re.search(r"MODIFIER\s*(=|<>|IN)\s*(.*?)(AND|OR|$)", block, re.IGNORECASE)
+    if match:
+        op = match.group(1)
+        val = match.group(2).strip().replace("'", "")
+        return op, val
+    return None, None
+
+
+# -------------------------------
+# Main Parser
+# -------------------------------
+
+def parse_sql_file(sql_text):
+    # Split into blocks (each INSERT/SELECT)
+    blocks = re.split(r"INSERT\s+INTO", sql_text, flags=re.IGNORECASE)
+
+    all_rows = []
+
+    for block in blocks:
+        if "SELECT" not in block:
+            continue
+
+        selection_reason = extract_selection_reason(block)
+        hcpcs_list = extract_hcpcs(block)
+
+        paid_op, paid_val = extract_condition(block, "PAIDAMOUNT")
+        unit_op, unit_val = extract_condition(block, "UNITCOUNT")
+        mod_op, mod_val = extract_modifier(block)
+
+        # Expand rows
+        for code in hcpcs_list:
+            row = {
+                "SelectionReason": selection_reason,
+                "HCPCS_operator": "=",
+                "HCPCS": code,
+                "Paidamount_operator": paid_op,
+                "Paidamount": paid_val,
+                "Modifier_operator": mod_op,
+                "Modifier": mod_val,
+                "Unit_operator": unit_op,
+                "Unit": unit_val,
+                "Diag_operator": None,
+                "Diag": None
+            }
+            all_rows.append(row)
+
+    df = pd.DataFrame(all_rows)
+
+    # Ensure column order
     df = df[
         [
             "SelectionReason",
@@ -73,12 +100,16 @@ def parse_sql_to_excel_format(sql):
     return df
 
 
-# -------- Usage --------
+# -------------------------------
+# Run Script
+# -------------------------------
+
 with open("input.sql", "r") as f:
-    sql_query = f.read()
+    sql_text = f.read()
 
-df = parse_sql_to_excel_format(sql_query)
+df = parse_sql_file(sql_text)
 
+# Save Excel
 df.to_excel("output.xlsx", index=False)
 
-print("✅ Output saved as output.xlsx")
+print("✅ Full SQL converted to structured Excel: output.xlsx")
