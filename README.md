@@ -1,96 +1,115 @@
-import re
 import pandas as pd
 
-def safe_extract(pattern, text, group=1):
-    match = re.search(pattern, text, re.IGNORECASE)
-    if match:
-        try:
-            return match.group(group)
-        except IndexError:
-            return None
-    return None
+def clean_value(val):
+    if val is None:
+        return None
+    return val.replace("'", "").replace("(", "").replace(")", "").strip()
 
 
-def extract_hcpcs(block):
-    # Try IN clause
-    in_match = re.search(r"HCPCSCODE\s+IN\s*\((.*?)\)", block, re.IGNORECASE)
-    if in_match:
-        return [x.strip().replace("'", "") for x in in_match.group(1).split(",") if x.strip()]
-
-    # Try equals
-    eq_match = re.search(r"HCPCSCODE\s*=\s*'(.*?)'", block, re.IGNORECASE)
-    if eq_match:
-        return [eq_match.group(1)]
-
-    return []
+def extract_values_from_in(line):
+    try:
+        start = line.upper().index("IN")
+        vals = line[start:].split("(", 1)[1].rsplit(")", 1)[0]
+        return [clean_value(x) for x in vals.split(",") if x.strip()]
+    except:
+        return []
 
 
-def extract_condition(block, field):
-    match = re.search(fr"{field}\s*(>=|<=|<>|=|>|<)\s*'?([\w\.]+)'?", block, re.IGNORECASE)
-    if match:
-        return match.group(1), match.group(2)
-    return None, None
+def parse_sql(sql_text):
+    results = []
 
+    # Split statements safely
+    statements = sql_text.split(";")
 
-def extract_modifier(block):
-    match = re.search(r"MODIFIER\s*(=|<>|IN)\s*(.*?)(AND|OR|$)", block, re.IGNORECASE)
-    if match:
-        op = match.group(1)
-        val = match.group(2).strip().replace("'", "")
-        return op, val
-    return None, None
-
-
-def parse_sql_file(sql_text):
-    blocks = re.split(r"INSERT\s+INTO", sql_text, flags=re.IGNORECASE)
-
-    all_rows = []
-
-    for i, block in enumerate(blocks):
-        if "SELECT" not in block:
+    for stmt in statements:
+        if "SELECT" not in stmt.upper():
             continue
 
-        try:
-            selection_reason = safe_extract(r"SELECT DISTINCT\s+'(.*?)'", block)
-            hcpcs_list = extract_hcpcs(block)
+        lines = stmt.split("\n")
 
-            paid_op, paid_val = extract_condition(block, "PAIDAMOUNT")
-            unit_op, unit_val = extract_condition(block, "UNITCOUNT")
-            mod_op, mod_val = extract_modifier(block)
+        selection_reason = None
+        hcpcs_list = []
+        paid_op = paid_val = None
+        unit_op = unit_val = None
+        mod_op = mod_val = None
 
-            # ⚠️ Skip blocks with no HCPCS (optional decision)
-            if not hcpcs_list:
-                print(f"⚠️ Skipping block {i} — No HCPCS found")
-                continue
+        for line in lines:
+            l = line.strip().upper()
 
-            for code in hcpcs_list:
-                row = {
-                    "SelectionReason": selection_reason,
-                    "HCPCS_operator": "=",
-                    "HCPCS": code,
-                    "Paidamount_operator": paid_op,
-                    "Paidamount": paid_val,
-                    "Modifier_operator": mod_op,
-                    "Modifier": mod_val,
-                    "Unit_operator": unit_op,
-                    "Unit": unit_val,
-                    "Diag_operator": None,
-                    "Diag": None
-                }
-                all_rows.append(row)
+            # SelectionReason
+            if "SELECT DISTINCT" in l:
+                try:
+                    selection_reason = line.split("'")[1]
+                except:
+                    selection_reason = None
 
-        except Exception as e:
-            print(f"❌ Error in block {i}: {e}")
-            continue
+            # HCPCS
+            if "HCPCSCODE IN" in l:
+                hcpcs_list = extract_values_from_in(line)
 
-    if not all_rows:
-        print("⚠️ No valid rows extracted!")
-        return pd.DataFrame()
+            elif "HCPCSCODE =" in l:
+                try:
+                    hcpcs_list = [clean_value(line.split("=")[1])]
+                except:
+                    pass
 
-    df = pd.DataFrame(all_rows)
+            # PaidAmount
+            if "PAIDAMOUNT" in l:
+                for op in [">=", "<=", "<>", ">", "<", "="]:
+                    if op in line:
+                        try:
+                            paid_op = op
+                            paid_val = clean_value(line.split(op)[1])
+                        except:
+                            pass
 
-    # Ensure all columns exist
-    expected_cols = [
+            # Unit
+            if "UNITCOUNT" in l:
+                for op in [">=", "<=", "<>", ">", "<", "="]:
+                    if op in line:
+                        try:
+                            unit_op = op
+                            unit_val = clean_value(line.split(op)[1])
+                        except:
+                            pass
+
+            # Modifier
+            if "MODIFIER" in l:
+                for op in ["IN", "<>", "=",]:
+                    if op in line:
+                        try:
+                            mod_op = op
+                            if op == "IN":
+                                vals = extract_values_from_in(line)
+                                mod_val = ",".join(vals)
+                            else:
+                                mod_val = clean_value(line.split(op)[1])
+                        except:
+                            pass
+
+        # ✅ KEY: Never fail even if HCPCS missing
+        if not hcpcs_list:
+            hcpcs_list = [None]
+
+        for code in hcpcs_list:
+            results.append({
+                "SelectionReason": selection_reason,
+                "HCPCS_operator": "=" if code else None,
+                "HCPCS": code,
+                "Paidamount_operator": paid_op,
+                "Paidamount": paid_val,
+                "Modifier_operator": mod_op,
+                "Modifier": mod_val,
+                "Unit_operator": unit_op,
+                "Unit": unit_val,
+                "Diag_operator": None,
+                "Diag": None
+            })
+
+    df = pd.DataFrame(results)
+
+    # Ensure exact column order
+    columns = [
         "SelectionReason",
         "HCPCS_operator",
         "HCPCS",
@@ -104,22 +123,18 @@ def parse_sql_file(sql_text):
         "Diag"
     ]
 
-    for col in expected_cols:
-        if col not in df.columns:
+    for col in columns:
+        if col not in df:
             df[col] = None
 
-    df = df[expected_cols]
-
-    return df
+    return df[columns]
 
 
-# ---------------- RUN ----------------
-
-with open("input.sql", "r") as f:
+# -------- RUN --------
+with open("input.sql", "r", encoding="utf-8") as f:
     sql_text = f.read()
 
-df = parse_sql_file(sql_text)
-
+df = parse_sql(sql_text)
 df.to_excel("output.xlsx", index=False)
 
-print("✅ Done! Check output.xlsx")
+print("✅ DONE — output.xlsx generated successfully")
