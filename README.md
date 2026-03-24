@@ -1,7 +1,87 @@
-Act as a Data Engineer. I have a SQL query containing multiple selection rules (like 'EnteralNutrition', 'ParenteralNutrition'). I need you to parse the WHERE clause of this query and transform it into a flat Python list of dictionaries that matches an Excel schema.
-​Rules for Transformation:
-​Explode HCPCS: Create a new row for every single code found inside the HCPCCODE IN (...) clause. Do not skip any codes.
-​Capture Operators: Extract both the operator (e.g., >=, >, =) and the value for PAIDAMOUNT and UNITCOUNT.
-​Handle Modifiers: If the SQL contains MODIFIER <> 'KF' or similar, put <> in the Modifier_operator column and 'KF' in the Modifier column.
-​Output Columns: The final result must have these exact keys: SelectionReason, HCPCS_operator, HCPCS, Paidamount_operator, Paidamount, Modifier_operator, Modifier, Unit_operator, Unit, Diag_operator, and Diag.
-​Format the final output as a Pandas DataFrame so I can verify the count of HCPCS codes captured.
+import pandas as pd
+import re
+
+# Your SQL snippet as a raw string
+sql_content = """
+--$CaptureLog[{"AuditType": "Exclusion", "AuditDescription": "HumanaEmployeeIndicator", "CaptureTotalTime": "True"}];
+INSERT INTO ${temp.schema}.DME_SSPExclusionresults
+select DISTINCT claimsummaryedenuid ,
+'HumanaEmployeeIndicator',
+ResultUID,
+HumanaEmployeeIndicator_cs,
+BillType,
+ProviderTaxId,
+SourcePlaceOfService,
+CustomerID,
+LoadMonth
+from ${temp.schema}.KeepDMETarget_12mon
+WHERE HumanaEmployeeIndicator_cs='Y';
+
+--$CaptureLog[{"AuditType": "Exclusion", "AuditDescription": "ASO", "CaptureTotalTime": "True"}];
+INSERT INTO ${temp.schema}.DME_SSPExclusionresults
+select DISTINCT claimsummaryedenuid ,
+'ASO',
+ResultUID,
+HumanaEmployeeIndicator_cs,
+BillType,
+ProviderTaxId,
+SourcePlaceOfService,
+CustomerID,
+LoadMonth
+from ${temp.schema}.KeepDMETarget_12mon
+WHERE CustomerID in ('744207','TBD','747828','749282','760803','747744','760952','635506','761632');
+"""
+
+def parse_sql_to_table(sql_text):
+    rules = []
+    
+    # Split by CaptureLog markers to separate blocks
+    blocks = re.split(r'--\$CaptureLog', sql_text)
+    
+    for block in blocks:
+        if not block.strip():
+            continue
+            
+        # Extract the SelectionReason (AuditDescription)
+        reason_match = re.search(r'"AuditDescription":\s*"([^"]+)"', block)
+        reason = reason_match.group(1) if reason_match else "Unknown"
+        
+        # Extract the WHERE clause filter logic
+        where_match = re.search(r'WHERE\s+(.*);', block, re.IGNORECASE | re.DOTALL)
+        condition = where_match.group(1).strip() if where_match else ""
+        
+        # Determine operator and value based on the condition
+        # This handles both '=' and 'IN' logic
+        if 'in' in condition.lower():
+            operator = "IN"
+            # Extract values inside the parentheses
+            values = re.search(r'\((.*)\)', condition).group(1)
+            column = condition.split()[0]
+        elif '=' in condition:
+            operator = "="
+            parts = condition.split('=')
+            column = parts[0].strip()
+            values = parts[1].strip().replace("'", "")
+        else:
+            operator = "N/A"
+            column = "N/A"
+            values = condition
+
+        rules.append({
+            "SelectionReason": reason,
+            "Filter_Column": column,
+            "Operator": operator,
+            "Value": values
+        })
+        
+    return pd.DataFrame(rules)
+
+# Generate the DataFrame
+df_rules = parse_sql_to_table(sql_content)
+
+# Display the result
+print("--- Structured Rule Table ---")
+print(df_rules.to_string(index=False))
+
+# Optional: Export to Excel to match your screenshot
+# df_rules.to_excel("DME_Exclusion_Rules.xlsx", index=False)
