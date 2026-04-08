@@ -1,38 +1,40 @@
 import numpy as np
 import pandas as pd
-import ast
 
 
 class WeightedCodeSimilarity:
-    def __init__(self, csv_path):
+    def __init__(self, csv_path="all.csv"):
         self.embeddings = self.load_embeddings(csv_path)
         self.dim_groups = self.define_dimension_groups()
 
     # ---------------------------
-    # Load Embeddings
+    # Load Embeddings (Strict Schema)
     # ---------------------------
     def load_embeddings(self, path):
         df = pd.read_csv(path)
+
+        # Expect: code + D001 ... D100
+        expected_cols = ["code"] + [f"D{str(i).zfill(3)}" for i in range(1, 101)]
+
+        missing = set(expected_cols) - set(df.columns)
+        if missing:
+            raise ValueError(f"Missing columns: {missing}")
+
         embeddings = {}
 
-        if 'embedding' in df.columns:
-            # Format B
-            for _, row in df.iterrows():
-                code = self.normalize_code(row['code'])
-                vec = np.array(ast.literal_eval(row['embedding']))
-                embeddings[code] = vec
-        else:
-            # Format A
-            feature_cols = [c for c in df.columns if c != 'code']
-            for _, row in df.iterrows():
-                code = self.normalize_code(row['code'])
-                vec = row[feature_cols].values.astype(float)
-                embeddings[code] = vec
+        for _, row in df.iterrows():
+            code = self.normalize_code(row["code"])
+            vec = row[expected_cols[1:]].values.astype(float)
+
+            if len(vec) != 100:
+                raise ValueError(f"Invalid vector length for {code}")
+
+            embeddings[code] = vec
 
         return embeddings
 
     # ---------------------------
-    # Normalize Codes (important for ICD consistency)
+    # Normalize Codes
     # ---------------------------
     def normalize_code(self, code):
         return str(code).replace('.', '').upper()
@@ -63,6 +65,7 @@ class WeightedCodeSimilarity:
         for group, weight in group_weights.items():
             if group not in self.dim_groups:
                 raise ValueError(f"Unknown group: {group}")
+
             for idx in self.dim_groups[group]:
                 W[idx] = weight
 
@@ -85,7 +88,7 @@ class WeightedCodeSimilarity:
         return dot / (norm1 * norm2)
 
     # ---------------------------
-    # Public Similarity API
+    # Public API
     # ---------------------------
     def get_similarity(self, code1, code2, group_weights=None):
         code1 = self.normalize_code(code1)
@@ -99,15 +102,12 @@ class WeightedCodeSimilarity:
         v1 = self.embeddings[code1]
         v2 = self.embeddings[code2]
 
-        if group_weights:
-            W = self.build_weight_vector(group_weights)
-        else:
-            W = np.ones(100)
+        W = self.build_weight_vector(group_weights) if group_weights else np.ones(100)
 
         return self.weighted_cosine(v1, v2, W)
 
     # ---------------------------
-    # Top-K Similar Codes
+    # Top-K Similar
     # ---------------------------
     def top_k_similar(self, code, k=5, group_weights=None):
         code = self.normalize_code(code)
@@ -116,11 +116,7 @@ class WeightedCodeSimilarity:
             raise ValueError(f"{code} not found")
 
         target_vec = self.embeddings[code]
-
-        if group_weights:
-            W = self.build_weight_vector(group_weights)
-        else:
-            W = np.ones(100)
+        W = self.build_weight_vector(group_weights) if group_weights else np.ones(100)
 
         scores = []
 
@@ -136,38 +132,39 @@ class WeightedCodeSimilarity:
 
 
 # =========================================================
-# 🔥 Example Usage / Test Cases
+# 🔥 TEST CASES
 # =========================================================
 if __name__ == "__main__":
 
-    # 👉 Replace with your actual CSV
-    sim = WeightedCodeSimilarity("embeddings.csv")
+    sim = WeightedCodeSimilarity("all.csv")
 
-    # Example codes
-    code_a = "N17.9"   # Acute kidney failure
-    code_b = "I10"     # Hypertension
-    code_c = "E11.9"   # Diabetes
+    code_a = "N17.9"
+    code_b = "I10"
+    code_c = "E11.9"
 
-    print("\n================ BASE SIMILARITY ================")
+    # ---------------------------
+    # Base Similarity
+    # ---------------------------
+    print("\n=== BASE SIMILARITY ===")
     print(f"{code_a} vs {code_b}:",
           round(sim.get_similarity(code_a, code_b), 4))
 
-    # -----------------------------------------------------
-    # 1. Clinical Similarity
-    # -----------------------------------------------------
+    # ---------------------------
+    # Clinical Similarity
+    # ---------------------------
     clinical_weights = {
         "clinical_domain": 2.5,
         "anatomical_site": 2.0,
         "episode_type": 1.5
     }
 
-    print("\n================ CLINICAL SIMILARITY ================")
+    print("\n=== CLINICAL SIMILARITY ===")
     print(f"{code_a} vs {code_b}:",
           round(sim.get_similarity(code_a, code_b, clinical_weights), 4))
 
-    # -----------------------------------------------------
-    # 2. FWA Risk Similarity
-    # -----------------------------------------------------
+    # ---------------------------
+    # FWA Similarity
+    # ---------------------------
     fwa_weights = {
         "fwa_risk": 3.0,
         "severity": 2.5,
@@ -175,28 +172,26 @@ if __name__ == "__main__":
         "bundling": 2.0
     }
 
-    print("\n================ FWA SIMILARITY ================")
+    print("\n=== FWA SIMILARITY ===")
     print(f"{code_a} vs {code_c}:",
           round(sim.get_similarity(code_a, code_c, fwa_weights), 4))
 
-    # -----------------------------------------------------
-    # 3. Medical Necessity (DX–Procedure Logic)
-    # -----------------------------------------------------
-    medical_necessity_weights = {
+    # ---------------------------
+    # Medical Necessity
+    # ---------------------------
+    med_weights = {
         "dx_proc_link": 3.0,
         "clinical_domain": 2.0,
         "anatomical_site": 2.0
     }
 
-    print("\n================ MEDICAL NECESSITY SIMILARITY ================")
+    print("\n=== MEDICAL NECESSITY SIMILARITY ===")
     print(f"{code_b} vs {code_c}:",
-          round(sim.get_similarity(code_b, code_c, medical_necessity_weights), 4))
+          round(sim.get_similarity(code_b, code_c, med_weights), 4))
 
-    # -----------------------------------------------------
-    # 4. Top-K Similar Codes (FWA Focus)
-    # -----------------------------------------------------
-    print("\n================ TOP 5 SIMILAR (FWA FOCUS) ================")
-    results = sim.top_k_similar(code_a, k=5, group_weights=fwa_weights)
-
-    for c, s in results:
+    # ---------------------------
+    # Top-K Similar (FWA Focus)
+    # ---------------------------
+    print("\n=== TOP 5 SIMILAR (FWA FOCUS) ===")
+    for c, s in sim.top_k_similar(code_a, k=5, group_weights=fwa_weights):
         print(c, round(s, 4))
