@@ -1,0 +1,825 @@
+============================================================================
+  SYNTHETIC INPATIENT CLAIM TEST CASES
+  Payment Integrity Audit System Validation
+  Total test cases: 22
+============================================================================
+
+  ID       Name                                          Category                   Expected Risk
+  ──────────────────────────────────────────────────────────────────────────
+  TC-001   AMI with PCI — Textbook Inpatient             Valid Control              LOW
+  TC-002   Hip Fracture Repair — Legitimate Orthopedic   Valid Control              LOW
+  TC-003   Sepsis with Mechanical Ventilation — High Ac  Valid Control              LOW
+  TC-004   MCC Stacking — Same Pathway Cardiovascular C  Severity Inflation         HIGH
+  TC-005   Weak MCC Elevation — Malnutrition CC Used as  Severity Inflation         HIGH
+  TC-006   Wrong-Site Procedure — Cardiac Procedure for  DX-Procedure Mismatch      CRITICAL
+  TC-007   Psychiatric DX with Orthopedic Procedures     DX-Procedure Mismatch      HIGH
+  TC-008   ECG + Interpretation Unbundling               Procedure Redundancy / Unbundling HIGH
+  TC-009   Colonoscopy with Biopsy — Unbundled Diagnost  Procedure Redundancy / Unbundling HIGH
+  TC-010   Multi-Specialty Claim — Procedure Domain Fra  Cross-Domain Inconsistency CRITICAL
+  TC-011   Left vs Right — Laterality Coding Error at A  Anatomical Mismatch        MEDIUM
+  TC-012   Preventive Codes in Acute Inpatient Context   Episode Type Conflict      MEDIUM
+  TC-013   Major Surgery for Minor Diagnosis             Service Intensity Mismatch CRITICAL
+  TC-014   E/M Level Inflation — Subsequent Care Upcodi  Service Intensity Mismatch HIGH
+  TC-015   DRG Maximization via High-Weight Procedures   Financial Misalignment     HIGH
+  TC-016   Adversarial — High Similarity But Clinically  Adversarial                HIGH
+  TC-017   Adversarial — MCC Added in Same Embedding Cl  Adversarial                HIGH
+  TC-018   Adversarial — Legitimate-Looking Multi-Syste  Adversarial                MEDIUM
+  TC-019   Noise Injection — Irrelevant DX Padding to I  Noise Injection            HIGH
+  TC-020   Noise Injection — Redundant Procedure Variat  Noise Injection            HIGH
+  TC-021   Complex OB Case — Valid Multi-System Deliver  Valid Edge Case            LOW
+  TC-022   Oncology Inpatient — Valid High-Cost Chemoth  Valid Edge Case            LOW
+
+  CATEGORY DISTRIBUTION:
+    Adversarial                     : 3 case(s)
+    Anatomical Mismatch             : 1 case(s)
+    Cross-Domain Inconsistency      : 1 case(s)
+    DX-Procedure Mismatch           : 2 case(s)
+    Episode Type Conflict           : 1 case(s)
+    Financial Misalignment          : 1 case(s)
+    Noise Injection                 : 2 case(s)
+    Procedure Redundancy / Unbundling: 2 case(s)
+    Service Intensity Mismatch      : 2 case(s)
+    Severity Inflation              : 2 case(s)
+    Valid Control                   : 3 case(s)
+    Valid Edge Case                 : 2 case(s)
+
+  AXIS COVERAGE SUMMARY:
+    Dims 0–9: covered by 17 test cases
+    Dims 10–19: covered by 11 test cases
+    Dims 20–29: covered by 6 test cases
+    Dims 30–39: covered by 4 test cases
+    Dims 40–49: covered by 6 test cases
+    Dims 50–59: covered by 1 test cases
+    Dims 60–69: covered by 4 test cases
+    Dims 70–79: covered by 16 test cases
+    Dims 80–89: covered by 9 test cases
+    Dims 90–99: covered by 7 test cases
+
+============================================================================
+
+────────────────────────────────────────────────────────────────────────────
+  TC-001 | AMI with PCI — Textbook Inpatient
+  Category: Valid Control
+  Expected Risk: LOW  |  Should Flag: NO
+  Targeted Axes: 0–9 (clinical coherence), 10–19 (severity justified), 70–79 (DX-Proc link strong), 90–99 (DRG weight appropriate)
+
+  SCENARIO:
+    62-year-old male admitted for anterior STEMI. Treated with emergent
+    percutaneous coronary intervention (PCI). Comorbid hypertension and type
+    2 diabetes without complications. 3-day LOS. This is the canonical high-
+    acuity cardiac inpatient case.
+
+  INPUT DATA:
+    Claim ID  : TC-001
+    DX Codes  : I21.01, I10, E11.9, Z79.01
+    Proc Codes: 02703ZZ, B2041ZZ
+    LOS=3d | DRG=246 | MCC=1 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    None — valid, coherent acute cardiac claim
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: All codes in Cardiovascular domain. Dims 10–19: I21.01 (STEMI)
+    is a legitimate MCC; I10 and E11.9 are valid CCs. Dims 70–79: PCI
+    (02703ZZ) is directly medically necessary for STEMI. Dims 90–99: DRG 246
+    financial weight is appropriate for this acuity. Expected: ALL steps
+    pass, composite score < 25.
+
+  NOTES: Baseline for calibration. Any system flagging this is over-sensitive.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-002 | Hip Fracture Repair — Legitimate Orthopedic Inpatient
+  Category: Valid Control
+  Expected Risk: LOW  |  Should Flag: NO
+  Targeted Axes: 0–9 (ortho domain), 30–39 (anatomical alignment), 40–49 (acute episode), 70–79 (DX-Proc justified)
+
+  SCENARIO:
+    78-year-old female admitted after fall with right hip fracture.
+    Underwent open reduction internal fixation (ORIF) next day. Comorbid
+    osteoporosis and essential hypertension. 5-day LOS. Routine post-
+    surgical recovery.
+
+  INPUT DATA:
+    Claim ID  : TC-002
+    DX Codes  : S72.001A, M81.0, I10, W19.XXXA
+    Proc Codes: 0QS604Z, 0QR60JZ
+    LOS=5d | DRG=481 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    None — valid orthopedic trauma case
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: DX and procedures aligned in Orthopedic/MSK domain. Dims
+    30–39: Both DX (lower extremity) and procedure (lower bone repair) site-
+    matched. Dims 40–49: Acute trauma episode type consistent across DX and
+    proc. Dims 70–79: ORIF directly supports hip fracture diagnosis.
+    Expected: Score < 20.
+
+  NOTES: Good test for anatomical coherence step. Should pass Step 4 cleanly.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-003 | Sepsis with Mechanical Ventilation — High Acuity Valid
+  Category: Valid Control
+  Expected Risk: LOW  |  Should Flag: NO
+  Targeted Axes: 10–19 (MCC fully justified), 20–29 (high intensity appropriate), 90–99 (high DRG weight warranted)
+
+  SCENARIO:
+    55-year-old admitted with septic shock secondary to pneumonia. Required
+    mechanical ventilation > 96 hours, vasopressor support. ICU-level care.
+    8-day LOS. Legitimately the highest DRG weight tier.
+
+  INPUT DATA:
+    Claim ID  : TC-003
+    DX Codes  : A41.9, R65.21, J18.9, J96.01
+    Proc Codes: 5A1945Z, 0BH17EZ, 3E033XZ
+    LOS=8d | DRG=870 | MCC=3
+
+  EXPECTED ROOT CAUSE:
+    None — legitimate high-complexity ICU sepsis case
+
+  EXPLANATION GUIDANCE:
+    Dims 10–19: A41.9 (sepsis), R65.21 (septic shock), J96.01 (acute resp
+    failure) are all legitimate MCCs from separate pathways. Dims 20–29:
+    Mechanical ventilation >96h (5A1945Z) is high-intensity and appropriate.
+    Dims 90–99: DRG 870 (sepsis with MV) carries the highest financial
+    weight appropriately. Step 11 should show NO contradictions. All axes
+    aligned.
+
+  NOTES: Stress test for false-positive suppression on high-acuity legitimate claims.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-004 | MCC Stacking — Same Pathway Cardiovascular Codes
+  Category: Severity Inflation
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 10–19 (MCC stacking), 0–9 (same-domain clustering), 20–29 (low intensity vs high severity claim)
+
+  SCENARIO:
+    Patient admitted for atrial fibrillation management. Coder lists I48.91
+    (AF unspecified), I50.9 (HF unspecified), I11.0 (hypertensive HD with
+    HF) — all from the same cardiovascular failure pathway, each declared as
+    separate MCCs. 2-day LOS with only rhythm monitoring and medication
+    adjustment.
+
+  INPUT DATA:
+    Claim ID  : TC-004
+    DX Codes  : I48.91, I50.9, I11.0, I10, E78.5
+    Proc Codes: 02HK3MZ, 99232
+    LOS=2d | DRG=291 | MCC=3 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    MCC stacking — multiple cardiac failure MCCs from same disease pathway
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: 3 of 5 DX codes in Cardiovascular domain — same-system
+    clustering alert. Dims 10–19: Intra-MCC severity similarity will be VERY
+    HIGH (>0.85) because I48.91, I50.9, I11.0 are all cardiac failure
+    manifestations. Step 2 should flag: 'MCC codes are very similar to each
+    other in severity space'. Dims 20–29: Only cardiac monitoring +
+    subsequent hospital care — low intensity for 3 declared MCCs. Step 3
+    intensity gap will be negative. Step 11: Contradiction — High Severity
+    (10–19) + Low Intensity (20–29). ICD-10 coding note: I11.0 already
+    includes the concept of hypertensive HF; coding I50.9 separately may
+    violate combination code rules.
+
+  NOTES: Tests Step 2 (MCC stacking) and Step 11 cross-dimensional contradiction.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-005 | Weak MCC Elevation — Malnutrition CC Used as MCC
+  Category: Severity Inflation
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 10–19 (false MCC), 70–79 (DX not treated), 90–99 (DRG weight inflated), 80–89 (upcoding signal)
+
+  SCENARIO:
+    72-year-old admitted for elective knee replacement. Coder adds E43
+    (unspecified severe malnutrition) as a secondary DX to elevate DRG,
+    despite BMI being 24 and no nutritional workup in records. E43 qualifies
+    as MCC under MS-DRG, artificially inflating DRG weight. Patient
+    discharged day 3 in good condition.
+
+  INPUT DATA:
+    Claim ID  : TC-005
+    DX Codes  : M17.11, E43, I10, E11.9, Z96.641
+    Proc Codes: 0SRD069, 0SRC069, 99223
+    LOS=3d | DRG=469 | MCC=1 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    False MCC — malnutrition diagnosis not supported by clinical evidence or treatment
+
+  EXPLANATION GUIDANCE:
+    Dims 10–19: E43 (severe malnutrition) has high severity vector but low
+    DX-Proc link to knee replacement procedures — no nutritional
+    intervention in procedure list. Dims 70–79: E43 will appear as 'orphan
+    DX' — no procedure supports it. Step 8 should flag E43 as unlinked to
+    any procedure. Dims 80–89: E43 has elevated upcoding FWA signal when
+    paired with elective surgery. Dims 90–99: DRG 469 (MCC) vs DRG 470 (no
+    MCC) — ~$8,000 DRG gap. Financial gap step will flag elevated proc
+    weight vs low DX diversity. Auditor should verify: nutritional
+    assessment, albumin levels, dietitian note.
+
+  NOTES: Classic CMS target — 'diagnosis present on admission' vs 'coded to inflate DRG'.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-006 | Wrong-Site Procedure — Cardiac Procedure for GI Diagnosis
+  Category: DX-Procedure Mismatch
+  Expected Risk: CRITICAL  |  Should Flag: YES
+  Targeted Axes: 0–9 (cross-domain: GI vs Cardio), 70–79 (zero DX-Proc link), 30–39 (abdomen DX vs chest proc), 80–89 (phantom billing risk)
+
+  SCENARIO:
+    Patient admitted primarily for acute pancreatitis with dehydration.
+    Procedure list includes coronary angiography (93458) and PCI (02703ZZ)
+    which belong to a completely different clinical encounter or were
+    incorrectly attributed to this claim. Classic medical record attribution
+    error or deliberate cross-claim fraud.
+
+  INPUT DATA:
+    Claim ID  : TC-006
+    DX Codes  : K85.9, E86.0, K86.1, E11.9
+    Proc Codes: 02703ZZ, 93458, B2041ZZ
+    LOS=4d | DRG=301 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    DX-Procedure mismatch — cardiac interventions have no clinical basis in GI/pancreatic admission
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: DX codes in GI/Metabolic domain; procedures in Cardiovascular
+    domain. Step 1 will flag CROSS-DOMAIN MISMATCHES for all DX-Proc pairs.
+    Dims 30–39: DX site = Abdomen; procedure site = Chest/Cardiac. Step 4
+    will flag every DX-Proc pair as anatomical mismatch. Dims 70–79: DX-Proc
+    link similarity ≈ 0 for all pairs. Step 8 will flag 02703ZZ and 93458 as
+    'medically unsupported procedures'. Dims 80–89: Phantom billing signal
+    elevated for cardiac procedures on GI admission. Expected: Steps 1, 4, 8
+    all CRITICAL. Composite score > 75.
+
+  NOTES: Most severe mismatch pattern. Good test for Steps 1, 4, 8 cascade firing.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-007 | Psychiatric DX with Orthopedic Procedures
+  Category: DX-Procedure Mismatch
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 0–9 (MH vs Ortho domain), 70–79 (DX-Proc link weak), 40–49 (chronic psych vs acute ortho)
+
+  SCENARIO:
+    Inpatient claim where principal DX is major depressive disorder (F32.2)
+    with secondary anxiety (F41.1). Procedures include bilateral knee
+    arthroscopy and physical therapy. Either the DX/proc belong to different
+    admissions, or the psych DX was added to inflate the claim while the
+    actual admission was orthopedic.
+
+  INPUT DATA:
+    Claim ID  : TC-007
+    DX Codes  : F32.2, F41.1, F33.1, Z87.39
+    Proc Codes: 0S9D0ZZ, 0S9C0ZZ, 97110
+    LOS=2d | DRG=882 | MCC=1 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    DX-Procedure domain mismatch — psychiatric diagnoses do not support orthopedic procedures
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: All DX codes in Mental Health domain; procedures in Orthopedic
+    domain. Step 1: Cross-domain alert — MH diagnoses with ortho procedures.
+    Dims 70–79: Mental health DX vector has near-zero DX-Proc link to knee
+    procedures. Step 8: All procedures will appear 'weakly/unsupported'.
+    Dims 40–49: Chronic episode type (psych) vs acute/post-op (ortho)
+    inconsistency. Step 5: Episode conflict. This case tests whether the
+    system catches domain-level mismatch when individual code similarity
+    might be low but not obviously zero.
+
+  NOTES: Tests system sensitivity to mental health + physical procedure cross-domain fraud.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-008 | ECG + Interpretation Unbundling
+  Category: Procedure Redundancy / Unbundling
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 60–69 (bundling cohesion), 80–89 (unbundling FWA signal)
+
+  SCENARIO:
+    Cardiac monitoring admission for AF. Biller separately codes 93000 (ECG
+    complete), 93005 (ECG tracing only), AND 93010 (ECG interpretation
+    only). 93000 already includes both components. Separate billing of 93005
+    and 93010 alongside 93000 constitutes an NCCI violation and double-
+    billing of the interpretation and tracing components.
+
+  INPUT DATA:
+    Claim ID  : TC-008
+    DX Codes  : I48.91, I10, R00.1
+    Proc Codes: 93000, 93005, 93010, 99232
+    LOS=1d | DRG=309 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    NCCI unbundling — ECG component codes (93005, 93010) billed with comprehensive ECG (93000)
+
+  EXPLANATION GUIDANCE:
+    Dims 60–69: 93005 and 93010 have high bundling cohesion signal as
+    component codes. Bundling similarity between 93005/93010 and 93000 will
+    be very high (>0.85). Step 7 will flag: NCCI violations for 93005+93000
+    and 93010+93000. Dims 80–89: Both component codes have high unbundling
+    FWA signal (D081). Step 9 will flag unbundling pattern. Corrective
+    action: Remove 93005 and 93010; retain only 93000. Dollar impact: 2
+    erroneous line items.
+
+  NOTES: Classic NCCI violation. Simplest unbundling test case for Step 7.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-009 | Colonoscopy with Biopsy — Unbundled Diagnostic + Therapeutic
+  Category: Procedure Redundancy / Unbundling
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 60–69 (bundling), 80–89 (unbundling risk), 70–79 (DX-Proc link ok)
+
+  SCENARIO:
+    GI admission for colorectal cancer screening with polyp. Biller codes
+    45378 (diagnostic colonoscopy) AND 45380 (with biopsy) on same claim,
+    same date. Once a biopsy is taken, 45378 is subsumed into 45380; the
+    diagnostic component cannot be billed separately. Additionally adds
+    45381 (submucosal injection) as separate line.
+
+  INPUT DATA:
+    Claim ID  : TC-009
+    DX Codes  : K63.5, Z12.11, D12.6
+    Proc Codes: 45378, 45380, 45381, G0105
+    LOS=1d | DRG=392
+
+  EXPECTED ROOT CAUSE:
+    NCCI unbundling — diagnostic colonoscopy (45378) subsumed by therapeutic (45380, 45381)
+
+  EXPLANATION GUIDANCE:
+    Dims 60–69: 45378 has very high bundling cohesion signal as a component
+    of 45380. Step 7: NCCI violation alert — 45378+45380 is a known bundling
+    pair. Bundling axis similarity between 45378 and 45380 approaches 1.0.
+    Dims 80–89: All three colonoscopy codes have high unbundling risk. Note:
+    DX-Proc link (70–79) should be OK — colonoscopy IS supported by
+    K63.5/Z12.11. This tests the system's ability to flag procedure-
+    procedure issues while not falsely flagging the DX-Proc dimension.
+
+  NOTES: Important: Tests bundling WITHOUT DX-Proc mismatch. Steps 7 fires; Step 8 should NOT.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-010 | Multi-Specialty Claim — Procedure Domain Fragmentation
+  Category: Cross-Domain Inconsistency
+  Expected Risk: CRITICAL  |  Should Flag: YES
+  Targeted Axes: 0–9 (cross-domain fragmentation), 30–39 (multi-site anatomical), 70–79 (DX-Proc mismatch), 80–89 (phantom billing)
+
+  SCENARIO:
+    Patient admitted for COPD exacerbation. Claim includes procedures from 4
+    different clinical domains: bronchoscopy (pulm), knee arthroscopy
+    (ortho), EEG (neuro), and colonoscopy (GI). No plausible clinical
+    pathway connects these. Likely result of cross-claim attribution errors
+    or coordinated billing of unrelated procedures to a single high-acuity
+    admission.
+
+  INPUT DATA:
+    Claim ID  : TC-010
+    DX Codes  : J44.1, J96.01, I10
+    Proc Codes: 0BTJ4ZZ, 0S9D0ZZ, 4A000Z4, 0DTJ4ZZ
+    LOS=3d | DRG=190 | MCC=1 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Cross-domain fragmentation — procedures from 4 unrelated clinical domains on a single pulmonary admission
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: DX codes in Pulmonary domain; procedures span Pulmonary,
+    Ortho, Neuro, GI. Step 1: Multiple cross-domain mismatches. Procedure
+    domain count = 4 vs DX domain count = 1. Dims 30–39: DX site = Chest;
+    procedures include Lower Extremity (knee), Head (EEG), Abdomen (colon).
+    Step 4: Severe anatomical mismatch across all non-pulmonary procedures.
+    Dims 70–79: Only bronchoscopy has any DX-Proc link; knee/EEG/colon are
+    unsupported. Step 8: 3 of 4 procedures flagged as medically unsupported.
+    Expected: Steps 1, 4, 8 all fire CRITICAL.
+
+  NOTES: Extreme multi-domain fragmentation. Good stress test for Steps 1, 4, 8 in combination.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-011 | Left vs Right — Laterality Coding Error at Anatomical Level
+  Category: Anatomical Mismatch
+  Expected Risk: MEDIUM  |  Should Flag: YES
+  Targeted Axes: 30–39 (anatomical laterality mismatch), 70–79 (DX-Proc specificity)
+
+  SCENARIO:
+    Patient admitted for left total hip arthroplasty (M16.12 - left hip OA).
+    Procedure codes include right hip replacement (0SR9019) instead of left
+    (0SRB019). Bilateral replacement codes are NOT present. This is a
+    specificity/laterality error where the procedure code does not match the
+    documented diagnosis side. May also indicate wrong-side surgery or
+    coding error.
+
+  INPUT DATA:
+    Claim ID  : TC-011
+    DX Codes  : M16.12, I10, E11.9, Z96.641
+    Proc Codes: 0SR9019, 99221, 99231
+    LOS=3d | DRG=470 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    Anatomical laterality mismatch — left hip OA diagnosis paired with right hip replacement procedure
+
+  EXPLANATION GUIDANCE:
+    Dims 30–39: M16.12 (LEFT hip OA) vs 0SR9019 (RIGHT hip replacement).
+    Anatomical similarity will be reduced due to laterality difference in
+    embedding. Step 4 should detect site-mismatch. Dims 70–79: DX-Proc link
+    will be moderate (hip OA → hip replacement is valid) but reduced due to
+    laterality inconsistency. This tests system sensitivity to sub-domain
+    specificity, not just broad mismatch. Important note: The system may
+    rate this MEDIUM (not CRITICAL) because the overall clinical
+    relationship (hip OA → hip replacement) is valid — only the laterality
+    is wrong. Auditor should verify operative report for correct side.
+
+  NOTES: Tests sub-domain anatomical specificity. Expect MEDIUM risk, not CRITICAL.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-012 | Preventive Codes in Acute Inpatient Context
+  Category: Episode Type Conflict
+  Expected Risk: MEDIUM  |  Should Flag: YES
+  Targeted Axes: 40–49 (episode conflict: acute vs preventive), 50–59 (billing channel mismatch), 70–79 (DX not treated in this episode)
+
+  SCENARIO:
+    Patient admitted emergently for acute MI. During the 2-day stay, biller
+    appends Z12.31 (screening mammography encounter) and G0101 (cervical
+    cancer screening) to the claim — these are preventive/wellness codes
+    that would only apply in an outpatient preventive visit. Adding them to
+    an acute inpatient claim is inappropriate and inflates the secondary
+    diagnosis count.
+
+  INPUT DATA:
+    Claim ID  : TC-012
+    DX Codes  : I21.01, I10, Z12.31, Z01.411, Z00.00
+    Proc Codes: 02703ZZ, B2041ZZ, 99232
+    LOS=2d | DRG=247 | MCC=1 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Episode type conflict — preventive/screening codes appended to acute MI inpatient claim
+
+  EXPLANATION GUIDANCE:
+    Dims 40–49: I21.01 and cardiac proc have acute episode signal. Z12.31,
+    Z01.411, Z00.00 have strong preventive episode signal. Step 5:
+    Preventive procedures in acute context alert. Dims 50–59: Preventive
+    codes have outpatient billing channel profile; Step 6 may flag billing
+    channel inconsistency. Dims 70–79: Z-codes are orphan DX — no procedure
+    on this claim supports them. Step 8: Z12.31, Z01.411, Z00.00 flagged as
+    orphan diagnoses. Clinical note: Preventive codes may be technically
+    present on admission but should NOT appear on an acute inpatient claim
+    per CMS billing rules.
+
+  NOTES: Tests Step 5 and Step 6 specifically. Important rule: POA ≠ appropriate for inpatient billing.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-013 | Major Surgery for Minor Diagnosis
+  Category: Service Intensity Mismatch
+  Expected Risk: CRITICAL  |  Should Flag: YES
+  Targeted Axes: 20–29 (intensity >> severity), 10–19 (low severity vs high proc weight), 90–99 (extreme financial gap), 80–89 (phantom risk)
+
+  SCENARIO:
+    Patient admitted with simple UTI (N39.0) and back pain (M54.5).
+    Procedure list includes CABG (coronary artery bypass graft), mechanical
+    ventilation >96h, and bilateral hip replacement. These procedures have
+    no clinical basis in the listed diagnoses. Classic phantom billing
+    pattern — high-intensity procedures on low-severity diagnoses.
+
+  INPUT DATA:
+    Claim ID  : TC-013
+    DX Codes  : N39.0, M54.5, R51.9
+    Proc Codes: 02100Z8, 5A1945Z, 0SR9019, 0SRB019
+    LOS=1d | DRG=981
+
+  EXPECTED ROOT CAUSE:
+    Extreme service intensity mismatch — major cardiac/orthopedic procedures for UTI/back pain diagnoses
+
+  EXPLANATION GUIDANCE:
+    Dims 10–19: DX severity vectors very low (UTI, back pain = low acuity).
+    Dims 20–29: Procedure complexity vectors very high (CABG, bilateral THA,
+    MV). Gap = massive. Step 3: CRITICAL intensity–severity mismatch. Dims
+    90–99: Procedure DRG weight ≈ 0.9+ vs DX DRG weight ≈ 0.1. Step 10:
+    Financial gap will be extreme (>0.70). Dims 80–89: Phantom billing
+    signal on high-cost procedures without clinical basis. Step 9: Phantom
+    billing pattern detected. Step 11: Multiple contradictions across all
+    dimensions. Expected composite score > 85.
+
+  NOTES: Maximum stress test. Every step should fire. Used to validate score ceiling.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-014 | E/M Level Inflation — Subsequent Care Upcoding
+  Category: Service Intensity Mismatch
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 20–29 (E/M upcoding), 10–19 (low severity vs high E/M), 80–89 (upcoding FWA signal)
+
+  SCENARIO:
+    Routine 2-day admission for stable hypertension management. Biller codes
+    99233 (high complexity subsequent hospital care) when documentation
+    supports only 99231 (low complexity). Additionally bills 99291 (critical
+    care) which has no ICU note or critical care documentation in the
+    record.
+
+  INPUT DATA:
+    Claim ID  : TC-014
+    DX Codes  : I10, E78.5, Z87.39
+    Proc Codes: 99233, 99291, 99292
+    LOS=2d | DRG=812 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    E/M upcoding — high-complexity and critical care E/M for stable hypertension admission
+
+  EXPLANATION GUIDANCE:
+    Dims 10–19: DX codes (I10, E78.5) have low severity vectors — chronic
+    stable conditions. Dims 20–29: 99233 and 99291 have high E/M intensity
+    signals. Gap = significant. Step 3: Moderate intensity–severity
+    mismatch. Dims 80–89: 99233 and 99291 have elevated upcoding FWA signal.
+    Step 9: Upcoding pattern detected. Note: 99291 + 99292 — critical care
+    codes are also near-duplicate (Step 7). 99292 is an add-on code to 99291
+    and has high bundling signal. Step 7: Near-duplicate pair 99291/99292
+    flagged. Auditor should request: physician notes, nursing time
+    documentation, ICU transfer record.
+
+  NOTES: Tests E/M upcoding via intensity axis. Also catches add-on code bundling.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-015 | DRG Maximization via High-Weight Procedures on Low-Acuity Admission
+  Category: Financial Misalignment
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 90–99 (DRG weight inflation), 70–79 (DX-Proc link weak), 0–9 (domain mismatch), 80–89 (phantom billing)
+
+  SCENARIO:
+    Patient admitted with mild cellulitis and dehydration. Biller adds
+    cardiac catheterization and coronary angiography to the claim —
+    procedures with extremely high DRG/RVU weights. These procedures either
+    did not occur or occurred in a separate outpatient encounter being
+    improperly bundled into this inpatient claim to maximize reimbursement.
+
+  INPUT DATA:
+    Claim ID  : TC-015
+    DX Codes  : L03.115, E86.0, I10
+    Proc Codes: 93458, 93459, B2041ZZ, 3E033XZ
+    LOS=2d | DRG=247 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Financial misalignment — high-DRG cardiac procedures attributed to low-acuity skin/dehydration admission
+
+  EXPLANATION GUIDANCE:
+    Dims 90–99: Cardiac cath procedures (93458, 93459) have very high
+    DRG/RVU weight vectors. DX codes (cellulitis, dehydration) have very low
+    DRG weight vectors. Financial gap will be large (>0.45). Step 10: HIGH
+    risk. Dims 0–9: DX in Skin/Infectious domain; procedures in
+    Cardiovascular domain. Step 1: Cross-domain mismatch. Dims 70–79: No DX
+    supports cardiac catheterization. Step 8: Unsupported procedures. Dims
+    80–89: Phantom billing signal on cardiac procedures. Step 9: Phantom
+    billing detected. Also: 93458 and 93459 are very similar procedures —
+    Step 7 may flag near-duplicate pair.
+
+  NOTES: Pure financial exploitation pattern. Steps 1, 8, 9, 10 all fire.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-016 | Adversarial — High Similarity But Clinically Invalid Combination
+  Category: Adversarial
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 40–49 (acute vs post-op conflict), 70–79 (clinically invalid link), 10–19 (severity mismatch in same domain)
+
+  SCENARIO:
+    Sophisticated coder selects DX and procedure codes that all share the
+    same clinical domain (cardiovascular) and similar embedding signatures,
+    but the specific combination is clinically implausible: Codes for heart
+    transplant aftercare (Z94.1) as principal DX with initial encounter
+    codes for first-time MI procedures. Embedding similarity will be HIGH
+    (all cardiac) but the clinical logic fails because post-transplant
+    patients cannot have native coronary procedures.
+
+  INPUT DATA:
+    Claim ID  : TC-016
+    DX Codes  : Z94.1, I25.10, I10, I50.22
+    Proc Codes: 02703ZZ, 02100Z8, B2041ZZ
+    LOS=4d | DRG=246 | MCC=1 | CC=2
+
+  EXPECTED ROOT CAUSE:
+    Adversarial high-similarity invalid combination — post-transplant patient cannot have native coronary interventions
+
+  EXPLANATION GUIDANCE:
+    SYSTEM WEAKNESS: Embedding similarity will be HIGH across all axes (all
+    codes in cardiovascular domain). Naive cosine similarity would NOT flag
+    this. Dims 40–49: Z94.1 is a chronic/post-op episode code; PCI (02703ZZ)
+    is an acute procedure on native coronary arteries. Episode conflict.
+    Dims 70–79: DX-Proc link may appear moderate because all codes are
+    cardiac — this is where the adversarial design tries to fool the system.
+    The system must use episode type (40–49) and temporal flags to catch
+    this. Step 5 should flag: Post-op chronic DX (Z94.1) with acute native-
+    vessel procedure. Step 11 should catch: High-similarity codes but
+    episode-type contradiction. Clinical note: Post-transplant patients
+    undergo transplant vessel monitoring, not native coronary PCI — these
+    are anatomically incompatible.
+
+  NOTES: Designed to fool similarity-based systems. Tests Step 5 and Step 11 cross-synthesis.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-017 | Adversarial — MCC Added in Same Embedding Cluster as Principal DX
+  Category: Adversarial
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 10–19 (intra-DX similarity), 0–9 (same domain clustering), 70–79 (DX-Proc coherent but DX-DX redundant)
+
+  SCENARIO:
+    Clever coder adds a CC/MCC that is semantically close to the principal
+    DX in embedding space (high cosine similarity) but represents a distinct
+    condition with its own DRG impact. Example: Acute MI (I21.0) as
+    principal, plus I21.4 (NSTEMI) coded as secondary. Both are AMI variants
+    — highly similar in embedding space — but coding both is incorrect per
+    ICD-10 guidelines when they represent the same MI event.
+
+  INPUT DATA:
+    Claim ID  : TC-017
+    DX Codes  : I21.01, I21.4, I21.9, I10, E11.9
+    Proc Codes: 02703ZZ, B2041ZZ, 99232
+    LOS=3d | DRG=246 | MCC=2 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Adversarial MCC duplication — multiple AMI specificity variants coded for what may be a single MI event
+
+  EXPLANATION GUIDANCE:
+    SYSTEM WEAKNESS: DX-Proc link (Step 8) will appear VALID because MI
+    diagnoses DO support PCI procedures — the adversarial element is in the
+    DX-DX dimension, not the DX-Proc dimension. Dims 10–19: I21.01, I21.4,
+    I21.9 are very similar in severity space — near-duplicate DX alert.
+    Intra-DX severity similarity > 0.90. Step 2: MCC stacking detected (same
+    pathway, different specificity). Dims 0–9: All 3 AMI codes in
+    Cardiovascular domain — same-system clustering. Step 1: Dense clustering
+    in cardiac domain. ICD-10 Rule: I21.01 (STEMI LAD) and I21.4 (NSTEMI)
+    cannot coexist for the same MI event — they represent mutually exclusive
+    types. The system should catch this via DX-DX redundancy analysis (Step
+    2).
+
+  NOTES: Adversarial case that appears clinically coherent but violates ICD-10 sequencing rules.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-018 | Adversarial — Legitimate-Looking Multi-System but DRG-Maximizing
+  Category: Adversarial
+  Expected Risk: MEDIUM  |  Should Flag: YES
+  Targeted Axes: 10–19 (MCC count review), 40–49 (episode timing conflict), 70–79 (DX-Proc partial link), 90–99 (financial weight with weak support)
+
+  SCENARIO:
+    Claim appears multi-system and plausible: AMI + CKD + DM + Sepsis. Each
+    diagnosis from a different domain, procedures appear to match. However,
+    the sepsis code (A41.9) and respiratory failure (J96.01) were resolved
+    BEFORE admission per the clinical notes, yet are coded as if present
+    during the entire stay to maximize DRG complexity. The MCC count of 4 is
+    technically supported by the codes but not by the clinical timeline.
+
+  INPUT DATA:
+    Claim ID  : TC-018
+    DX Codes  : I21.01, N18.4, E11.65, A41.9, J96.01, R65.21
+    Proc Codes: 02703ZZ, 5A1D00Z, B2041ZZ, 3E033XZ
+    LOS=5d | DRG=870 | MCC=4 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Adversarial multi-system DRG maximization — MCC codes may not represent conditions present and treated throughout stay
+
+  EXPLANATION GUIDANCE:
+    SYSTEM CHALLENGE: Each DX-Proc pair has plausible links (MI→PCI,
+    CKD→dialysis, sepsis→antibiotics). The system should NOT score this as
+    CRITICAL based on embedding similarity alone. Dims 10–19: 4 MCCs from
+    different domains — diversity seems legitimate. However, intra-MCC
+    similarity is moderate (mixed domains). Step 2 should NOT fire MCC
+    stacking (diverse domains). Risk = MEDIUM. Dims 40–49: A41.9 and J96.01
+    are acute episode codes. If they were resolved pre-admission, the
+    temporal flag should catch this. The system correctly scores MEDIUM, not
+    CRITICAL — leaving investigation to the auditor who must review the
+    timeline in the clinical record. This tests the system's calibration —
+    it should not over-flag plausible-looking claims.
+
+  NOTES: MEDIUM risk expected. Tests calibration: system must not over-flag multi-system legitimate claims.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-019 | Noise Injection — Irrelevant DX Padding to Inflate CC Count
+  Category: Noise Injection
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 0–9 (multi-domain noise), 10–19 (CC inflation), 70–79 (orphan DX — not treated)
+
+  SCENARIO:
+    Routine knee replacement admission. Primary DX and procedures are valid.
+    However, coder adds 8 secondary diagnoses — many unrelated to orthopedic
+    care and several are history codes (Z87.x) or chronic conditions not
+    treated in this admission. Goal: push CC count from 1 to 5, elevating
+    DRG reimbursement tier.
+
+  INPUT DATA:
+    Claim ID  : TC-019
+    DX Codes  : M17.11, I10, E11.9, F32.9, N18.2, Z87.891, Z87.39, H54.7, G89.29, J45.20
+    Proc Codes: 0SRD069, 99221, 99231
+    LOS=3d | DRG=470 | CC=5
+
+  EXPECTED ROOT CAUSE:
+    Diagnosis padding — multiple secondary diagnoses unrelated to orthopedic admission used to inflate CC count
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: DX codes span 7+ clinical domains — fragmented multi-domain
+    distribution. Step 1: Low clinical diversity on procedure side vs high
+    diversity on DX side. Dims 10–19: CC count of 5 with only knee
+    replacement procedures. Step 2: Declared CC=5 exceeds embedding-
+    supported complexity. Dims 70–79: F32.9, N18.2, H54.7, G89.29, J45.20
+    are orphan DX — no procedures address these conditions. Step 8: Multiple
+    orphan diagnoses flagged. Z-codes (Z87.891, Z87.39) are history codes
+    and should never count toward CC/MCC per CMS guidelines. Expected: Steps
+    1, 2, 8 all fire. Composite HIGH.
+
+  NOTES: Tests noise robustness — the valid ortho core should not suppress the inflated CC detection.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-020 | Noise Injection — Redundant Procedure Variations
+  Category: Noise Injection
+  Expected Risk: HIGH  |  Should Flag: YES
+  Targeted Axes: 60–69 (procedure near-duplicates), 80–89 (unbundling/phantom), 20–29 (inflated procedure intensity)
+
+  SCENARIO:
+    Cardiac admission with valid PCI. Biller adds multiple near-identical
+    variants of the same procedure: 02703ZZ (1-site PCI), 02713ZZ (2-site
+    PCI), 02723ZZ (3-site PCI), and 02733ZZ (4-site PCI) — all in addition
+    to the original PCI code. Only one vessel intervention was documented.
+    This artificially inflates procedure count and potentially DRG weight.
+
+  INPUT DATA:
+    Claim ID  : TC-020
+    DX Codes  : I21.01, I10, E11.9
+    Proc Codes: 02703ZZ, 02713ZZ, 02723ZZ, 02733ZZ, B2041ZZ
+    LOS=3d | DRG=246 | MCC=1 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    Redundant procedure variants — multiple site-count variants of PCI coded when only one vessel was treated
+
+  EXPLANATION GUIDANCE:
+    Dims 60–69: 02703ZZ, 02713ZZ, 02723ZZ, 02733ZZ are all PCI codes varying
+    only in vessel count. Bundling axis similarity will be very high among
+    all four. Step 7: Multiple near-duplicate procedure pairs. Dims 80–89:
+    Unbundling/phantom signal elevated for the extra site variants. Step 9:
+    Unbundling pattern. Dims 20–29: 4 PCI codes artificially inflates
+    procedure intensity signal. Step 3: Procedure intensity appears
+    inflated. Clinical note: ICD-10-PCS requires coder to count distinct
+    vessel sites — if only one vessel was stented, only 02703ZZ should be
+    coded. Auditor should review cardiac cath report for vessel count.
+
+  NOTES: Tests procedure variant noise injection. High similarity among proc codes should trigger Step 7.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-021 | Complex OB Case — Valid Multi-System Delivery Claim
+  Category: Valid Edge Case
+  Expected Risk: LOW  |  Should Flag: NO
+  Targeted Axes: 0–9 (multi-domain valid), 40–49 (acute delivery episode), 70–79 (DX-Proc coherent), 10–19 (severity justified)
+
+  SCENARIO:
+    32-year-old admitted for vaginal delivery complicated by preeclampsia,
+    gestational diabetes, and postpartum hemorrhage requiring blood
+    transfusion. Multiple clinical domains legitimately present: OB,
+    metabolic, cardiovascular. This edge case should NOT be flagged despite
+    apparent multi-domain diversity.
+
+  INPUT DATA:
+    Claim ID  : TC-021
+    DX Codes  : O14.05, O24.419, O72.1, Z37.0, O09.523
+    Proc Codes: 10E0XZZ, 30233N1, 0UJ07ZZ
+    LOS=3d | DRG=765 | MCC=2 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    None — valid complex OB delivery with justified complications
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: All codes in OB domain (O-prefix DX, OB procedure codes). Step
+    1: Clinical domain consistent — should NOT fire. Dims 10–19: O14.05
+    (preeclampsia MCC) and O72.1 (PPH MCC) are from different pathways
+    within OB — legitimate multi-MCC. Step 2: Intra-MCC similarity will be
+    moderate (different OB complications) — should NOT fire MCC stacking.
+    Dims 70–79: Delivery procedure (10E0XZZ) directly supports all OB
+    diagnoses. Blood transfusion (30233N1) directly supports O72.1 (PPH).
+    Step 8: All DX well-linked to procedures. System challenge: Multi-domain
+    diversity + multi-MCC must NOT trigger false positives when all codes
+    are clinically valid within one episode.
+
+  NOTES: Critical for false-positive calibration. OB claims appear multi-system but are legitimate.
+
+────────────────────────────────────────────────────────────────────────────
+  TC-022 | Oncology Inpatient — Valid High-Cost Chemotherapy Admission
+  Category: Valid Edge Case
+  Expected Risk: LOW  |  Should Flag: NO
+  Targeted Axes: 90–99 (high DRG weight but justified), 20–29 (high intensity justified), 70–79 (DX-Proc link strong), 60–69 (infusion codes — not unbundled)
+
+  SCENARIO:
+    55-year-old admitted for inpatient chemotherapy for acute myeloid
+    leukemia. Multi-drug regimen with supportive care. High cost, long LOS
+    (7 days), multiple procedure codes for different drug infusions. This
+    should NOT be flagged despite high financial weight and multi-procedure
+    claim.
+
+  INPUT DATA:
+    Claim ID  : TC-022
+    DX Codes  : C92.00, D61.9, D64.9, Z85.6
+    Proc Codes: 30233N1, 96413, 96415, 96415, 3E033XZ
+    LOS=7d | DRG=834 | MCC=2 | CC=1
+
+  EXPECTED ROOT CAUSE:
+    None — valid high-acuity oncology chemotherapy admission
+
+  EXPLANATION GUIDANCE:
+    Dims 0–9: C92.00 (AML), D61.9 (aplastic anemia), D64.9 (anemia) — all in
+    hematology/oncology domain. Procedures: chemo infusion, transfusion.
+    Step 1: Consistent domain. Dims 20–29: Chemotherapy infusion
+    (96413/96415) is appropriately high-intensity for AML. Step 3: Intensity
+    gap justified by MCC-level DX. Dims 60–69: 96415 is an add-on code to
+    96413 — Step 7 may flag as component code. IMPORTANT: 96415 is a
+    LEGITIMATE add-on code — the system should recognize that add-on codes
+    billed with their parent are NOT an NCCI violation. Dims 90–99: High DRG
+    weight (DRG 834) is appropriate for AML chemo. Step 10: Financial weight
+    matches clinical acuity — should NOT fire. System challenge: Must
+    distinguish 96415 as legitimate add-on vs unbundling.
+
+  NOTES: Tests add-on code handling in Step 7. 96415 with 96413 is valid, not a violation.
+
+============================================================================
