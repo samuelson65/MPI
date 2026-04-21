@@ -2,48 +2,12 @@ import numpy as np
 import pandas as pd
 
 
-class WeightedCodeSimilarity:
-    def __init__(self, csv_path="all.csv"):
-        self.embeddings = self.load_embeddings(csv_path)
-        self.dim_groups = self.define_dimension_groups()
+class Mod59EmbeddingValidator:
+    def __init__(self, path="all.csv"):
+        self.df = pd.read_csv(path)
+        self.embeddings = self.load_embeddings()
 
-    # ---------------------------
-    # Load Embeddings (Strict Schema)
-    # ---------------------------
-    def load_embeddings(self, path):
-        df = pd.read_csv(path)
-
-        # Expect: code + D001 ... D100
-        expected_cols = ["code"] + [f"D{str(i).zfill(3)}" for i in range(1, 101)]
-
-        missing = set(expected_cols) - set(df.columns)
-        if missing:
-            raise ValueError(f"Missing columns: {missing}")
-
-        embeddings = {}
-
-        for _, row in df.iterrows():
-            code = self.normalize_code(row["code"])
-            vec = row[expected_cols[1:]].values.astype(float)
-
-            if len(vec) != 100:
-                raise ValueError(f"Invalid vector length for {code}")
-
-            embeddings[code] = vec
-
-        return embeddings
-
-    # ---------------------------
-    # Normalize Codes
-    # ---------------------------
-    def normalize_code(self, code):
-        return str(code).replace('.', '').upper()
-
-    # ---------------------------
-    # Dimension Groups
-    # ---------------------------
-    def define_dimension_groups(self):
-        return {
+        self.groups = {
             "clinical_domain": range(0, 10),
             "severity": range(10, 20),
             "service_intensity": range(20, 30),
@@ -57,26 +21,25 @@ class WeightedCodeSimilarity:
         }
 
     # ---------------------------
-    # Build Weight Vector
+    # Load embeddings
     # ---------------------------
-    def build_weight_vector(self, group_weights):
-        W = np.ones(100)
+    def load_embeddings(self):
+        embeddings = {}
+        feature_cols = [f"D{str(i).zfill(3)}" for i in range(1, 101)]
 
-        for group, weight in group_weights.items():
-            if group not in self.dim_groups:
-                raise ValueError(f"Unknown group: {group}")
+        for _, row in self.df.iterrows():
+            code = str(row["code"]).strip()
+            vec = row[feature_cols].values.astype(float)
+            embeddings[code] = vec
 
-            for idx in self.dim_groups[group]:
-                W[idx] = weight
-
-        return W
+        return embeddings
 
     # ---------------------------
-    # Weighted Cosine Similarity
+    # Weighted cosine
     # ---------------------------
-    def weighted_cosine(self, v1, v2, W):
-        v1_w = v1 * W
-        v2_w = v2 * W
+    def weighted_cosine(self, v1, v2, weight_vector):
+        v1_w = v1 * weight_vector
+        v2_w = v2 * weight_vector
 
         dot = np.dot(v1_w, v2_w)
         norm1 = np.linalg.norm(v1_w)
@@ -88,47 +51,55 @@ class WeightedCodeSimilarity:
         return dot / (norm1 * norm2)
 
     # ---------------------------
-    # Public API
+    # Build weight vector
     # ---------------------------
-    def get_similarity(self, code1, code2, group_weights=None):
-        code1 = self.normalize_code(code1)
-        code2 = self.normalize_code(code2)
+    def build_weights(self, group_weights):
+        W = np.ones(100)
 
-        if code1 not in self.embeddings:
-            raise ValueError(f"{code1} not found")
-        if code2 not in self.embeddings:
-            raise ValueError(f"{code2} not found")
+        for group, weight in group_weights.items():
+            for idx in self.groups[group]:
+                W[idx] = weight
 
+        return W
+
+    # ---------------------------
+    # Core similarity functions
+    # ---------------------------
+    def similarity(self, code1, code2, weights):
+        if code1 not in self.embeddings or code2 not in self.embeddings:
+            raise ValueError(f"{code1} or {code2} not found")
+
+        W = self.build_weights(weights)
         v1 = self.embeddings[code1]
         v2 = self.embeddings[code2]
-
-        W = self.build_weight_vector(group_weights) if group_weights else np.ones(100)
 
         return self.weighted_cosine(v1, v2, W)
 
     # ---------------------------
-    # Top-K Similar
+    # Mod 59 scoring
     # ---------------------------
-    def top_k_similar(self, code, k=5, group_weights=None):
-        code = self.normalize_code(code)
+    def mod59_score(self, cpt1, cpt2):
+        bundling_weights = {"bundling": 3.0, "fwa_risk": 2.5}
+        anatomy_weights = {"anatomical_site": 3.0}
+        clinical_weights = {"clinical_domain": 2.0, "dx_proc_link": 2.5}
 
-        if code not in self.embeddings:
-            raise ValueError(f"{code} not found")
+        bundling_sim = self.similarity(cpt1, cpt2, bundling_weights)
+        anatomy_sim = self.similarity(cpt1, cpt2, anatomy_weights)
+        clinical_sim = self.similarity(cpt1, cpt2, clinical_weights)
 
-        target_vec = self.embeddings[code]
-        W = self.build_weight_vector(group_weights) if group_weights else np.ones(100)
+        # Risk score
+        risk_score = (
+            0.5 * bundling_sim +
+            0.3 * anatomy_sim -
+            0.2 * clinical_sim
+        )
 
-        scores = []
-
-        for other_code, vec in self.embeddings.items():
-            if other_code == code:
-                continue
-
-            sim = self.weighted_cosine(target_vec, vec, W)
-            scores.append((other_code, sim))
-
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:k]
+        return {
+            "bundling_sim": round(bundling_sim, 4),
+            "anatomy_sim": round(anatomy_sim, 4),
+            "clinical_sim": round(clinical_sim, 4),
+            "risk_score": round(risk_score, 4)
+        }
 
 
 # =========================================================
@@ -136,62 +107,62 @@ class WeightedCodeSimilarity:
 # =========================================================
 if __name__ == "__main__":
 
-    sim = WeightedCodeSimilarity("all.csv")
+    validator = Mod59EmbeddingValidator("all.csv")
 
-    code_a = "N17.9"
-    code_b = "I10"
-    code_c = "E11.9"
+    # -----------------------------------------
+    # Replace with CPTs present in your file
+    # -----------------------------------------
 
-    # ---------------------------
-    # Base Similarity
-    # ---------------------------
-    print("\n=== BASE SIMILARITY ===")
-    print(f"{code_a} vs {code_b}:",
-          round(sim.get_similarity(code_a, code_b), 4))
+    test_cases = [
+        {
+            "name": "🚨 Likely Unbundling (Same procedure family)",
+            "cpt1": "45378",  # Colonoscopy diagnostic
+            "cpt2": "45380",  # Colonoscopy with biopsy
+            "expected": "HIGH RISK"
+        },
+        {
+            "name": "🚨 Likely Same Anatomy Conflict",
+            "cpt1": "17000",  # Skin lesion removal
+            "cpt2": "17003",  # Additional lesions
+            "expected": "HIGH RISK"
+        },
+        {
+            "name": "✅ Likely Valid Mod 59 (Different anatomy)",
+            "cpt1": "29881",  # Knee arthroscopy
+            "cpt2": "11042",  # Wound debridement
+            "expected": "LOW RISK"
+        },
+        {
+            "name": "⚖️ Edge Case",
+            "cpt1": "93000",  # ECG
+            "cpt2": "71020",  # Chest X-ray
+            "expected": "MODERATE"
+        }
+    ]
 
-    # ---------------------------
-    # Clinical Similarity
-    # ---------------------------
-    clinical_weights = {
-        "clinical_domain": 2.5,
-        "anatomical_site": 2.0,
-        "episode_type": 1.5
-    }
+    print("\n================ MOD 59 VALIDATION RESULTS ================\n")
 
-    print("\n=== CLINICAL SIMILARITY ===")
-    print(f"{code_a} vs {code_b}:",
-          round(sim.get_similarity(code_a, code_b, clinical_weights), 4))
+    for test in test_cases:
+        c1 = test["cpt1"]
+        c2 = test["cpt2"]
 
-    # ---------------------------
-    # FWA Similarity
-    # ---------------------------
-    fwa_weights = {
-        "fwa_risk": 3.0,
-        "severity": 2.5,
-        "drg_rvu": 2.0,
-        "bundling": 2.0
-    }
+        try:
+            result = validator.mod59_score(c1, c2)
 
-    print("\n=== FWA SIMILARITY ===")
-    print(f"{code_a} vs {code_c}:",
-          round(sim.get_similarity(code_a, code_c, fwa_weights), 4))
+            print(f"Test: {test['name']}")
+            print(f"CPT Pair: {c1} vs {c2}")
+            print(f"Expected: {test['expected']}")
+            print("Output:", result)
 
-    # ---------------------------
-    # Medical Necessity
-    # ---------------------------
-    med_weights = {
-        "dx_proc_link": 3.0,
-        "clinical_domain": 2.0,
-        "anatomical_site": 2.0
-    }
+            # Basic interpretation
+            if result["risk_score"] > 0.6:
+                print("➡️ Flag: HIGH RISK (Possible Mod 59 misuse)")
+            elif result["risk_score"] > 0.3:
+                print("➡️ Flag: MODERATE RISK")
+            else:
+                print("➡️ Flag: LOW RISK (Likely valid)")
 
-    print("\n=== MEDICAL NECESSITY SIMILARITY ===")
-    print(f"{code_b} vs {code_c}:",
-          round(sim.get_similarity(code_b, code_c, med_weights), 4))
+            print("-" * 60)
 
-    # ---------------------------
-    # Top-K Similar (FWA Focus)
-    # ---------------------------
-    print("\n=== TOP 5 SIMILAR (FWA FOCUS) ===")
-    for c, s in sim.top_k_similar(code_a, k=5, group_weights=fwa_weights):
-        print(c, round(s, 4))
+        except Exception as e:
+            print(f"Error with {c1}, {c2}: {e}")
