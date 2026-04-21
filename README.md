@@ -1,168 +1,158 @@
-import numpy as np
 import pandas as pd
+import numpy as np
 
+# =========================================================
+# LOAD EMBEDDINGS
+# =========================================================
+class CPTEmbeddingValidator:
+    def __init__(self, file_path="all.csv"):
+        self.df = pd.read_csv(file_path)
 
-class Mod59EmbeddingValidator:
-    def __init__(self, path="all.csv"):
-        self.df = pd.read_csv(path)
-        self.embeddings = self.load_embeddings()
+        # Ensure correct format
+        if "code" not in self.df.columns:
+            raise ValueError("CSV must contain 'code' column")
 
-        self.groups = {
-            "clinical_domain": range(0, 10),
-            "severity": range(10, 20),
-            "service_intensity": range(20, 30),
-            "anatomical_site": range(30, 40),
-            "episode_type": range(40, 50),
-            "billing_channel": range(50, 60),
-            "bundling": range(60, 70),
-            "dx_proc_link": range(70, 80),
-            "fwa_risk": range(80, 90),
-            "drg_rvu": range(90, 100),
+        # Set index
+        self.df.set_index("code", inplace=True)
+
+        # Convert to dict for fast lookup
+        self.embeddings = {
+            code: row.values.astype(float)
+            for code, row in self.df.iterrows()
         }
 
-    # ---------------------------
-    # Load embeddings
-    # ---------------------------
-    def load_embeddings(self):
-        embeddings = {}
-        feature_cols = [f"D{str(i).zfill(3)}" for i in range(1, 101)]
+        # Define dimension groups
+        self.groups = {
+            "clinical": range(0, 10),
+            "severity": range(10, 20),
+            "intensity": range(20, 30),
+            "anatomy": range(30, 40),
+            "episode": range(40, 50),
+            "billing": range(50, 60),
+            "bundling": range(60, 70),
+            "dx_proc_link": range(70, 80),
+            "risk": range(80, 90),
+            "financial": range(90, 100)
+        }
 
-        for _, row in self.df.iterrows():
-            code = str(row["code"]).strip()
-            vec = row[feature_cols].values.astype(float)
-            embeddings[code] = vec
+    # =========================================================
+    # COSINE SIMILARITY
+    # =========================================================
+    def cosine_similarity(self, v1, v2):
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
 
-        return embeddings
-
-    # ---------------------------
-    # Weighted cosine
-    # ---------------------------
-    def weighted_cosine(self, v1, v2, weight_vector):
-        v1_w = v1 * weight_vector
-        v2_w = v2 * weight_vector
-
-        dot = np.dot(v1_w, v2_w)
-        norm1 = np.linalg.norm(v1_w)
-        norm2 = np.linalg.norm(v2_w)
-
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-
-        return dot / (norm1 * norm2)
-
-    # ---------------------------
-    # Build weight vector
-    # ---------------------------
-    def build_weights(self, group_weights):
-        W = np.ones(100)
-
-        for group, weight in group_weights.items():
-            for idx in self.groups[group]:
-                W[idx] = weight
-
-        return W
-
-    # ---------------------------
-    # Core similarity functions
-    # ---------------------------
-    def similarity(self, code1, code2, weights):
+    # =========================================================
+    # WEIGHTED SIMILARITY
+    # =========================================================
+    def weighted_similarity(self, code1, code2, weights):
         if code1 not in self.embeddings or code2 not in self.embeddings:
-            raise ValueError(f"{code1} or {code2} not found")
+            raise ValueError(f"Missing code: {code1} or {code2}")
 
-        W = self.build_weights(weights)
         v1 = self.embeddings[code1]
         v2 = self.embeddings[code2]
 
-        return self.weighted_cosine(v1, v2, W)
+        score = 0.0
+        total_weight = 0.0
+        group_scores = {}
 
-    # ---------------------------
-    # Mod 59 scoring
-    # ---------------------------
-    def mod59_score(self, cpt1, cpt2):
-        bundling_weights = {"bundling": 3.0, "fwa_risk": 2.5}
-        anatomy_weights = {"anatomical_site": 3.0}
-        clinical_weights = {"clinical_domain": 2.0, "dx_proc_link": 2.5}
+        for group, idxs in self.groups.items():
+            sub_v1 = v1[list(idxs)]
+            sub_v2 = v2[list(idxs)]
 
-        bundling_sim = self.similarity(cpt1, cpt2, bundling_weights)
-        anatomy_sim = self.similarity(cpt1, cpt2, anatomy_weights)
-        clinical_sim = self.similarity(cpt1, cpt2, clinical_weights)
+            sim = self.cosine_similarity(sub_v1, sub_v2)
+            w = weights.get(group, 1.0)
 
-        # Risk score
-        risk_score = (
-            0.5 * bundling_sim +
-            0.3 * anatomy_sim -
-            0.2 * clinical_sim
-        )
+            group_scores[group] = sim
+            score += sim * w
+            total_weight += w
 
-        return {
-            "bundling_sim": round(bundling_sim, 4),
-            "anatomy_sim": round(anatomy_sim, 4),
-            "clinical_sim": round(clinical_sim, 4),
-            "risk_score": round(risk_score, 4)
+        final_score = score / total_weight if total_weight else 0
+
+        return final_score, group_scores
+
+    # =========================================================
+    # MODIFIER 59 RISK EVALUATION
+    # =========================================================
+    def evaluate_mod59(self, code1, code2):
+        weights = {
+            "bundling": 3.0,
+            "anatomy": 2.5,
+            "risk": 2.0,
+            "clinical": 1.5,
+            "intensity": 1.5,
+            "dx_proc_link": 1.5,
+            "financial": 1.0,
+            "billing": 1.0,
+            "episode": 1.0,
+            "severity": 1.0
         }
 
+        score, group_scores = self.weighted_similarity(code1, code2, weights)
+
+        # Risk classification
+        if score > 0.75:
+            risk = "🚨 HIGH RISK (Likely Unbundling)"
+        elif score > 0.5:
+            risk = "⚖️ MODERATE (Needs Review)"
+        else:
+            risk = "✅ LOW RISK (Likely Valid)"
+
+        return score, risk, group_scores
+
 
 # =========================================================
-# 🔥 TEST CASES
+# TEST SUITE
 # =========================================================
-if __name__ == "__main__":
-
-    validator = Mod59EmbeddingValidator("all.csv")
-
-    # -----------------------------------------
-    # Replace with CPTs present in your file
-    # -----------------------------------------
-
+def run_tests(validator):
     test_cases = [
-        {
-            "name": "🚨 Likely Unbundling (Same procedure family)",
-            "cpt1": "45378",  # Colonoscopy diagnostic
-            "cpt2": "45380",  # Colonoscopy with biopsy
-            "expected": "HIGH RISK"
-        },
-        {
-            "name": "🚨 Likely Same Anatomy Conflict",
-            "cpt1": "17000",  # Skin lesion removal
-            "cpt2": "17003",  # Additional lesions
-            "expected": "HIGH RISK"
-        },
-        {
-            "name": "✅ Likely Valid Mod 59 (Different anatomy)",
-            "cpt1": "29881",  # Knee arthroscopy
-            "cpt2": "11042",  # Wound debridement
-            "expected": "LOW RISK"
-        },
-        {
-            "name": "⚖️ Edge Case",
-            "cpt1": "93000",  # ECG
-            "cpt2": "71020",  # Chest X-ray
-            "expected": "MODERATE"
-        }
+
+        # HIGH RISK
+        ("45378", "45380", "Same family endoscopy"),
+        ("17000", "17003", "Add-on misuse"),
+        ("47562", "47563", "Same organ procedures"),
+        ("99213", "99215", "E/M upcoding"),
+        ("27130", "27132", "Procedure vs variant"),
+        ("64483", "64484", "Injection add-on"),
+
+        # LOW RISK
+        ("29881", "43239", "Different systems"),
+        ("11042", "71020", "Surgery vs imaging"),
+        ("93000", "11042", "Diagnostic vs therapeutic"),
+        ("93000", "45378", "Random unrelated"),
+
+        # MODERATE
+        ("17110", "17111", "Lesion count variation"),
+        ("71250", "71020", "CT vs X-ray"),
+        ("20550", "20610", "Nearby anatomy"),
+
+        # VALID SAME SYSTEM DIFFERENT SITE
+        ("29881", "29827", "Knee vs shoulder"),
     ]
 
-    print("\n================ MOD 59 VALIDATION RESULTS ================\n")
+    print("\n================ MODIFIER 59 VALIDATION ================\n")
 
-    for test in test_cases:
-        c1 = test["cpt1"]
-        c2 = test["cpt2"]
-
+    for c1, c2, desc in test_cases:
         try:
-            result = validator.mod59_score(c1, c2)
+            score, risk, group_scores = validator.evaluate_mod59(c1, c2)
 
-            print(f"Test: {test['name']}")
+            print(f"🧪 Test: {desc}")
             print(f"CPT Pair: {c1} vs {c2}")
-            print(f"Expected: {test['expected']}")
-            print("Output:", result)
+            print(f"Score: {round(score, 3)}")
+            print(f"Risk: {risk}")
 
-            # Basic interpretation
-            if result["risk_score"] > 0.6:
-                print("➡️ Flag: HIGH RISK (Possible Mod 59 misuse)")
-            elif result["risk_score"] > 0.3:
-                print("➡️ Flag: MODERATE RISK")
-            else:
-                print("➡️ Flag: LOW RISK (Likely valid)")
+            print("🔍 Dimension Breakdown:")
+            for k, v in group_scores.items():
+                print(f"   {k:15}: {round(v, 3)}")
 
             print("-" * 60)
 
         except Exception as e:
-            print(f"Error with {c1}, {c2}: {e}")
+            print(f"Error with {c1}-{c2}: {e}")
+
+
+# =========================================================
+# MAIN
+# =========================================================
+if __name__ == "__main__":
+    validator = CPTEmbeddingValidator("all.csv")
+    run_tests(validator)
