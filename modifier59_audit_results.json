@@ -1,0 +1,160 @@
+[
+  {
+    "claim_id": "C1",
+    "scenario": "Clearly Bundled Case",
+    "cpt_codes": [
+      "93000",
+      "93010"
+    ],
+    "modifier_59_on": "93010",
+    "similarities": {
+      "93000_vs_93010": 0.88
+    },
+    "modifier_59_status": "Likely Invalid",
+    "risk_score": 0.88,
+    "confidence": "High",
+    "key_drivers": [
+      "Very high similarity between 93000 and 93010 (0.88) \u2014 exceeds 0.85 bundling threshold; strong procedural overlap signal",
+      "Modifier 59 applied to 93010 (ECG Interpretation Only) \u2014 evaluated against all co-billed codes on this claim"
+    ],
+    "reasoning": {
+      "embedding_interpretation": "The dominant pair (93000 \u2194 93010) yields a cosine similarity of 0.88, placing it firmly in the >0.85 'likely duplicate or component' zone. The embedding model encodes these codes as near-identical in procedural semantics \u2014 consistent with a parent-child or component billing relationship. The residual difference (0.12) represents noise rather than clinically meaningful distinction.",
+      "bundling_likelihood": "HIGH likelihood of component bundling or duplication. One code likely subsumes the other under standard NCCI logic. Billing both separately constitutes unbundling unless extraordinary circumstances (separate sites, separate providers, separate encounters) are documented.",
+      "limitations": "IMPORTANT: This analysis is based solely on CPT embedding similarity. No diagnosis codes, anatomical site labels, provider specialty, or documentation context are available. Embedding similarity is a proxy for procedural relatedness \u2014 it cannot confirm or deny: (a) different anatomical sites, (b) separate clinical encounters, (c) distinct medical necessity for each service, or (d) payer-specific bundling policies. Uncertainty level: LOW (similarity is decisive)."
+    },
+    "axis_contributions": {
+      "60-69": "VERY HIGH (0.88). Near-maximum bundling cohesion detected. The dominant pair's embedding proximity strongly implies a comprehensive/component relationship. This axis is the primary driver of the high risk score.",
+      "70-79": "HIGH (avg similarity: 0.88). All codes cluster tightly in the same procedural family. High intra-claim procedural homogeneity \u2014 consistent with same-technique or same-system billing.",
+      "80-89": "HIGH. The combination of high similarity and Modifier 59 usage is a documented FWA pattern (unbundling). The embedding independently corroborates the risk without external labels. Automated denial or pre-payment review is supported."
+    },
+    "counterfactual": "Modifier 59 on the flagged code could be reconsidered ONLY if: (1) Medical records explicitly document that 93000 and 93010 were performed on anatomically distinct sites (e.g., different body regions, different laterality), (2) Separate encounters or distinct timed blocks are documented with individual procedure notes, (3) Different performing providers (separate NPIs) executed each service, or (4) A payer-specific policy explicitly permits unbundled billing for this pair. None of these conditions are detectable from embedding similarity alone. Current evidence (similarity: 0.88) supports denial or human review escalation."
+  },
+  {
+    "claim_id": "C2",
+    "scenario": "Clearly Distinct Case",
+    "cpt_codes": [
+      "11042",
+      "93000",
+      "97110"
+    ],
+    "modifier_59_on": "11042",
+    "similarities": {
+      "11042_vs_93000": 0.29,
+      "11042_vs_97110": 0.35,
+      "93000_vs_97110": 0.31
+    },
+    "modifier_59_status": "Valid",
+    "risk_score": 0.34,
+    "confidence": "High",
+    "key_drivers": [
+      "Low similarity between 11042 and 97110 (0.35) \u2014 distinct procedural families; embedding supports independence",
+      "Low similarity between 93000 and 97110 (0.31) \u2014 distinct procedural families; embedding supports independence",
+      "Low similarity between 11042 and 93000 (0.29) \u2014 distinct procedural families; embedding supports independence"
+    ],
+    "reasoning": {
+      "embedding_interpretation": "All pairwise similarities are below 0.65 (max: 0.35, avg: 0.32). The embedding model places these codes in geometrically distant regions of procedure space, indicating they encode fundamentally different clinical activities with no shared technique, instrument, or indication cluster.",
+      "bundling_likelihood": "LOW bundling likelihood. No embedding evidence of shared procedural logic, component relationships, or technique overlap. These codes are most consistent with independent services across separate clinical domains.",
+      "limitations": "IMPORTANT: This analysis is based solely on CPT embedding similarity. No diagnosis codes, anatomical site labels, provider specialty, or documentation context are available. Embedding similarity is a proxy for procedural relatedness \u2014 it cannot confirm or deny: (a) different anatomical sites, (b) separate clinical encounters, (c) distinct medical necessity for each service, or (d) payer-specific bundling policies. Uncertainty level: LOW (similarity is decisive)."
+    },
+    "axis_contributions": {
+      "60-69": "VERY LOW (max: 0.35, avg: 0.32). Near-zero bundling cohesion across all pairs. No component or comprehensive relationship is implied by the embedding geometry.",
+      "70-79": "LOW (avg similarity: 0.32). Codes occupy maximally separated procedural clusters. The claim reflects multi-system or multi-technique service delivery \u2014 embedding strongly supports procedural independence.",
+      "80-89": "LOW. No procedural overlap signal detected. Multi-system same-day billing carries low inherent FWA risk from a bundling standpoint. Medical necessity risk (if any) is outside the scope of embedding-based analysis."
+    },
+    "counterfactual": "Modifier 59 is well-supported by embedding evidence (max similarity: 0.35). What would INVALIDATE it: if any code pair were found to share similarity >0.85, indicating one subsumed the other \u2014 which is not the case here. Secondary concern: verify that E&M codes carry Modifier 25 (not 59) when co-billed with same-day procedures, as this distinction is outside the scope of embedding analysis."
+  },
+  {
+    "claim_id": "C3",
+    "scenario": "Borderline Case",
+    "cpt_codes": [
+      "97110",
+      "97140"
+    ],
+    "modifier_59_on": "97140",
+    "similarities": {
+      "97110_vs_97140": 0.79
+    },
+    "modifier_59_status": "Questionable",
+    "risk_score": 0.79,
+    "confidence": "Medium",
+    "key_drivers": [
+      "Moderate similarity between 97110 and 97140 (0.79) \u2014 related procedures; possible time-based or staged bundling conflict",
+      "Modifier 59 applied to 97140 (Manual Therapy) \u2014 evaluated against all co-billed codes on this claim"
+    ],
+    "reasoning": {
+      "embedding_interpretation": "The dominant pair (97110 \u2194 97140) yields a cosine similarity of 0.79, falling in the borderline 0.65\u20130.85 zone. The embedding encodes meaningful shared variance \u2014 both codes likely occupy the same procedural cluster \u2014 but maintains enough directional separation to avoid a definitive bundling classification. Ambiguity is inherent at this similarity level.",
+      "bundling_likelihood": "MODERATE bundling likelihood. Codes are related but not confirmed as components. Whether these represent independent services depends on documentation of distinct timed units, separate clinical goals, or anatomically distinct sites \u2014 none of which are detectable from embeddings alone.",
+      "limitations": "IMPORTANT: This analysis is based solely on CPT embedding similarity. No diagnosis codes, anatomical site labels, provider specialty, or documentation context are available. Embedding similarity is a proxy for procedural relatedness \u2014 it cannot confirm or deny: (a) different anatomical sites, (b) separate clinical encounters, (c) distinct medical necessity for each service, or (d) payer-specific bundling policies. Uncertainty level: HIGH (similarity is borderline)."
+    },
+    "axis_contributions": {
+      "60-69": "MODERATE (0.79). Meaningful cohesion without crossing the definitive threshold. Shared procedural logic is present but a strict parent-child relationship is not confirmed.",
+      "70-79": "HIGH (avg similarity: 0.79). All codes cluster tightly in the same procedural family. High intra-claim procedural homogeneity \u2014 consistent with same-technique or same-system billing.",
+      "80-89": "MODERATE. Same-cluster billing with Modifier 59 elevates FWA risk above baseline. This pattern warrants post-payment review or documentation request. Automated denial is not supported without additional evidence."
+    },
+    "counterfactual": "Modifier 59 could be CONFIRMED VALID if: (1) Therapy/procedure notes document distinct timed units with separate clinical goals for 97110 and 97140, (2) Services were applied to anatomically distinct body regions within the same encounter, (3) Payer policy explicitly permits same-session concurrent billing for this pair with Modifier 59. Modifier 59 would be INVALIDATED if a single continuous time block was split across both codes. Recommendation: Request documentation before rendering a final determination. Similarity (0.79) alone is insufficient to decide."
+  },
+  {
+    "claim_id": "C4",
+    "scenario": "Adversarial Case (high similarity, attempted justification)",
+    "cpt_codes": [
+      "20610",
+      "20600"
+    ],
+    "modifier_59_on": "20600",
+    "similarities": {
+      "20610_vs_20600": 0.91
+    },
+    "modifier_59_status": "Likely Invalid",
+    "risk_score": 0.91,
+    "confidence": "High",
+    "key_drivers": [
+      "Very high similarity between 20610 and 20600 (0.91) \u2014 exceeds 0.85 bundling threshold; strong procedural overlap signal",
+      "Modifier 59 applied to 20600 (Arthrocentesis, Small Joint) \u2014 evaluated against all co-billed codes on this claim"
+    ],
+    "reasoning": {
+      "embedding_interpretation": "The dominant pair (20610 \u2194 20600) yields a cosine similarity of 0.91, placing it firmly in the >0.85 'likely duplicate or component' zone. The embedding model encodes these codes as near-identical in procedural semantics \u2014 consistent with a parent-child or component billing relationship. The residual difference (0.09) represents noise rather than clinically meaningful distinction.",
+      "bundling_likelihood": "HIGH likelihood of component bundling or duplication. One code likely subsumes the other under standard NCCI logic. Billing both separately constitutes unbundling unless extraordinary circumstances (separate sites, separate providers, separate encounters) are documented.",
+      "limitations": "IMPORTANT: This analysis is based solely on CPT embedding similarity. No diagnosis codes, anatomical site labels, provider specialty, or documentation context are available. Embedding similarity is a proxy for procedural relatedness \u2014 it cannot confirm or deny: (a) different anatomical sites, (b) separate clinical encounters, (c) distinct medical necessity for each service, or (d) payer-specific bundling policies. Uncertainty level: LOW (similarity is decisive)."
+    },
+    "axis_contributions": {
+      "60-69": "VERY HIGH (0.91). Near-maximum bundling cohesion detected. The dominant pair's embedding proximity strongly implies a comprehensive/component relationship. This axis is the primary driver of the high risk score.",
+      "70-79": "HIGH (avg similarity: 0.91). All codes cluster tightly in the same procedural family. High intra-claim procedural homogeneity \u2014 consistent with same-technique or same-system billing.",
+      "80-89": "HIGH. The combination of high similarity and Modifier 59 usage is a documented FWA pattern (unbundling). The embedding independently corroborates the risk without external labels. Automated denial or pre-payment review is supported."
+    },
+    "counterfactual": "Modifier 59 on the flagged code could be reconsidered ONLY if: (1) Medical records explicitly document that 20610 and 20600 were performed on anatomically distinct sites (e.g., different body regions, different laterality), (2) Separate encounters or distinct timed blocks are documented with individual procedure notes, (3) Different performing providers (separate NPIs) executed each service, or (4) A payer-specific policy explicitly permits unbundled billing for this pair. None of these conditions are detectable from embedding similarity alone. Current evidence (similarity: 0.91) supports denial or human review escalation."
+  },
+  {
+    "claim_id": "C5",
+    "scenario": "Noise Case (unrelated CPT added)",
+    "cpt_codes": [
+      "99214",
+      "20610",
+      "93000"
+    ],
+    "modifier_59_on": "20610",
+    "similarities": {
+      "99214_vs_20610": 0.54,
+      "99214_vs_93000": 0.57,
+      "20610_vs_93000": 0.38
+    },
+    "modifier_59_status": "Valid",
+    "risk_score": 0.55,
+    "confidence": "Medium",
+    "key_drivers": [
+      "Low similarity between 99214 and 93000 (0.57) \u2014 distinct procedural families; embedding supports independence",
+      "Low similarity between 99214 and 20610 (0.54) \u2014 distinct procedural families; embedding supports independence",
+      "Low similarity between 20610 and 93000 (0.38) \u2014 distinct procedural families; embedding supports independence"
+    ],
+    "reasoning": {
+      "embedding_interpretation": "All pairwise similarities are below 0.65 (max: 0.57, avg: 0.50). The embedding model places these codes in geometrically distant regions of procedure space, indicating they encode fundamentally different clinical activities with no shared technique, instrument, or indication cluster.",
+      "bundling_likelihood": "LOW bundling likelihood. No embedding evidence of shared procedural logic, component relationships, or technique overlap. These codes are most consistent with independent services across separate clinical domains.",
+      "limitations": "IMPORTANT: This analysis is based solely on CPT embedding similarity. No diagnosis codes, anatomical site labels, provider specialty, or documentation context are available. Embedding similarity is a proxy for procedural relatedness \u2014 it cannot confirm or deny: (a) different anatomical sites, (b) separate clinical encounters, (c) distinct medical necessity for each service, or (d) payer-specific bundling policies. Uncertainty level: LOW (similarity is decisive)."
+    },
+    "axis_contributions": {
+      "60-69": "VERY LOW (max: 0.57, avg: 0.50). Near-zero bundling cohesion across all pairs. No component or comprehensive relationship is implied by the embedding geometry.",
+      "70-79": "LOW (avg similarity: 0.50). Codes occupy maximally separated procedural clusters. The claim reflects multi-system or multi-technique service delivery \u2014 embedding strongly supports procedural independence.",
+      "80-89": "LOW. No procedural overlap signal detected. Multi-system same-day billing carries low inherent FWA risk from a bundling standpoint. Medical necessity risk (if any) is outside the scope of embedding-based analysis."
+    },
+    "counterfactual": "Modifier 59 is well-supported by embedding evidence (max similarity: 0.57). What would INVALIDATE it: if any code pair were found to share similarity >0.85, indicating one subsumed the other \u2014 which is not the case here. Secondary concern: verify that E&M codes carry Modifier 25 (not 59) when co-billed with same-day procedures, as this distinction is outside the scope of embedding analysis."
+  }
+]
