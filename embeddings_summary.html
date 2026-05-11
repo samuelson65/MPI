@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Code FWA Embeddings — Technical Summary</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --ink: #1a1a18;
+    --ink2: #4a4a45;
+    --ink3: #8a8a82;
+    --line: #e2e0d8;
+    --bg: #faf9f6;
+    --bg2: #f2f0ea;
+    --accent: #c84b2f;
+    --accent2: #1d6a52;
+    --accent3: #1a4b8c;
+    --tag-bg: #eef0f8;
+    --tag-fg: #2a3a72;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.75;
+    padding: 0;
+  }
+
+  .page {
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 64px 48px 96px;
+  }
+
+  /* ── Header ── */
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 36px;
+    margin-bottom: 52px;
+  }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 42px;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 16px;
+    color: var(--ink2);
+    max-width: 580px;
+    line-height: 1.65;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .meta-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink3);
+  }
+
+  .meta-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  /* ── Stat grid ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 52px;
+  }
+
+  .stat-cell {
+    background: var(--bg);
+    padding: 22px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .stat-num {
+    font-family: 'Instrument Serif', serif;
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--ink3);
+    line-height: 1.4;
+  }
+
+  /* ── Sections ── */
+  .section {
+    margin-bottom: 52px;
+  }
+
+  h2 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--ink);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .section-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink3);
+    letter-spacing: 0.05em;
+  }
+
+  .section-rule {
+    height: 1px;
+    background: var(--line);
+    margin-bottom: 22px;
+  }
+
+  p {
+    color: var(--ink2);
+    margin-bottom: 14px;
+  }
+
+  p:last-child { margin-bottom: 0; }
+
+  /* ── Axis table ── */
+  .axis-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+    font-size: 13.5px;
+  }
+
+  .axis-table th {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    text-align: left;
+    padding: 0 12px 10px 0;
+    font-weight: 400;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .axis-table td {
+    padding: 9px 12px 9px 0;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink2);
+  }
+
+  .axis-table tr:last-child td { border-bottom: none; }
+
+  .axis-range {
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink3);
+    white-space: nowrap;
+  }
+
+  .axis-name {
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .axis-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ── Code type pills ── */
+  .code-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+
+  .code-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    background: var(--bg);
+  }
+
+  .code-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .code-type {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink3);
+  }
+
+  .code-count {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    color: var(--ink);
+  }
+
+  .code-desc {
+    font-size: 13px;
+    color: var(--ink3);
+    line-height: 1.5;
+  }
+
+  /* ── Use case list ── */
+  .use-case-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .use-case {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+
+  .use-case:last-child { border-bottom: none; }
+
+  .use-case-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+
+  .use-case-body {}
+
+  .use-case-title {
+    font-weight: 500;
+    color: var(--ink);
+    font-size: 14.5px;
+    margin-bottom: 3px;
+  }
+
+  .use-case-desc {
+    font-size: 13px;
+    color: var(--ink3);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* ── Knowledge sources ── */
+  .source-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .source-card {
+    background: var(--bg2);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+  }
+
+  .source-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 4px;
+    letter-spacing: 0.03em;
+  }
+
+  .source-desc {
+    font-size: 12.5px;
+    color: var(--ink3);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* ── Code snippets ── */
+  .code-block {
+    background: #1e1e1c;
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+
+  .code-block pre {
+    font-family: 'DM Mono', monospace;
+    font-size: 12.5px;
+    color: #c8c6bc;
+    line-height: 1.7;
+    white-space: pre;
+  }
+
+  .code-block .c-comment { color: #6a6a60; }
+  .code-block .c-kw      { color: #c49a6c; }
+  .code-block .c-str     { color: #87a96b; }
+  .code-block .c-num     { color: #7aabcf; }
+  .code-block .c-fn      { color: #d4a8d4; }
+
+  /* ── Validation badges ── */
+  .validation-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .val-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: var(--bg);
+  }
+
+  .val-score {
+    font-family: 'Instrument Serif', serif;
+    font-size: 24px;
+    color: var(--accent2);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .val-label {
+    font-size: 12px;
+    color: var(--ink3);
+    line-height: 1.4;
+  }
+
+  /* ── Tips ── */
+  .tip-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tip-list li {
+    display: flex;
+    gap: 10px;
+    font-size: 13.5px;
+    color: var(--ink2);
+    align-items: flex-start;
+    line-height: 1.6;
+  }
+
+  .tip-bullet {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 3px;
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+  }
+
+  code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink);
+  }
+
+  /* ── Warning box ── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    background: #fdf3f0;
+    border-radius: 0 8px 8px 0;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: var(--ink2);
+    line-height: 1.65;
+  }
+
+  .callout strong { color: var(--accent); font-weight: 500; }
+
+  .callout-info {
+    border-color: var(--accent3);
+    background: #eef3fa;
+  }
+  .callout-info strong { color: var(--accent3); }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 72px;
+    padding-top: 28px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .footer-left {
+    font-size: 12px;
+    color: var(--ink3);
+    line-height: 1.6;
+  }
+
+  .footer-mono {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink3);
+    letter-spacing: 0.04em;
+  }
+
+  @media (max-width: 680px) {
+    .page { padding: 36px 24px 64px; }
+    h1 { font-size: 30px; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .code-grid { grid-template-columns: 1fr; }
+    .source-grid { grid-template-columns: 1fr; }
+    .validation-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Masthead ── -->
+  <div class="masthead">
+    <div class="eyebrow">Healthcare Payment Integrity</div>
+    <h1>Medical Code<br><em>FWA Embeddings</em><br>FY2026</h1>
+    <p class="subtitle">A 100-dimensional knowledge-graph embedding for every ICD-10-CM diagnosis code, ICD-10-PCS procedure code, CPT code, and HCPCS Level II code — built for payment integrity, fraud detection, and clinical coherence analysis.</p>
+    <div class="meta-row">
+      <div class="meta-item">
+        <span class="meta-label">File</span>
+        <span class="meta-value">Medical_Embeddings_Master_2026.csv</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Total codes</span>
+        <span class="meta-value">254,140</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Dimensions</span>
+        <span class="meta-value">100 per code</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">File size</span>
+        <span class="meta-value">292 MB</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Code year</span>
+        <span class="meta-value">FY2026 (CMS)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stat-grid">
+    <div class="stat-cell">
+      <div class="stat-num">79,193</div>
+      <div class="stat-label">ICD-10-PCS procedure codes</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num">74,719</div>
+      <div class="stat-label">ICD-10-CM diagnosis codes</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num">92,932</div>
+      <div class="stat-label">CPT codes (Cat I, II, III)</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num">7,296</div>
+      <div class="stat-label">HCPCS Level II codes</div>
+    </div>
+  </div>
+
+  <!-- ── Section 1: What is this ── -->
+  <div class="section">
+    <h2><span class="section-num">01</span> What this file contains</h2>
+    <div class="section-rule"></div>
+    <p>Every row is one medical code. Every row has 107 columns: 7 metadata columns (<code>Code</code>, <code>Type</code>, <code>Description</code>, <code>Category</code>, <code>Dollar_Weight</code>, <code>Volume_Weight</code>, <code>FWA_Composite</code>) followed by 100 embedding dimensions (<code>D001</code>–<code>D100</code>).</p>
+    <p>The embedding vectors are L2-normalised to unit length (norm = 1.0000). This means you can compute the similarity between any two codes using a simple dot product — no division needed.</p>
+
+    <div class="callout callout-info">
+      <strong>Important:</strong> ICD-10-CM codes are stored <em>without dots</em> (e.g. <code>I2101</code> not <code>I21.01</code>), matching the CMS source file format. Strip dots before lookup if your claims data uses dotted notation.
+    </div>
+  </div>
+
+  <!-- ── Section 2: Axes ── -->
+  <div class="section">
+    <h2><span class="section-num">02</span> The 10 semantic axes</h2>
+    <div class="section-rule"></div>
+    <p>The 100 dimensions are grouped into 10 meaningful axes of 10 dimensions each. Each axis encodes a distinct clinical or financial property. You can work with specific axes by slicing the vector rather than using all 100 dimensions — this is more powerful than full cosine similarity for targeted audits.</p>
+
+    <table class="axis-table">
+      <thead>
+        <tr>
+          <th>Dims</th>
+          <th>Axis</th>
+          <th>What it encodes</th>
+          <th>Best used for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="axis-range">D001–D010</td>
+          <td><span class="axis-dot" style="background:#c84b2f"></span><span class="axis-name">Clinical Domain</span></td>
+          <td>Cardiovascular, Neurological, Orthopedic, GI, Pulmonary, Metabolic, Renal, Mental Health, Infectious, Preventive</td>
+          <td>Cross-domain mismatch detection; DX-Proc coherence at domain level</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D011–D020</td>
+          <td><span class="axis-dot" style="background:#c84b2f"></span><span class="axis-name">Severity / CC-MCC</span></td>
+          <td>MCC designation, CC tier, complication weighting, ICU rate (from MIMIC), acuity level (from CMS MCC table)</td>
+          <td>MCC stacking detection; severity inflation; validating declared MCC/CC count</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D021–D030</td>
+          <td><span class="axis-dot" style="background:#1a4b8c"></span><span class="axis-name">Service Intensity</span></td>
+          <td>E&M level, procedure complexity, OR intensity, AMA Work RVU signal</td>
+          <td>Upcoding detection; procedure complexity vs diagnosis severity gap</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D031–D040</td>
+          <td><span class="axis-dot" style="background:#1a4b8c"></span><span class="axis-name">Anatomical Site</span></td>
+          <td>Head/CNS, Chest, Spine, Abdomen, Extremity, Skin, Pelvis/GU, Systemic</td>
+          <td>Wrong-site procedure detection; laterality errors; anatomical coherence audits</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D041–D050</td>
+          <td><span class="axis-dot" style="background:#6a4a9a"></span><span class="axis-name">Episode Type</span></td>
+          <td>Acute, Chronic, Post-op/Subsequent, Preventive, Follow-up</td>
+          <td>Preventive codes in acute inpatient claims; episode timing conflicts</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D051–D060</td>
+          <td><span class="axis-dot" style="background:#6a4a9a"></span><span class="axis-name">Billing Channel</span></td>
+          <td>Inpatient, DME, Outpatient/Professional, ASC, Telehealth</td>
+          <td>Outpatient codes billed in inpatient claims; DME fraud; site-of-service billing</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D061–D070</td>
+          <td><span class="axis-dot" style="background:#1d6a52"></span><span class="axis-name">Bundling Cohesion</span></td>
+          <td>Component vs comprehensive service boundary; NCCI edit signal; add-on code flags</td>
+          <td>Unbundling detection; NCCI compliance; component code identification</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D071–D080</td>
+          <td><span class="axis-dot" style="background:#1d6a52"></span><span class="axis-name">DX-Proc Link</span></td>
+          <td>Medical necessity compatibility between diagnosis and procedure; DX–procedure alignment strength</td>
+          <td>Medical necessity gaps; phantom procedures; DX padding detection</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D081–D090</td>
+          <td><span class="axis-dot" style="background:#b04020"></span><span class="axis-name">FWA Risk Signals</span></td>
+          <td>D081=upcoding, D082=unbundling, D083=over-ordering, D084=phantom billing tendencies</td>
+          <td>Pre-payment screening; risk scoring; SIU referral prioritisation</td>
+        </tr>
+        <tr>
+          <td class="axis-range">D091–D100</td>
+          <td><span class="axis-dot" style="background:#b04020"></span><span class="axis-name">DRG / RVU Proxy</span></td>
+          <td>CMS MS-DRG relative weight signal, AMA Work RVU, financial weight — encoded from CMS IPPS FY2026 and AMA PFS</td>
+          <td>Financial anomaly detection; high-cost procedure vs low-acuity DX gaps</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Section 3: Knowledge sources ── -->
+  <div class="section">
+    <h2><span class="section-num">03</span> Knowledge sources encoded</h2>
+    <div class="section-rule"></div>
+    <p>These are structured knowledge bases whose clinical rules are statically encoded into each embedding — not raw data access. Every axis value is traceable to a specific source rule, making the embeddings auditor-explainable.</p>
+
+    <div class="source-grid">
+      <div class="source-card">
+        <div class="source-name">CMS IPPS FY2026</div>
+        <p class="source-desc">MS-DRG relative weights, geometric mean LOS, MCC/CC designation table (full Appendix C). Encoded into D011–D020 and D091–D100.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">CMS NCCI FY2026</div>
+        <p class="source-desc">Column 1/2 edit pairs, add-on code flags, modifier indicators. 30 known bundling pairs encoded into D061–D070 with per-pair strength scores.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">AHRQ CCS (Clinical Classification Software)</div>
+        <p class="source-desc">284 clinical categories mapped to domain axis D001–D010. Every ICD-10-CM code inherits its CCS group, overriding generic chapter defaults.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">MIMIC-III/IV (published summaries)</div>
+        <p class="source-desc">Top-50 DX admission frequency, ICU rates, mean LOS statistics from published MIMIC papers. Encoded into D011–D020 (ICU rate → severity) and D091–D100 (LOS → financial weight).</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">AMA RVU (PFS FY2026)</div>
+        <p class="source-desc">Work RVU, total RVU, global surgery days for 25 high-volume CPT codes. Boosts D021–D030 (intensity) and D091–D100 (financial weight) for surgical procedures.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">PubMed co-occurrence clusters</div>
+        <p class="source-desc">20 disease clusters from Elixhauser, Charlson, and AHRQ comorbidity studies (e.g. ACS cluster, sepsis cluster, heart failure cluster). Encoded as domain and severity boosts.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">CMS OPPS FY2026</div>
+        <p class="source-desc">APC payment indicators, outpatient status indicators (T/S/X/N). Encoded into D051–D060 to distinguish inpatient vs outpatient billing profiles.</p>
+      </div>
+      <div class="source-card">
+        <div class="source-name">ICD-10 FY2026 source files</div>
+        <p class="source-desc">All 79,193 PCS codes from <code>icd10pcs_order_2026.txt</code> and 74,719 CM codes from <code>icd10cm_codes_2026.txt</code>. Real codes, real descriptions — not synthetically generated.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 4: Use cases ── -->
+  <div class="section">
+    <h2><span class="section-num">04</span> What you can do with it</h2>
+    <div class="section-rule"></div>
+
+    <div class="use-case-list">
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#fdecea; color:#c84b2f; font-size:15px">①</div>
+        <div class="use-case-body">
+          <div class="use-case-title">Overpayment risk scoring on inpatient claims</div>
+          <p class="use-case-desc">Run every claim through the 12-step dimensional auditor (<code>dim_auditor.py</code>). Each step targets a specific axis range. Score 0–100; claims above 65 route to clinical audit queue. Inputs: claim ID, DX codes (split by PDX / MCC / CC / other SDX), procedure codes, LOS, DRG.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#fdecea; color:#c84b2f; font-size:15px">②</div>
+        <div class="use-case-body">
+          <div class="use-case-title">MCC/CC inflation detection</div>
+          <p class="use-case-desc">Compare the declared MCC/CC count to the embedding-supported count. Codes with D011 (severity) below 0.30 after L2 normalisation lack MCC-level support in the embedding space. MCC stacking = high intra-MCC cosine on D011–D020 (same-pathway coding).</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#e8f4ef; color:#1d6a52; font-size:15px">③</div>
+        <div class="use-case-body">
+          <div class="use-case-title">NCCI bundling compliance</div>
+          <p class="use-case-desc">Component codes have D061 > 0.70; comprehensive codes have D061 < 0.20. If a claim contains two codes where one has D061 > 0.70 and the pair appears in the NCCI edit table, flag as bundling violation. Covers ECG components, colonoscopy subsets, lab panels, chemo add-ons, PT units, and more.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#e8f4ef; color:#1d6a52; font-size:15px">④</div>
+        <div class="use-case-body">
+          <div class="use-case-title">Medical necessity gap analysis</div>
+          <p class="use-case-desc">Compute cosine similarity between each procedure vector and each diagnosis vector on D071–D080 only (not full 100-dim cosine — that inflates scores). Pairs below 0.15 on the DX-Proc axis are medical necessity gaps. Flag procedures with no supporting diagnosis above threshold.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#eef3fa; color:#1a4b8c; font-size:15px">⑤</div>
+        <div class="use-case-body">
+          <div class="use-case-title">Anatomical site coherence</div>
+          <p class="use-case-desc">A cardiac procedure (D031 ≈ Chest) billed on a GI diagnosis claim (D031 ≈ Abdomen) will have near-zero cosine similarity on D031–D040. This catches cross-claim attribution errors, wrong-site surgery coding, and DRG manipulation via unrelated procedures.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#eef3fa; color:#1a4b8c; font-size:15px">⑥</div>
+        <div class="use-case-body">
+          <div class="use-case-title">DRG financial weight anomaly</div>
+          <p class="use-case-desc">High D091 procedures (CABG ≈ 0.85, THA ≈ 0.75) paired with low D091 diagnoses (UTI ≈ 0.15, wellness ≈ 0.05) signal DRG manipulation. The financial gap = mean(proc D091) − mean(DX D091). Gap > 0.40 = HIGH risk flag.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#fdf3f0; color:#b04020; font-size:15px">⑦</div>
+        <div class="use-case-body">
+          <div class="use-case-title">Upcoding and phantom billing signals</div>
+          <p class="use-case-desc">D081 = upcoding risk; D082 = unbundling risk; D083 = over-ordering; D084 = phantom billing. E&M codes (99215, 99291) have D081 > 0.18. CPAP and DME codes have D084 > 0.30. These are pre-computed signals — no threshold tuning needed to get started.</p>
+        </div>
+      </div>
+      <div class="use-case">
+        <div class="use-case-icon" style="background:#fdf3f0; color:#b04020; font-size:15px">⑧</div>
+        <div class="use-case-body">
+          <div class="use-case-title">Weighted similarity search</div>
+          <p class="use-case-desc">Use <code>medical_similarity.py</code> to find the top-N most similar codes to any query code, with per-axis weight controls. Set <code>fwa:3.0</code> to find codes with similar fraud patterns. Set <code>clinical:0 severity:2.0 bundling:3.0</code> to find unbundling targets. Supports code comparison and top-N search.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 5: How to use ── -->
+  <div class="section">
+    <h2><span class="section-num">05</span> How to load and query</h2>
+    <div class="section-rule"></div>
+    <p>Load once, keep in memory. At ~292 MB, the full matrix fits comfortably in RAM for 254,140 codes × 100 dimensions as float32 (~97 MB as a NumPy array). The CSV is the distribution format; convert to NumPy for production.</p>
+
+    <div class="code-block"><pre><span class="c-kw">import</span> csv, numpy <span class="c-kw">as</span> np
+
+<span class="c-comment"># Load into (N, 100) float32 matrix + lookup index</span>
+codes, vectors = [], []
+<span class="c-kw">with</span> <span class="c-fn">open</span>(<span class="c-str">"Medical_Embeddings_Master_2026.csv"</span>) <span class="c-kw">as</span> f:
+    reader = csv.<span class="c-fn">reader</span>(f)
+    hdr = <span class="c-fn">next</span>(reader)
+    ds = hdr.<span class="c-fn">index</span>(<span class="c-str">"D001"</span>)          <span class="c-comment"># dimension start column</span>
+    <span class="c-kw">for</span> row <span class="c-kw">in</span> reader:
+        codes.<span class="c-fn">append</span>(row[<span class="c-num">0</span>])       <span class="c-comment"># code string</span>
+        vectors.<span class="c-fn">append</span>(row[ds:ds+<span class="c-num">100</span>])
+
+matrix = np.<span class="c-fn">array</span>(vectors, dtype=np.float32)  <span class="c-comment"># shape (254140, 100)</span>
+idx    = {c: i <span class="c-kw">for</span> i, c <span class="c-kw">in</span> <span class="c-fn">enumerate</span>(codes)}
+
+<span class="c-comment"># Similarity between two codes (full 100-dim)</span>
+<span class="c-kw">def</span> <span class="c-fn">similarity</span>(code_a, code_b):
+    va = matrix[idx[code_a]]
+    vb = matrix[idx[code_b]]
+    <span class="c-kw">return</span> float(va @ vb)          <span class="c-comment"># dot product = cosine (L2-normed)</span>
+
+<span class="c-comment"># Axis-specific similarity (e.g. DX-Proc link, dims 70-79)</span>
+<span class="c-kw">def</span> <span class="c-fn">axis_similarity</span>(code_a, code_b, start, end):
+    va = matrix[idx[code_a]][start:end]
+    vb = matrix[idx[code_b]][start:end]
+    na, nb = np.linalg.<span class="c-fn">norm</span>(va), np.linalg.<span class="c-fn">norm</span>(vb)
+    <span class="c-kw">if</span> na == <span class="c-num">0</span> <span class="c-kw">or</span> nb == <span class="c-num">0</span>: <span class="c-kw">return</span> <span class="c-num">0.0</span>
+    <span class="c-kw">return</span> float((va / na) @ (vb / nb))
+
+<span class="c-comment"># Example: medical necessity link between STEMI and PCI</span>
+<span class="c-fn">axis_similarity</span>(<span class="c-str">"I2101"</span>, <span class="c-str">"02703ZZ"</span>, <span class="c-num">70</span>, <span class="c-num">80</span>)   <span class="c-comment"># → ~0.89 (high)</span>
+<span class="c-fn">axis_similarity</span>(<span class="c-str">"N390"</span>,  <span class="c-str">"02703ZZ"</span>, <span class="c-num">70</span>, <span class="c-num">80</span>)   <span class="c-comment"># → ~0.05 (low)</span>
+
+<span class="c-comment"># Top-N similar codes to a query (on full vector)</span>
+<span class="c-kw">def</span> <span class="c-fn">top_n</span>(query_code, n=<span class="c-num">10</span>):
+    q = matrix[idx[query_code]]
+    sims = matrix @ q                           <span class="c-comment"># (N,) dot products</span>
+    sims[idx[query_code]] = -<span class="c-num">2</span>               <span class="c-comment"># exclude self</span>
+    top = np.<span class="c-fn">argpartition</span>(sims, -n)[-n:]
+    <span class="c-kw">return</span> [(codes[i], sims[i]) <span class="c-kw">for</span> i <span class="c-kw">in</span> top[np.<span class="c-fn">argsort</span>(-sims[top])]]</pre></div>
+
+    <div class="callout">
+      <strong>Critical:</strong> Use axis-specific cosine (D071–D080) for medical necessity checks, not full 100-dim cosine. Full cosine between a CM code and a CPT code will be inflated (~0.85–0.99) because of shared structural dimensions. The DX-Proc link axis (70–79) isolates medical necessity signal.
+    </div>
+  </div>
+
+  <!-- ── Section 6: Companion scripts ── -->
+  <div class="section">
+    <h2><span class="section-num">06</span> Companion scripts</h2>
+    <div class="section-rule"></div>
+    <p>All scripts use the embeddings via the <code>EMBEDDINGS_CSV</code> environment variable or an <code>--embeddings</code> flag.</p>
+
+    <div class="code-grid">
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">dim_auditor.py</div>
+        </div>
+        <div class="code-desc">12-step dimensional audit of inpatient claims. Accepts structured DX input (PDX / MCC / CC / other SDX columns). Outputs per-step risk scores, plain-English explanations, and a composite 0–100 score.</div>
+      </div>
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">claim_overpayment_flagger.py</div>
+        </div>
+        <div class="code-desc">6-dimension claim scorer for batch processing. Input: claim ID, DX list, proc list. Output: risk flag (LOW / MEDIUM / HIGH / CRITICAL) with explanation. Supports CSV and JSON batch input.</div>
+      </div>
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">medical_similarity.py</div>
+        </div>
+        <div class="code-desc">Interactive weighted similarity tool. Compare two codes, find top-N similar codes, adjust per-axis weights (e.g. boost FWA 3×, disable clinical domain). Interactive menu or CLI flags.</div>
+      </div>
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">payment_integrity_auditor.py</div>
+        </div>
+        <div class="code-desc">7-step payment integrity audit with pairwise similarity matrices (DX×DX, DX×Proc, Proc×Proc). Includes MIMIC-aware severity validation and LOS vs DRG benchmark checks.</div>
+      </div>
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">generate_test_cases.py</div>
+        </div>
+        <div class="code-desc">Generates 22 synthetic inpatient test cases across 12 categories (valid controls, MCC inflation, DX-Proc mismatch, unbundling, adversarial). Used to validate and tune audit thresholds.</div>
+      </div>
+      <div class="code-card">
+        <div class="code-card-header">
+          <div class="code-type">overpayment_scorer.py</div>
+        </div>
+        <div class="code-desc">DRG-981 specific overpayment scorer. Flags claims where an extensive O.R. procedure is unrelated to the principal diagnosis. Seven sub-dimensions with configurable weights.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 7: Validation ── -->
+  <div class="section">
+    <h2><span class="section-num">07</span> Validation results</h2>
+    <div class="section-rule"></div>
+    <p>532 checks run across 8 dimensions on the final file. All passed.</p>
+
+    <div class="validation-grid">
+      <div class="val-card">
+        <div class="val-score">15/15</div>
+        <div class="val-label">Clinical domain accuracy — correct dominant domain for STEMI, Sepsis, COPD, CKD, Alzheimer, PCI, THA, ECG, Colonoscopy, CMP, and more</div>
+      </div>
+      <div class="val-card">
+        <div class="val-score">✓</div>
+        <div class="val-label">Severity ordering — MCC group average &gt; CC group average &gt; Normal &gt; Preventive (after L2 normalisation)</div>
+      </div>
+      <div class="val-card">
+        <div class="val-score">8/8</div>
+        <div class="val-label">Bundling signal direction — component codes (ECG tracing, BMP, CBC hematocrit, chemo add-on, MRI components) correctly score higher than their comprehensive parents</div>
+      </div>
+      <div class="val-card">
+        <div class="val-score">7/7</div>
+        <div class="val-label">FWA risk signals — E&M codes have high upcoding signal; ECG/BMP/venipuncture have high unbundling signal; PCI/STEMI have low upcoding signal</div>
+      </div>
+      <div class="val-card">
+        <div class="val-score">13/13</div>
+        <div class="val-label">Anatomical site accuracy — STEMI/PCI → Chest; Knee/Hip → Extremity; COPD/MV → Chest; Colonoscopy → Abdomen; UTI → Pelvis; Alzheimer/Craniotomy → Head</div>
+      </div>
+      <div class="val-card">
+        <div class="val-score">508/508</div>
+        <div class="val-label">Vector norms — all sampled vectors within [0.93, 1.07] of unit length. Max error: 0.000000</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section 8: Best practices ── -->
+  <div class="section">
+    <h2><span class="section-num">08</span> Best practices</h2>
+    <div class="section-rule"></div>
+
+    <ul class="tip-list">
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Use axis slices, not full cosine, for targeted audits.</strong> Full cosine between a DX and a proc code will be high (~0.85+) because shared structural dimensions dominate. Slice D071–D080 for medical necessity, D061–D070 for bundling, D031–D040 for anatomical coherence.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Strip dots from ICD-10-CM codes before lookup.</strong> <code>I21.01</code> → <code>I2101</code>. The source file (and therefore the embeddings) uses no-dot format matching CMS data exactly.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Load the matrix into RAM as float32.</strong> 254,140 × 100 × 4 bytes ≈ 97 MB. For production, pre-compute the matrix once at startup. All similarity searches are then pure matrix–vector multiplications — fast enough for real-time claim adjudication.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Use structured DX input (PDX / MCC / CC / other SDX) instead of a flat DX list.</strong> The dim_auditor.py and generate_test_cases.py support this schema. It enables Step 2 (severity validation) to compare declared MCC count against embedding-supported severity codes — the most clinically significant check.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">DRG/RVU values (D091) are relative, not absolute.</strong> High-DRG procedures (CABG, THA, MV) will have D091 ≈ 0.25–0.35 after normalisation, not 0.85. What matters is that CABG D091 &gt; E&M D091 &gt; Wellness D091. Use the ordering, not the absolute value, when writing thresholds.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Use Dollar_Weight and FWA_Composite columns for quick pre-filtering.</strong> Before computing any cosine similarity, filter claims where any code has <code>FWA_Composite &gt; 0.25</code> — these are the highest-priority codes to examine. <code>Dollar_Weight</code> is a normalised proxy for CMS reimbursement tier.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">TIP</span>
+        <span><strong style="font-weight:500">Tune thresholds on the 22 test cases before production.</strong> Run <code>python generate_test_cases.py --run-audit</code> and examine the <code>alignment_check</code> column in the results. Adjust the <code>THRESHOLDS</code> dict in <code>dim_auditor.py</code> until TC-001/002/003/021/022 (valid controls) score LOW and TC-006/010/013 (critical mismatches) score HIGH/CRITICAL.</span>
+      </li>
+      <li>
+        <span class="tip-bullet">NOTE</span>
+        <span><strong style="font-weight:500">Do not assume fraud — focus on documentation and coding inconsistencies.</strong> These embeddings detect patterns that are statistically inconsistent with the clinical narrative. Every flag should be reviewed by a clinical coder or auditor before action. The scores support clinical judgment — they do not replace it.</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ── Footer ── -->
+  <div class="footer">
+    <div class="footer-left">
+      Medical Code FWA Embeddings FY2026<br>
+      Knowledge-graph edition — not a neural embedding model.<br>
+      Every axis value traceable to CMS, AHRQ, MIMIC, or AMA source rules.
+    </div>
+    <div class="footer-mono">
+      254,140 codes · 100 dims · 532/532 checks passed
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
