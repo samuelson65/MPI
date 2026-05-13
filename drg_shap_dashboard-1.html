@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DRG Model · SHAP Intelligence Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0e14;--surface:#111620;--surface2:#171d2a;--surface3:#1e2638;
+  --border:#242d3f;--border2:#2e3a52;--text:#e2e8f4;--muted:#6b7fa3;
+  --accent:#3b82f6;--accent2:#60a5fa;--green:#10b981;--red:#ef4444;
+  --amber:#f59e0b;--purple:#8b5cf6;--cyan:#06b6d4;
+  --mono:'IBM Plex Mono',monospace;--sans:'DM Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);}
+body::before{content:'';position:fixed;inset:0;background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(59,130,246,.02) 39px,rgba(59,130,246,.02) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(59,130,246,.02) 39px,rgba(59,130,246,.02) 40px);pointer-events:none;z-index:0;}
+.page{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;}
+
+/* HEADER */
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:rgba(11,14,20,.96);backdrop-filter:blur(12px);flex-shrink:0;z-index:100;}
+.hdr-l{display:flex;align-items:center;gap:14px;}
+.logo{background:linear-gradient(135deg,#1d4ed8,#7c3aed);border-radius:8px;padding:6px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;color:#fff;}
+.hdr-title{font-size:13px;color:var(--muted);}
+.hdr-title strong{color:var(--text);font-weight:600;}
+.hdr-r{display:flex;align-items:center;gap:8px;}
+.pill{font-family:var(--mono);font-size:9px;padding:3px 9px;border-radius:100px;border:1px solid var(--border2);color:var(--muted);letter-spacing:.05em;}
+.pill.live{border-color:#10b981;color:#10b981;}
+.pill.live::before{content:'● ';animation:blink 1.4s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* STAT BAR */
+.statbar{display:flex;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;overflow-x:auto;}
+.statbar::-webkit-scrollbar{height:0;}
+.sbar-item{flex:1;min-width:100px;padding:8px 14px;border-right:1px solid var(--border);}
+.sbar-item:last-child{border-right:none;}
+.sbar-label{font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px;}
+.sbar-val{font-family:var(--mono);font-size:16px;font-weight:600;line-height:1;}
+.sbar-sub{font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* MAIN */
+.main{display:flex;flex:1;overflow:hidden;}
+
+/* SIDEBAR */
+.sidebar{width:300px;flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;overflow:hidden;}
+.sb-top{flex-shrink:0;}
+.sb-search-wrap{padding:8px 10px;border-bottom:1px solid var(--border);}
+.sb-search{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:5px 10px;font-family:var(--mono);font-size:10px;color:var(--text);outline:none;transition:border-color .2s;}
+.sb-search:focus{border-color:var(--accent);}
+.sb-search::placeholder{color:var(--muted);}
+.sb-filters{display:flex;}
+.sf-btn{flex:1;padding:6px 3px;font-family:var(--mono);font-size:8px;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;text-transform:uppercase;}
+.sf-btn:hover{color:var(--text);}
+.sf-btn.active{color:var(--accent2);border-bottom-color:var(--accent);}
+.sb-sort{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);}
+.sb-sort-label{font-family:var(--mono);font-size:7px;color:var(--muted);text-transform:uppercase;flex-shrink:0;}
+.sb-sort-sel{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;font-family:var(--mono);font-size:9px;color:var(--text);outline:none;cursor:pointer;}
+.sb-count{padding:4px 10px;font-family:var(--mono);font-size:8px;color:var(--muted);border-bottom:1px solid var(--border);}
+.claims-list{overflow-y:auto;flex:1;}
+.claims-list::-webkit-scrollbar{width:3px;}
+.claims-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.claim-item{padding:9px 11px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;position:relative;}
+.claim-item:hover{background:var(--surface2);}
+.claim-item.active{background:var(--surface3);border-left:2px solid var(--accent);}
+.ci-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;}
+.ci-id{font-family:var(--mono);font-size:9px;color:var(--accent2);font-weight:500;}
+.ci-badge{font-family:var(--mono);font-size:7px;padding:1px 5px;border-radius:3px;font-weight:700;}
+.badge-f{background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3);}
+.badge-n{background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.3);}
+.ci-drg{font-size:10px;font-weight:500;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ci-meta{font-family:var(--mono);font-size:8px;color:var(--muted);display:flex;gap:7px;margin-bottom:4px;}
+.ci-score-row{display:flex;align-items:center;gap:5px;}
+.ci-score-lbl{font-family:var(--mono);font-size:7px;color:var(--muted);}
+.ci-bar-wrap{flex:1;height:3px;background:var(--border2);border-radius:2px;overflow:hidden;}
+.ci-bar{height:100%;border-radius:2px;transition:width .4s;}
+.ci-score-val{font-family:var(--mono);font-size:8px;font-weight:700;width:30px;text-align:right;}
+
+/* CONTENT */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* DETAIL HEADER */
+.detail-header{padding:12px 22px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.dh-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
+.dh-left{flex:1;}
+.dh-title-row{display:flex;align-items:center;gap:10px;margin-bottom:2px;flex-wrap:wrap;}
+.dh-cid{font-family:var(--mono);font-size:11px;color:var(--accent2);font-weight:600;}
+.dh-finding{font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:4px;font-weight:700;}
+.dh-drg{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.dh-sub{font-size:10px;color:var(--muted);}
+.score-box{text-align:right;background:var(--surface3);border:1px solid var(--border2);border-radius:9px;padding:9px 14px;min-width:135px;flex-shrink:0;margin-left:12px;}
+.score-box-lbl{font-family:var(--mono);font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px;}
+.score-big{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;transition:color .3s;}
+.score-big.high{color:var(--red);}
+.score-big.mid{color:var(--amber);}
+.score-big.low{color:var(--green);}
+.score-box-sub{font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:3px;}
+.chips{display:flex;flex-wrap:wrap;gap:4px;}
+.chip{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);color:var(--muted);background:var(--surface2);}
+.chip span{color:var(--text);font-weight:500;}
+
+/* EDIT BUTTON */
+.edit-btn{font-family:var(--mono);font-size:9px;padding:4px 12px;border-radius:6px;border:1px solid var(--accent);color:var(--accent2);background:rgba(59,130,246,.1);cursor:pointer;transition:all .15s;letter-spacing:.04em;}
+.edit-btn:hover{background:rgba(59,130,246,.2);}
+.edit-btn.active{background:rgba(59,130,246,.25);border-color:var(--accent2);}
+
+/* TABS */
+.tabs{display:flex;border-bottom:1px solid var(--border);padding:0 22px;background:var(--surface);flex-shrink:0;}
+.tab{font-family:var(--mono);font-size:9px;letter-spacing:.06em;padding:8px 13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;text-transform:uppercase;white-space:nowrap;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
+
+/* PANELS */
+.panels{flex:1;overflow-y:auto;}
+.panels::-webkit-scrollbar{width:4px;}
+.panels::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.panel{display:none;padding:18px 22px;animation:fadeIn .2s ease;}
+.panel.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+.slabel{font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:11px;display:flex;align-items:center;gap:8px;}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ══════════════ EDITOR PANEL ══════════════ */
+.editor-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(7,9,14,.7);backdrop-filter:blur(4px);}
+.editor-overlay.open{display:flex;align-items:flex-start;justify-content:flex-end;}
+.editor-drawer{width:420px;height:100%;background:var(--surface);border-left:1px solid var(--border2);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.4);animation:slideIn .25s cubic-bezier(.4,0,.2,1);}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.ed-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.ed-title{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text);}
+.ed-sub{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px;}
+.ed-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.ed-close:hover{background:var(--surface2);color:var(--text);}
+.ed-body{flex:1;overflow-y:auto;padding:16px 20px;}
+.ed-body::-webkit-scrollbar{width:3px;}
+.ed-body::-webkit-scrollbar-thumb{background:var(--border2);}
+.ed-section{margin-bottom:20px;}
+.ed-section-title{font-family:var(--mono);font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.ed-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.ed-label{font-family:var(--mono);font-size:9px;color:var(--muted);width:110px;flex-shrink:0;letter-spacing:.03em;}
+.ed-input{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px 9px;font-family:var(--mono);font-size:11px;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;}
+.ed-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.15);}
+.ed-input:hover{border-color:var(--border2);}
+.ed-input[type=range]{padding:0;height:20px;cursor:pointer;accent-color:var(--accent);}
+.ed-select{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px 9px;font-family:var(--mono);font-size:10px;color:var(--text);outline:none;cursor:pointer;transition:border-color .2s;}
+.ed-select:focus{border-color:var(--accent);}
+.ed-range-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.ed-range-label{font-family:var(--mono);font-size:9px;color:var(--muted);width:110px;flex-shrink:0;}
+.ed-range-wrap{flex:1;display:flex;flex-direction:column;gap:3px;}
+.ed-range-val{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--text);}
+.ed-range-sub{display:flex;justify-content:space-between;font-family:var(--mono);font-size:8px;color:var(--muted);}
+.ed-toggle-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.ed-toggle-label{font-family:var(--mono);font-size:9px;color:var(--muted);width:110px;flex-shrink:0;}
+.toggle-wrap{display:flex;gap:6px;}
+.toggle-btn{font-family:var(--mono);font-size:9px;padding:4px 12px;border-radius:5px;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;transition:all .15s;}
+.toggle-btn.on{background:rgba(16,185,129,.15);border-color:#10b981;color:#10b981;}
+.toggle-btn.off{background:rgba(239,68,68,.15);border-color:#ef4444;color:#ef4444;}
+.ed-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;}
+.ed-btn-apply{flex:1;padding:9px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:var(--mono);font-size:10px;font-weight:600;cursor:pointer;letter-spacing:.05em;transition:background .15s;}
+.ed-btn-apply:hover{background:#2563eb;}
+.ed-btn-reset{padding:9px 16px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--muted);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s;}
+.ed-btn-reset:hover{background:var(--surface2);color:var(--text);}
+
+/* LIVE INDICATOR */
+.live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:4px;animation:pulse 1s ease infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+.modified-badge{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:4px;background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3);}
+
+/* WATERFALL */
+.wfall-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.wfall-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.wfall-hdr-title{font-size:11px;font-weight:500;}
+.legend{display:flex;gap:12px;}
+.leg-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:8px;color:var(--muted);}
+.leg-dot{width:8px;height:8px;border-radius:2px;}
+.wfall-body{padding:12px 14px;}
+.wf-baseline{display:flex;align-items:center;gap:8px;margin-bottom:4px;padding:5px 8px;background:var(--surface2);border-radius:5px;font-family:var(--mono);font-size:9px;}
+.wf-baseline-lbl{color:var(--muted);flex:1;}
+.wf-baseline-val{color:var(--text);font-weight:500;}
+.wf-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;transition:background .1s;cursor:default;}
+.wf-row:hover{background:var(--surface2);}
+.wf-feat{width:148px;flex-shrink:0;}
+.wf-feat-name{font-size:10px;font-weight:500;color:var(--text);}
+.wf-feat-val{font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:1px;}
+.wf-bar-area{flex:1;position:relative;height:16px;}
+.wf-bar-track{position:absolute;top:50%;transform:translateY(-50%);height:11px;border-radius:2px;min-width:2px;transition:width .4s cubic-bezier(.4,0,.2,1);}
+.wf-bar-p{background:linear-gradient(90deg,#ef4444,#f87171);left:50%;}
+.wf-bar-n{background:linear-gradient(270deg,#3b82f6,#60a5fa);right:50%;}
+.wf-sv{width:58px;text-align:right;font-family:var(--mono);font-size:9px;font-weight:700;flex-shrink:0;}
+.wf-sv-p{color:#f87171;}
+.wf-sv-n{color:#60a5fa;}
+.wf-total{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:7px 8px;display:flex;align-items:center;gap:8px;margin-top:5px;}
+.wf-total-lbl{font-size:10px;font-weight:600;flex:1;}
+.wf-total-sub{font-family:var(--mono);font-size:8px;color:var(--muted);}
+.wf-total-val{font-family:var(--mono);font-size:13px;font-weight:700;transition:color .3s;}
+
+/* FEATURE GRID */
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px;}
+.fc{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px;transition:border-color .2s;}
+.fc.fp{border-color:rgba(239,68,68,.3);}
+.fc.fn{border-color:rgba(59,130,246,.3);}
+.fc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;}
+.fc-name{font-size:10px;color:var(--muted);}
+.fc-shap{font-family:var(--mono);font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;}
+.sp{background:rgba(239,68,68,.12);color:#ef4444;}
+.sn{background:rgba(59,130,246,.12);color:#60a5fa;}
+.fc-val{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);}
+.fc-sub{font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:2px;}
+.fc-bar{height:2px;border-radius:2px;margin-top:7px;transition:width .4s;}
+
+/* GLOBAL */
+.global-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.gcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+.gcard.full{grid-column:span 2;}
+.rank-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);}
+.rank-row:last-child{border-bottom:none;}
+.rank-num{font-family:var(--mono);font-size:9px;color:var(--muted);width:16px;text-align:right;}
+.rank-name{font-size:10px;font-weight:500;flex:1;}
+.rank-bw{width:85px;height:5px;background:var(--border2);border-radius:3px;overflow:hidden;}
+.rank-b{height:100%;border-radius:3px;}
+.rank-val{font-family:var(--mono);font-size:8px;color:var(--muted);width:42px;text-align:right;}
+
+/* POP TABLE */
+.pop-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:auto;max-height:calc(100vh - 270px);}
+.pop-table{width:100%;border-collapse:collapse;}
+.pop-table th{font-family:var(--mono);font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 9px;border-bottom:1px solid var(--border);background:var(--surface2);white-space:nowrap;cursor:pointer;user-select:none;position:sticky;top:0;z-index:2;}
+.pop-table th:hover{color:var(--text);}
+.pop-table th.sort-asc::after{content:' ↑';}
+.pop-table th.sort-desc::after{content:' ↓';}
+.pop-table td{padding:6px 9px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;vertical-align:middle;white-space:nowrap;}
+.pop-table tr:hover td{background:var(--surface2);cursor:pointer;}
+.pop-table tr.sel td{background:var(--surface3);}
+.mbar-wrap{display:flex;align-items:center;gap:4px;}
+.mbar{height:5px;border-radius:2px;min-width:2px;transition:width .4s;}
+
+/* TOOLTIP */
+.tooltip{position:fixed;background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:7px 11px;font-family:var(--mono);font-size:9px;pointer-events:none;z-index:9999;opacity:0;transition:opacity .1s;max-width:200px;}
+.tooltip.show{opacity:1;}
+.tt-title{font-weight:600;color:var(--text);margin-bottom:2px;}
+.tt-row{color:var(--muted);margin-top:1px;}
+
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+svg text{font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="tooltip" id="tt"><div class="tt-title" id="tt-t"></div><div id="tt-b"></div></div>
+
+<!-- EDITOR DRAWER -->
+<div class="editor-overlay" id="editor-overlay" onclick="closeEditorIfBg(event)">
+  <div class="editor-drawer" id="editor-drawer">
+    <div class="ed-header">
+      <div>
+        <div class="ed-title" id="ed-claim-id">Edit Claim</div>
+        <div class="ed-sub">Changes recalculate SHAP & score live</div>
+      </div>
+      <button class="ed-close" onclick="closeEditor()">✕</button>
+    </div>
+    <div class="ed-body" id="ed-body"></div>
+    <div class="ed-footer">
+      <button class="ed-btn-apply" onclick="applyEdits()">⟳ Apply & Recalculate</button>
+      <button class="ed-btn-reset" onclick="resetClaim()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="hdr-l">
+    <div class="logo">DRG · SHAP</div>
+    <div class="hdr-title"><strong>Medicare Advantage</strong> · Claim Intelligence Platform v2.4.1</div>
+  </div>
+  <div class="hdr-r">
+    <div class="pill">MA Universe 2024</div>
+    <div class="pill">XGBoost Ensemble</div>
+    <div class="pill live">Live Scoring</div>
+    <button onclick="openImporter()" style="font-family:var(--mono);font-size:9px;padding:5px 14px;border-radius:6px;border:1px solid var(--green);color:var(--green);background:rgba(16,185,129,.1);cursor:pointer;letter-spacing:.05em;transition:all .15s;" onmouseover="this.style.background='rgba(16,185,129,.2)'" onmouseout="this.style.background='rgba(16,185,129,.1)'">⬆ Load Real Data</button>
+  </div>
+</header>
+
+<!-- IMPORT MODAL -->
+<div id="import-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(7,9,14,.85);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:700px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.6);animation:fadeIn .25s ease;">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;">
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;">⬆ Load Real Claim Data</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);">Paste a JSON array matching the import template · existing synthetic claims will be replaced</div>
+      </div>
+      <button onclick="closeImporter()" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:none;color:var(--muted);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;flex:1;">
+      <!-- FORMAT REMINDER -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7;">
+        <span style="color:var(--amber);font-weight:700;">Required keys per claim object:</span><br>
+        <span style="color:var(--text);">idx, drg, drgLabel, drgSpec, isFinding, mcc, cc, mccCount, ccCount, geomRatio, los, principalDx, principalDxLabel, procCode, dischargeCode, dischargeLabel, provider{taxId,name,state,risk}, score, baseScore, billed, paidAmt, memberId, planCode, admitDate, shapFeatures[{key,name,shap}×10]</span><br><br>
+        <span style="color:var(--cyan);">Download the Excel template for the full format spec and field definitions.</span>
+      </div>
+      <!-- PASTE AREA -->
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Paste JSON Array Below</div>
+      <textarea id="import-json" spellcheck="false" placeholder='[ { "idx": 0, "drg": "291", "isFinding": true, ... }, ... ]' style="width:100%;height:240px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:12px;font-family:Consolas,monospace;font-size:10px;color:var(--text);outline:none;resize:vertical;line-height:1.5;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></textarea>
+      <div id="import-error" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;font-family:var(--mono);font-size:9px;color:#ef4444;"></div>
+      <div id="import-success" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:6px;font-family:var(--mono);font-size:9px;color:#10b981;"></div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;">
+      <button onclick="importJSON()" style="flex:1;padding:9px;border-radius:7px;border:none;background:var(--green);color:#fff;font-family:var(--mono);font-size:10px;font-weight:600;cursor:pointer;letter-spacing:.05em;">⟳ Load & Refresh Dashboard</button>
+      <button onclick="loadSample()" style="padding:9px 16px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--muted);font-family:var(--mono);font-size:9px;cursor:pointer;" title="Load a single sample claim to test the format">Sample JSON</button>
+      <button onclick="closeImporter()" style="padding:9px 16px;border-radius:7px;border:1px solid var(--border2);background:none;color:var(--muted);font-family:var(--mono);font-size:9px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- STAT BAR -->
+<div class="statbar">
+  <div class="sbar-item"><div class="sbar-label">Total Claims</div><div class="sbar-val" id="st-total" style="color:var(--accent2)">100</div><div class="sbar-sub">In batch</div></div>
+  <div class="sbar-item"><div class="sbar-label">Findings</div><div class="sbar-val" id="st-findings" style="color:var(--red)">—</div><div class="sbar-sub" id="st-fsub">—</div></div>
+  <div class="sbar-item"><div class="sbar-label">No Findings</div><div class="sbar-val" id="st-nf" style="color:var(--green)">—</div><div class="sbar-sub" id="st-nfsub">—</div></div>
+  <div class="sbar-item"><div class="sbar-label">Avg Score</div><div class="sbar-val" id="st-avg" style="color:var(--amber)">—</div><div class="sbar-sub">All claims</div></div>
+  <div class="sbar-item"><div class="sbar-label">High Risk &gt;70%</div><div class="sbar-val" id="st-hr" style="color:var(--red)">—</div><div class="sbar-sub">Flagged</div></div>
+  <div class="sbar-item"><div class="sbar-label">Avg Billed</div><div class="sbar-val" id="st-bill" style="color:var(--purple)">—</div><div class="sbar-sub">Per claim</div></div>
+  <div class="sbar-item"><div class="sbar-label">Modified</div><div class="sbar-val" id="st-mod" style="color:var(--amber)">0</div><div class="sbar-sub">Claims edited</div></div>
+</div>
+
+<div class="main">
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sb-top">
+    <div class="sb-search-wrap">
+      <input class="sb-search" id="sb-search" placeholder="Search claim, DRG, diagnosis, provider…" oninput="applyFilters()">
+    </div>
+    <div class="sb-filters">
+      <button class="sf-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="sf-btn" onclick="setFilter('finding',this)">Finding</button>
+      <button class="sf-btn" onclick="setFilter('nofinding',this)">No Finding</button>
+      <button class="sf-btn" onclick="setFilter('high',this)">&gt;70%</button>
+      <button class="sf-btn" onclick="setFilter('modified',this)">Edited</button>
+    </div>
+    <div class="sb-sort">
+      <span class="sb-sort-label">Sort</span>
+      <select class="sb-sort-sel" onchange="applyFilters()">
+        <option value="score-desc">Score ↓</option>
+        <option value="score-asc">Score ↑</option>
+        <option value="billed-desc">Billed ↓</option>
+        <option value="geom-desc">LOS Ratio ↓</option>
+        <option value="mcc-desc">MCC Count ↓</option>
+      </select>
+    </div>
+    <div class="sb-count" id="sb-count">100 claims shown</div>
+  </div>
+  <div class="claims-list" id="claims-list"></div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+  <div class="detail-header" id="detail-header"></div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab(this,'tab-shap')">SHAP Waterfall</div>
+    <div class="tab" onclick="switchTab(this,'tab-features')">Feature Details</div>
+    <div class="tab" onclick="switchTab(this,'tab-global')">Global Importance</div>
+    <div class="tab" onclick="switchTab(this,'tab-pop')">Population (100)</div>
+  </div>
+  <div class="panels">
+    <div class="panel active" id="tab-shap"></div>
+    <div class="panel" id="tab-features"></div>
+    <div class="panel" id="tab-global"></div>
+    <div class="panel" id="tab-pop"></div>
+  </div>
+</div>
+</div>
+</div>
+
+<script>
+// ═══════════════════════ REFERENCE DATA ═══════════════════════
+const DRG_DATA={
+  "291":["Heart Failure & Shock w/ MCC","Cardiology"],
+  "292":["Heart Failure & Shock w/ CC","Cardiology"],
+  "293":["Heart Failure & Shock w/o CC/MCC","Cardiology"],
+  "470":["Major Joint Replacement - Lower Extremity","Orthopedics"],
+  "871":["Septicemia w/ MV >96 Hrs","Infectious Disease"],
+  "872":["Septicemia w/o MV w/ MCC","Infectious Disease"],
+  "682":["Renal Failure w/ MCC","Nephrology"],
+  "683":["Renal Failure w/ CC","Nephrology"],
+  "189":["Pulmonary Edema & Respiratory Failure","Pulmonology"],
+  "190":["COPD w/ MCC","Pulmonology"],
+  "191":["COPD w/ CC","Pulmonology"],
+  "603":["Cellulitis w/ MCC","Dermatology"],
+  "066":["Intracranial Hemorrhage w/ MCC","Neurology"],
+  "067":["Intracranial Hemorrhage w/ CC","Neurology"],
+  "194":["Simple Pneumonia & Pleurisy w/ CC","Pulmonology"],
+  "392":["Esophagitis & Gastroenteritis w/ MCC","Gastroenterology"],
+  "393":["Other Digestive Disorders w/ CC","Gastroenterology"],
+  "312":["Syncope & Collapse","Cardiology"],
+  "638":["Diabetes w/ CC","Endocrinology"],
+  "641":["Misc Metabolic Disorders w/ MCC","Endocrinology"],
+  "308":["Cardiac Arrhythmia w/ MCC","Cardiology"],
+  "309":["Cardiac Arrhythmia w/ CC","Cardiology"],
+  "177":["Respiratory Infections w/ MCC","Pulmonology"],
+  "552":["Medical Back Problems w/o MCC","Orthopedics"],
+  "460":["Spinal Fusion Except Cervical w/ MCC","Orthopedics"],
+  "038":["Extracranial Procedures w/ MCC","Neurology"],
+  "247":["Perc CV Proc w/ Drug-Eluting Stent w/ MCC","Cardiology"],
+  "418":["Laparoscopic Cholecystectomy w/ MCC","Surgery"],
+  "689":["Kidney & Urinary Tract Infections w/ MCC","Urology"],
+  "774":["Vaginal Delivery w/ Complicating Dx","OB/GYN"]
+};
+const PDX={
+  "291":"I5030","292":"I5020","293":"I5032","470":"M1611","871":"A419",
+  "872":"A4101","682":"N179","683":"N170","189":"J810","190":"J440",
+  "191":"J441","603":"L0311","066":"I6390","067":"I6391","194":"J189",
+  "392":"K5900","393":"K5701","312":"R559","638":"E1165","641":"E1169",
+  "308":"I4891","309":"I4819","177":"J851","552":"M5416","460":"M4806",
+  "038":"I6500","247":"I2510","418":"K8020","689":"N390","774":"O6420"
+};
+const DXL={
+  "I5030":"Acute-on-Chronic Systolic CHF","I5020":"Systolic CHF, Unspecified",
+  "I5032":"Chronic Diastolic HF","M1611":"Primary OA, Right Knee",
+  "A419":"Sepsis, Unspecified Organism","A4101":"Sepsis due to MRSA",
+  "N179":"AKI, Unspecified","N170":"Stage 1 AKI","J810":"Pulmonary Edema",
+  "J440":"COPD w/ Acute Lower Resp Infection","J441":"COPD w/ Acute Exacerbation",
+  "L0311":"Cellulitis, Right Lower Limb","I6390":"Cerebral Infarction, Unspec",
+  "I6391":"Cerebral Infarction, LACI","J189":"Pneumonia, Unspecified",
+  "K5900":"Constipation, Unspecified","K5701":"Diverticulitis w/o Perforation",
+  "R559":"Syncope & Collapse","E1165":"T2DM w/ Hyperglycemia",
+  "E1169":"T2DM w/ Other Specified Complication","I4891":"Unspecified AFib",
+  "I4819":"Atrial Flutter, Unspecified","J851":"Abscess of Lung",
+  "M5416":"Radiculopathy, Lumbar Region","M4806":"Lumbar Spinal Stenosis",
+  "I6500":"Occlusion of Basilar Artery","I2510":"Atherosclerotic HD, Native Vessel",
+  "K8020":"Acute Cholecystitis","N390":"UTI, Site Not Specified",
+  "O6420":"Full-term Pregnancy, Unspecified"
+};
+const PROCS={
+  "291":"5A02110","292":"4A023N6","293":"4A023N6","470":"0SRC0JZ",
+  "871":"5A1935Z","872":"5A1935Z","682":"5A1D00Z","683":"5A1D00Z",
+  "189":"5A09357","190":"5A19054","191":"5A19054","603":"3E013GC",
+  "066":"3E030PZ","067":"3E030PZ","194":"GZ12ZZZ","392":"3E0J38Z",
+  "393":"0DBN8ZX","312":"4A023N6","638":"3E0H38Z","641":"3E0H38Z",
+  "308":"02583ZZ","309":"02583ZZ","177":"3E0F70Z","552":"0SH904Z",
+  "460":"0SG00AJ","038":"03CL3ZZ","247":"02703Z6","418":"0FT44ZZ",
+  "689":"0T9B30Z","774":"10D00Z1"
+};
+const DISC={
+  "01":"Home/Self-Care","02":"Short-Term Hospital","03":"SNF","06":"Home Health",
+  "07":"AMA","20":"Expired","30":"Still Inpatient","50":"Hospice-Home",
+  "51":"Hospice-Facility","61":"Swing Bed","62":"Inpatient Rehab","65":"Psych Hospital"
+};
+const PROVIDERS=[
+  {taxId:"270123456",name:"Northeast Medical Center",state:"NY",risk:0.62},
+  {taxId:"510987654",name:"Sunshine Health System",state:"FL",risk:0.41},
+  {taxId:"760543210",name:"Lone Star Regional Hosp",state:"TX",risk:0.55},
+  {taxId:"941234567",name:"Pacific Coast Medical Ctr",state:"CA",risk:0.38},
+  {taxId:"340765432",name:"Great Lakes Health System",state:"MI",risk:0.47},
+  {taxId:"620321098",name:"Desert Regional Med Ctr",state:"AZ",risk:0.52},
+  {taxId:"421876543",name:"Midwest Community Hosp",state:"IL",risk:0.44},
+  {taxId:"580234567",name:"Appalachian Regional Med",state:"WV",risk:0.71},
+  {taxId:"910456789",name:"Pacific Northwest Health",state:"WA",risk:0.36},
+  {taxId:"470654321",name:"Mountain States Medical",state:"CO",risk:0.49}
+];
+const PLAN_CODES=["H1234","H5678","H9012","H3456","H7890","H2345","H6789","H0123"];
+const FEAT_META=[
+  {key:"geomRatio",   name:"LOS / Geom Mean Ratio"},
+  {key:"mccCount",    name:"MCC Count"},
+  {key:"ccCount",     name:"CC Count"},
+  {key:"mcc",         name:"MCC Present (Flag)"},
+  {key:"cc",          name:"CC Present (Flag)"},
+  {key:"principalDx", name:"Principal Diagnosis"},
+  {key:"drgCode",     name:"DRG Code"},
+  {key:"providerRisk",name:"Provider Tax ID"},
+  {key:"procCode",    name:"Procedure Code"},
+  {key:"dischStatus", name:"Discharge Status"}
+];
+
+// ═══════════════════════ GENERATION ═══════════════════════
+function r(min,max,dec=2){return parseFloat((Math.random()*(max-min)+min).toFixed(dec));}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+const DRG_KEYS=Object.keys(DRG_DATA);
+
+function scoreFromFeatures(c){
+  let s=c.baseScore;
+  s+=c.geomRatio>1.3?(c.geomRatio-1)*0.14:-0.05;
+  s+=c.mccCount*0.055;
+  s+=c.ccCount*0.022;
+  s+=c.provider.risk*0.15;
+  return Math.max(0.04,Math.min(0.97,parseFloat(s.toFixed(4))));
+}
+
+function computeSHAP(isFinding,score,baseScore){
+  const target=score-baseScore;
+  let raw=isFinding
+    ?[r(0.09,0.24),r(0.05,0.16),r(0.03,0.11),r(0.03,0.09),r(0.02,0.07),r(0.01,0.08),r(-0.04,0.06),r(-0.06,0.09),r(-0.03,0.05),r(-0.05,0.04)]
+    :[r(-0.14,-0.01),r(-0.09,0.00),r(-0.07,0.01),r(-0.08,-0.01),r(-0.05,0.01),r(-0.05,0.03),r(-0.05,0.03),r(-0.04,0.04),r(-0.03,0.02),r(-0.04,0.02)];
+  const sum=raw.reduce((a,b)=>a+b,0);
+  const scale=target/(sum||0.0001);
+  return FEAT_META.map((f,i)=>({...f,shap:parseFloat((raw[i]*scale).toFixed(5))}))
+    .sort((a,b)=>Math.abs(b.shap)-Math.abs(a.shap));
+}
+
+function generateClaim(i){
+  const drg=DRG_KEYS[i%DRG_KEYS.length];
+  const isFinding=Math.random()<0.42;
+  const provider=pick(PROVIDERS);
+  const mccCount=isFinding?pick([2,3,4,5]):pick([0,1,2]);
+  const ccCount=isFinding?pick([3,5,6,7,8]):pick([1,2,3,4]);
+  const mcc=mccCount>0?1:0,cc=ccCount>0?1:0;
+  const geomRatio=isFinding?r(1.28,3.6):r(0.42,1.18);
+  const los=isFinding?r(6.1,28.4):r(1.8,5.9);
+  const baseScore=r(0.28,0.42);
+  const c={idx:i,drg,isFinding,provider,mccCount,ccCount,mcc,cc,geomRatio,los,baseScore};
+  c.score=scoreFromFeatures(c);
+  c.shapFeatures=computeSHAP(isFinding,c.score,baseScore);
+  const dischOpts=isFinding?["02","03","06","30","50","51","61","62"]:["01","02","03","06","07"];
+  c.dischargeCode=pick(dischOpts);
+  c.dischargeLabel=DISC[c.dischargeCode]||'—';
+  c.principalDx=PDX[drg];
+  c.principalDxLabel=DXL[PDX[drg]]||'—';
+  c.procCode=PROCS[drg];
+  c.drgLabel=DRG_DATA[drg][0];
+  c.drgSpec=DRG_DATA[drg][1];
+  c.billed=isFinding?r(32000,220000,0):r(7500,52000,0);
+  c.paidAmt=parseFloat((c.billed*r(0.48,0.72)).toFixed(0));
+  c.memberId=`H${Math.floor(Math.random()*9e5+1e5)}`;
+  c.planCode=pick(PLAN_CODES);
+  const mo=String(Math.floor(Math.random()*12)+1).padStart(2,'0');
+  const dy=String(Math.floor(Math.random()*28)+1).padStart(2,'0');
+  c.admitDate=`2024-${mo}-${dy}`;
+  c.modified=false;
+  c._orig=JSON.parse(JSON.stringify({isFinding,mccCount,ccCount,mcc,cc,geomRatio,los,baseScore,dischargeCode:c.dischargeCode,billed:c.billed,drg,provider}));
+  return c;
+}
+
+const CLAIMS=[];
+for(let i=0;i<100;i++) CLAIMS.push(generateClaim(i));
+
+// ═══════════════════════ STATE ═══════════════════════
+let activeIdx=0,filterMode='all',activeTab='tab-shap';
+let popSortCol='score',popSortDir=-1;
+
+// ═══════════════════════ STAT BAR ═══════════════════════
+function updateStatBar(){
+  const F=CLAIMS.filter(c=>c.isFinding),NF=CLAIMS.filter(c=>!c.isFinding);
+  const avgS=CLAIMS.reduce((a,c)=>a+c.score,0)/CLAIMS.length;
+  const hr=CLAIMS.filter(c=>c.score>0.7).length;
+  const ab=CLAIMS.reduce((a,c)=>a+c.billed,0)/CLAIMS.length;
+  const mod=CLAIMS.filter(c=>c.modified).length;
+  document.getElementById('st-findings').textContent=F.length;
+  document.getElementById('st-fsub').textContent=`${(F.length/CLAIMS.length*100).toFixed(0)}% of total`;
+  document.getElementById('st-nf').textContent=NF.length;
+  document.getElementById('st-nfsub').textContent=`${(NF.length/CLAIMS.length*100).toFixed(0)}% of total`;
+  document.getElementById('st-avg').textContent=`${(avgS*100).toFixed(1)}%`;
+  document.getElementById('st-hr').textContent=hr;
+  document.getElementById('st-bill').textContent=`$${Math.round(ab/1000)}K`;
+  document.getElementById('st-mod').textContent=mod;
+}
+
+// ═══════════════════════ SIDEBAR ═══════════════════════
+function setFilter(m,el){
+  filterMode=m;
+  document.querySelectorAll('.sf-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');applyFilters();
+}
+function applyFilters(){
+  const q=document.getElementById('sb-search').value.toLowerCase();
+  const sm=document.querySelector('.sb-sort-sel').value;
+  let list=[...CLAIMS];
+  if(filterMode==='finding') list=list.filter(c=>c.isFinding);
+  if(filterMode==='nofinding') list=list.filter(c=>!c.isFinding);
+  if(filterMode==='high') list=list.filter(c=>c.score>0.7);
+  if(filterMode==='modified') list=list.filter(c=>c.modified);
+  if(q) list=list.filter(c=>
+    c.id&&c.id.toLowerCase().includes(q)||
+    c.drg.includes(q)||c.drgLabel.toLowerCase().includes(q)||
+    (c.principalDx&&c.principalDx.toLowerCase().includes(q))||
+    (c.principalDxLabel&&c.principalDxLabel.toLowerCase().includes(q))||
+    c.provider.name.toLowerCase().includes(q)
+  );
+  const sf={
+    'score-desc':(a,b)=>b.score-a.score,'score-asc':(a,b)=>a.score-b.score,
+    'billed-desc':(a,b)=>b.billed-a.billed,'geom-desc':(a,b)=>b.geomRatio-a.geomRatio,
+    'mcc-desc':(a,b)=>b.mccCount-a.mccCount
+  };
+  list.sort(sf[sm]||sf['score-desc']);
+  document.getElementById('sb-count').textContent=`${list.length} claim${list.length!==1?'s':''} shown`;
+  const cont=document.getElementById('claims-list');cont.innerHTML='';
+  list.forEach(c=>{
+    const sc=c.score>0.6?'#ef4444':c.score>0.35?'#f59e0b':'#10b981';
+    const el=document.createElement('div');
+    el.className=`claim-item${c.idx===activeIdx?' active':''}`;
+    el.innerHTML=`
+      <div class="ci-top">
+        <div class="ci-id">CLM-2024-${String(100000+c.idx*97+13).slice(1,9)}${c.modified?'<span class="modified-badge" style="margin-left:5px">EDITED</span>':''}</div>
+        <div class="ci-badge ${c.isFinding?'badge-f':'badge-n'}">${c.isFinding?'FINDING':'NO FINDING'}</div>
+      </div>
+      <div class="ci-drg">DRG ${c.drg} — ${c.drgLabel}</div>
+      <div class="ci-meta"><span>MCC:${c.mccCount}</span><span>CC:${c.ccCount}</span><span>${c.geomRatio}x LOS</span></div>
+      <div class="ci-score-row">
+        <div class="ci-score-lbl">SCORE</div>
+        <div class="ci-bar-wrap"><div class="ci-bar" style="width:${c.score*100}%;background:${sc}"></div></div>
+        <div class="ci-score-val" style="color:${sc}">${(c.score*100).toFixed(0)}%</div>
+      </div>`;
+    el.onclick=()=>{activeIdx=c.idx;applyFilters();renderDetail();};
+    cont.appendChild(el);
+  });
+}
+
+// ═══════════════════════ DETAIL HEADER ═══════════════════════
+function renderDetail(){
+  const c=CLAIMS[activeIdx];
+  const sc=c.score>0.6?'high':c.score>0.35?'mid':'low';
+  const cid=`CLM-2024-${String(100000+c.idx*97+13).slice(1,9)}`;
+  document.getElementById('detail-header').innerHTML=`
+  <div class="dh-top">
+    <div class="dh-left">
+      <div class="dh-title-row">
+        <div class="dh-cid">${cid}</div>
+        <div class="dh-finding ${c.isFinding?'badge-f':'badge-n'}">${c.isFinding?'⚠ FINDING':'✓ NO FINDING'}</div>
+        ${c.modified?'<span class="modified-badge"><span class="live-dot"></span>MODIFIED</span>':''}
+        <div class="chip">${c.drgSpec}</div>
+      </div>
+      <div class="dh-drg">DRG ${c.drg} — ${c.drgLabel}</div>
+      <div class="dh-sub">${c.memberId} · Plan ${c.planCode} · Admit ${c.admitDate} · ${c.provider.name} (${c.provider.state})</div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:8px;">
+      <button class="edit-btn" onclick="openEditor()" id="edit-toggle-btn">✎ Edit Claim</button>
+      <div class="score-box">
+        <div class="score-box-lbl">Model Score</div>
+        <div class="score-big ${sc}" id="live-score">${(c.score*100).toFixed(1)}%</div>
+        <div class="score-box-sub" id="live-score-sub">Base ${(c.baseScore*100).toFixed(1)}% · Δ ${((c.score-c.baseScore)*100).toFixed(1)}%</div>
+      </div>
+    </div>
+  </div>
+  <div class="chips">
+    <div class="chip">Dx: <span>${c.principalDx} — ${c.principalDxLabel}</span></div>
+    <div class="chip">Proc: <span>${c.procCode}</span></div>
+    <div class="chip">LOS Ratio: <span style="color:${c.geomRatio>1.3?'#ef4444':'#10b981'}">${c.geomRatio}x</span></div>
+    <div class="chip">MCC: <span style="color:${c.mccCount>1?'#f59e0b':'var(--muted)'}">${c.mccCount}</span></div>
+    <div class="chip">CC: <span>${c.ccCount}</span></div>
+    <div class="chip">LOS: <span>${c.los}d</span></div>
+    <div class="chip">Discharge: <span>${c.dischargeCode} ${c.dischargeLabel}</span></div>
+    <div class="chip">Billed: <span style="color:var(--purple)">$${Number(c.billed).toLocaleString()}</span></div>
+    <div class="chip">Paid: <span>$${Number(c.paidAmt).toLocaleString()}</span></div>
+    <div class="chip">Tax ID: <span>${c.provider.taxId}</span></div>
+  </div>`;
+  renderActiveTab();
+}
+
+// ═══════════════════════ EDITOR ═══════════════════════
+function openEditor(){
+  const c=CLAIMS[activeIdx];
+  document.getElementById('ed-claim-id').textContent=`Edit CLM-2024-${String(100000+c.idx*97+13).slice(1,9)}`;
+  document.getElementById('ed-body').innerHTML=buildEditorHTML(c);
+  document.getElementById('editor-overlay').classList.add('open');
+  // Wire up live range display
+  document.querySelectorAll('.ed-input[type=range]').forEach(inp=>{
+    inp.addEventListener('input',()=>{
+      const disp=document.getElementById('disp-'+inp.id);
+      if(disp) disp.textContent=parseFloat(inp.value).toFixed(inp.step&&inp.step<1?2:0)+(inp.dataset.suffix||'');
+    });
+  });
+}
+function closeEditor(){document.getElementById('editor-overlay').classList.remove('open');}
+function closeEditorIfBg(e){if(e.target===document.getElementById('editor-overlay'))closeEditor();}
+
+function buildEditorHTML(c){
+  const drgOpts=DRG_KEYS.map(k=>`<option value="${k}" ${k===c.drg?'selected':''}>${k} — ${DRG_DATA[k][0].substring(0,38)}</option>`).join('');
+  const provOpts=PROVIDERS.map((p,i)=>`<option value="${i}" ${p.taxId===c.provider.taxId?'selected':''}>${p.name} (${p.state}) — Risk ${p.risk.toFixed(2)}</option>`).join('');
+  const discOpts=Object.entries(DISC).map(([k,v])=>`<option value="${k}" ${k===c.dischargeCode?'selected':''}>${k} — ${v}</option>`).join('');
+
+  return `
+  <div class="ed-section">
+    <div class="ed-section-title">Outcome & DRG</div>
+    <div class="ed-toggle-row">
+      <div class="ed-toggle-label">Finding Status</div>
+      <div class="toggle-wrap">
+        <button class="toggle-btn ${c.isFinding?'on':''}" id="btn-finding" onclick="toggleFinding(true)">⚠ Finding</button>
+        <button class="toggle-btn ${!c.isFinding?'off':''}" id="btn-nofinding" onclick="toggleFinding(false)">✓ No Finding</button>
+      </div>
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">DRG Code</div>
+      <select class="ed-select" id="ed-drg">${drgOpts}</select>
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Principal Dx</div>
+      <input class="ed-input" id="ed-pdx" value="${c.principalDx}" style="font-size:10px">
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Procedure Code</div>
+      <input class="ed-input" id="ed-proc" value="${c.procCode}" style="font-size:10px">
+    </div>
+  </div>
+
+  <div class="ed-section">
+    <div class="ed-section-title">Complexity Indicators</div>
+    <div class="ed-range-row">
+      <div class="ed-range-label">LOS / Geom Ratio</div>
+      <div class="ed-range-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <input class="ed-input" type="range" id="ed-geom" min="0.3" max="4.0" step="0.01" value="${c.geomRatio}" data-suffix="x" style="flex:1">
+          <span class="ed-range-val" id="disp-ed-geom" style="margin-left:10px;min-width:40px;text-align:right">${c.geomRatio}x</span>
+        </div>
+        <div class="ed-range-sub"><span>0.3x (low)</span><span>4.0x (very high)</span></div>
+      </div>
+    </div>
+    <div class="ed-range-row">
+      <div class="ed-range-label">MCC Count</div>
+      <div class="ed-range-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <input class="ed-input" type="range" id="ed-mcc" min="0" max="8" step="1" value="${c.mccCount}" style="flex:1">
+          <span class="ed-range-val" id="disp-ed-mcc" style="margin-left:10px;min-width:40px;text-align:right">${c.mccCount}</span>
+        </div>
+        <div class="ed-range-sub"><span>0</span><span>8</span></div>
+      </div>
+    </div>
+    <div class="ed-range-row">
+      <div class="ed-range-label">CC Count</div>
+      <div class="ed-range-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <input class="ed-input" type="range" id="ed-cc" min="0" max="12" step="1" value="${c.ccCount}" style="flex:1">
+          <span class="ed-range-val" id="disp-ed-cc" style="margin-left:10px;min-width:40px;text-align:right">${c.ccCount}</span>
+        </div>
+        <div class="ed-range-sub"><span>0</span><span>12</span></div>
+      </div>
+    </div>
+    <div class="ed-range-row">
+      <div class="ed-range-label">LOS (days)</div>
+      <div class="ed-range-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <input class="ed-input" type="range" id="ed-los" min="1" max="45" step="0.1" value="${c.los}" data-suffix="d" style="flex:1">
+          <span class="ed-range-val" id="disp-ed-los" style="margin-left:10px;min-width:40px;text-align:right">${c.los}d</span>
+        </div>
+        <div class="ed-range-sub"><span>1d</span><span>45d</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ed-section">
+    <div class="ed-section-title">Provider & Disposition</div>
+    <div class="ed-row">
+      <div class="ed-label">Provider</div>
+      <select class="ed-select" id="ed-provider">${provOpts}</select>
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Discharge Status</div>
+      <select class="ed-select" id="ed-disc">${discOpts}</select>
+    </div>
+  </div>
+
+  <div class="ed-section">
+    <div class="ed-section-title">Financials</div>
+    <div class="ed-row">
+      <div class="ed-label">Billed Amount</div>
+      <input class="ed-input" type="number" id="ed-billed" value="${c.billed}" min="1000" max="500000" step="500">
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Paid Amount</div>
+      <input class="ed-input" type="number" id="ed-paid" value="${c.paidAmt}" min="500" max="350000" step="500">
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Plan Code</div>
+      <select class="ed-select" id="ed-plan">
+        ${PLAN_CODES.map(p=>`<option ${p===c.planCode?'selected':''}>${p}</option>`).join('')}
+      </select>
+    </div>
+    <div class="ed-row">
+      <div class="ed-label">Admit Date</div>
+      <input class="ed-input" type="date" id="ed-admit" value="${c.admitDate}">
+    </div>
+  </div>
+
+  <div style="background:var(--surface3);border:1px solid var(--border2);border-radius:8px;padding:12px;margin-top:4px;">
+    <div style="font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Score Preview</div>
+    <div id="score-preview" style="font-family:var(--mono);font-size:11px;color:var(--muted)">Click "Apply" to recalculate</div>
+  </div>`;
+}
+
+let _edFinding=null;
+function toggleFinding(val){
+  _edFinding=val;
+  document.getElementById('btn-finding').className='toggle-btn '+(val?'on':'');
+  document.getElementById('btn-nofinding').className='toggle-btn '+(!val?'off':'');
+}
+
+function applyEdits(){
+  const c=CLAIMS[activeIdx];
+  const drg=document.getElementById('ed-drg').value;
+  const mccCount=parseInt(document.getElementById('ed-mcc').value);
+  const ccCount=parseInt(document.getElementById('ed-cc').value);
+  const geomRatio=parseFloat(document.getElementById('ed-geom').value);
+  const los=parseFloat(document.getElementById('ed-los').value);
+  const providerIdx=parseInt(document.getElementById('ed-provider').value);
+  const dischargeCode=document.getElementById('ed-disc').value;
+  const billed=parseFloat(document.getElementById('ed-billed').value);
+  const paidAmt=parseFloat(document.getElementById('ed-paid').value);
+  const planCode=document.getElementById('ed-plan').value;
+  const admitDate=document.getElementById('ed-admit').value||c.admitDate;
+  const principalDx=document.getElementById('ed-pdx').value||c.principalDx;
+  const procCode=document.getElementById('ed-proc').value||c.procCode;
+  const isFinding=_edFinding!==null?_edFinding:c.isFinding;
+
+  c.drg=drg;
+  c.drgLabel=DRG_DATA[drg][0];
+  c.drgSpec=DRG_DATA[drg][1];
+  c.mccCount=mccCount;
+  c.ccCount=ccCount;
+  c.mcc=mccCount>0?1:0;
+  c.cc=ccCount>0?1:0;
+  c.geomRatio=geomRatio;
+  c.los=parseFloat(los.toFixed(1));
+  c.provider=PROVIDERS[providerIdx];
+  c.dischargeCode=dischargeCode;
+  c.dischargeLabel=DISC[dischargeCode]||'—';
+  c.billed=billed;
+  c.paidAmt=paidAmt;
+  c.planCode=planCode;
+  c.admitDate=admitDate;
+  c.principalDx=principalDx;
+  c.principalDxLabel=DXL[principalDx]||principalDx;
+  c.procCode=procCode;
+  c.isFinding=isFinding;
+  c.modified=true;
+  _edFinding=null;
+
+  // Recalculate score
+  c.score=scoreFromFeatures(c);
+  // Recalculate SHAP
+  c.shapFeatures=computeSHAP(c.isFinding,c.score,c.baseScore);
+
+  closeEditor();
+  updateStatBar();
+  applyFilters();
+  renderDetail();
+}
+
+function resetClaim(){
+  const c=CLAIMS[activeIdx];
+  const o=c._orig;
+  c.drg=o.drg;
+  c.drgLabel=DRG_DATA[o.drg][0];
+  c.drgSpec=DRG_DATA[o.drg][1];
+  c.isFinding=o.isFinding;
+  c.mccCount=o.mccCount;c.ccCount=o.ccCount;
+  c.mcc=o.mcc;c.cc=o.cc;
+  c.geomRatio=o.geomRatio;c.los=o.los;
+  c.baseScore=o.baseScore;
+  c.dischargeCode=o.dischargeCode;
+  c.dischargeLabel=DISC[o.dischargeCode]||'—';
+  c.billed=o.billed;
+  c.provider=o.provider;
+  c.principalDx=PDX[o.drg];
+  c.principalDxLabel=DXL[PDX[o.drg]]||'—';
+  c.procCode=PROCS[o.drg];
+  c.score=scoreFromFeatures(c);
+  c.shapFeatures=computeSHAP(c.isFinding,c.score,c.baseScore);
+  c.modified=false;
+  _edFinding=null;
+  closeEditor();
+  updateStatBar();
+  applyFilters();
+  renderDetail();
+}
+
+// ═══════════════════════ TABS ═══════════════════════
+function switchTab(el,id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(id).classList.add('active');
+  activeTab=id;renderActiveTab();
+}
+function renderActiveTab(){
+  const c=CLAIMS[activeIdx];
+  if(activeTab==='tab-shap') renderWaterfall(c);
+  if(activeTab==='tab-features') renderFeatures(c);
+  if(activeTab==='tab-global') renderGlobal();
+  if(activeTab==='tab-pop') renderPop();
+}
+
+// ═══════════════════════ WATERFALL ═══════════════════════
+function getFV(key,c){
+  const m={geomRatio:`${c.geomRatio}x`,mccCount:String(c.mccCount),ccCount:String(c.ccCount),
+    mcc:c.mcc?'Yes (1)':'No (0)',cc:c.cc?'Yes (1)':'No (0)',
+    principalDx:c.principalDx,drgCode:`DRG ${c.drg}`,
+    providerRisk:c.provider.taxId,procCode:c.procCode,dischStatus:c.dischargeCode};
+  return m[key]||'—';
+}
+function getFD(key,c){
+  const m={
+    geomRatio:`Actual LOS vs geometric mean — ${c.geomRatio}x ${c.geomRatio>1.3?'(↑ elevated)':'(✓ normal)'}`,
+    mccCount:`${c.mccCount} Major Comorbidity/Complication codes`,
+    ccCount:`${c.ccCount} Complication/Comorbidity codes present`,
+    mcc:c.mcc?'MCC flag active — raises DRG weight':'No MCC — standard severity',
+    cc:c.cc?'CC flag active — moderate complexity':'No CC flag coded',
+    principalDx:c.principalDxLabel,drgCode:c.drgLabel,
+    providerRisk:`${c.provider.name} · Risk ${c.provider.risk.toFixed(2)}`,
+    procCode:`Procedure ${c.procCode}`,dischStatus:c.dischargeLabel
+  };
+  return m[key]||'';
+}
+function renderWaterfall(c){
+  const el=document.getElementById('tab-shap');
+  const mx=Math.max(...c.shapFeatures.map(f=>Math.abs(f.shap)));
+  const MB=170;
+  let rows='';
+  c.shapFeatures.forEach((f,i)=>{
+    const px=Math.round((Math.abs(f.shap)/mx)*MB);
+    const isP=f.shap>0,fv=getFV(f.key,c);
+    rows+=`<div class="wf-row" style="animation:fadeIn .3s ease ${i*.04}s backwards"
+      onmouseenter="showTT(event,${JSON.stringify(f.name)},${JSON.stringify('Value: '+fv+' | SHAP: '+(f.shap>0?'+':'')+f.shap.toFixed(5))})"
+      onmouseleave="hideTT()">
+      <div class="wf-feat"><div class="wf-feat-name">${f.name}</div><div class="wf-feat-val">${fv}</div></div>
+      <div class="wf-bar-area">
+        <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border2)"></div>
+        <div class="wf-bar-track ${isP?'wf-bar-p':'wf-bar-n'}" style="${isP?'left:50%':'right:50%'};width:${px}px"></div>
+      </div>
+      <div class="wf-sv ${isP?'wf-sv-p':'wf-sv-n'}">${isP?'+':''}${f.shap.toFixed(4)}</div>
+    </div>`;
+  });
+  const delta=c.shapFeatures.reduce((a,f)=>a+f.shap,0);
+  const final=c.baseScore+delta;
+  const sc=final>0.6?'#ef4444':final>0.35?'#f59e0b':'#10b981';
+  el.innerHTML=`
+  <div class="slabel">SHAP Waterfall — CLM-2024-${String(100000+c.idx*97+13).slice(1,9)}${c.modified?' <span class="modified-badge">MODIFIED</span>':''}</div>
+  <div class="wfall-wrap">
+    <div class="wfall-hdr">
+      <div class="wfall-hdr-title">Feature Contributions · Sorted by |SHAP|</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div>Increases Risk</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#3b82f6"></div>Decreases Risk</div>
+      </div>
+    </div>
+    <div class="wfall-body">
+      <div class="wf-baseline"><span class="wf-baseline-lbl">E[f(x)] — Population Baseline</span><span class="wf-baseline-val">${(c.baseScore*100).toFixed(3)}%</span></div>
+      ${rows}
+      <div style="height:1px;background:var(--border);margin:5px 0"></div>
+      <div class="wf-total">
+        <div class="wf-total-lbl">f(x) — Final Model Score</div>
+        <div class="wf-total-sub">Base ${(c.baseScore*100).toFixed(2)}% + Σ ${delta>0?'+':''}${(delta*100).toFixed(2)}%</div>
+        <div class="wf-total-val" style="color:${sc}">${(final*100).toFixed(2)}%</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════ FEATURES ═══════════════════════
+function renderFeatures(c){
+  const el=document.getElementById('tab-features');
+  const mx=Math.max(...c.shapFeatures.map(f=>Math.abs(f.shap)));
+  el.innerHTML=`<div class="slabel">Feature Values & SHAP Impact</div>
+  <div class="feat-grid">${c.shapFeatures.map(f=>{
+    const isP=f.shap>0,w=Math.round((Math.abs(f.shap)/mx)*100),clr=isP?'#ef4444':'#3b82f6';
+    return `<div class="fc ${isP?'fp':'fn'}">
+      <div class="fc-top"><div class="fc-name">${f.name}</div><div class="fc-shap ${isP?'sp':'sn'}">${isP?'+':''}${f.shap.toFixed(4)}</div></div>
+      <div class="fc-val">${getFV(f.key,c)}</div>
+      <div class="fc-sub">${getFD(f.key,c)}</div>
+      <div class="fc-bar" style="background:${clr};width:${w}%;opacity:.7"></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ═══════════════════════ GLOBAL ═══════════════════════
+function computeGI(){
+  const map={};
+  CLAIMS.forEach(c=>{c.shapFeatures.forEach(f=>{
+    if(!map[f.name]) map[f.name]={abs:0,n:0};
+    map[f.name].abs+=Math.abs(f.shap);map[f.name].n++;
+  });});
+  return Object.entries(map).map(([name,v])=>({name,meanAbs:v.abs/v.n})).sort((a,b)=>b.meanAbs-a.meanAbs);
+}
+function renderGlobal(){
+  const el=document.getElementById('tab-global');
+  const imp=computeGI(),mx=imp[0].meanAbs;
+  const F=CLAIMS.filter(c=>c.isFinding),NF=CLAIMS.filter(c=>!c.isFinding);
+  el.innerHTML=`
+  <div class="slabel">Global Feature Importance — 100 Claims</div>
+  <div class="global-grid">
+    <div class="gcard">
+      <div class="slabel" style="margin-bottom:9px">Mean |SHAP| Ranking</div>
+      ${imp.map((f,i)=>{
+        const w=Math.round((f.meanAbs/mx)*100),clr=i<3?'#ef4444':i<6?'#f59e0b':'#3b82f6';
+        return `<div class="rank-row"><div class="rank-num">${i+1}</div><div class="rank-name">${f.name}</div>
+          <div class="rank-bw"><div class="rank-b" style="width:${w}%;background:${clr}"></div></div>
+          <div class="rank-val">${f.meanAbs.toFixed(4)}</div></div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="gcard">
+        <div class="slabel" style="margin-bottom:7px">Score Distribution by Outcome</div>
+        <canvas id="dist-canvas" height="165"></canvas>
+      </div>
+      <div class="gcard">
+        <div class="slabel" style="margin-bottom:7px">Cohort Statistics</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+          ${[
+            ['Findings',F.length,'#ef4444'],
+            ['No Findings',NF.length,'#10b981'],
+            ['Avg Score — Finding',(F.reduce((a,c)=>a+c.score,0)/F.length*100).toFixed(1)+'%','#ef4444'],
+            ['Avg Score — No Finding',(NF.reduce((a,c)=>a+c.score,0)/NF.length*100).toFixed(1)+'%','#10b981'],
+            ['High Risk (>70%)',CLAIMS.filter(c=>c.score>0.7).length,'#f59e0b'],
+            ['Claims Edited',CLAIMS.filter(c=>c.modified).length,'#f59e0b'],
+          ].map(([l,v,cl])=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 9px;">
+            <div style="font-family:var(--mono);font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px">${l}</div>
+            <div style="font-family:var(--mono);font-size:15px;font-weight:600;color:${cl}">${v}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="gcard full">
+      <div class="slabel" style="margin-bottom:7px">SHAP Beeswarm — All 100 Claims</div>
+      <svg id="beeswarm" width="100%" height="260"></svg>
+    </div>
+  </div>`;
+  setTimeout(()=>{renderDistChart();renderBeeswarm();},40);
+}
+
+function renderDistChart(){
+  const cv=document.getElementById('dist-canvas');if(!cv)return;
+  const W=cv.width=cv.parentElement.offsetWidth-28;
+  const H=cv.height=165;const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
+  const F=CLAIMS.filter(c=>c.isFinding).map(c=>c.score);
+  const NF=CLAIMS.filter(c=>!c.isFinding).map(c=>c.score);
+  const BINS=16;
+  function hist(v){const b=new Array(BINS).fill(0);v.forEach(s=>{const i=Math.min(Math.floor(s*BINS),BINS-1);b[i]++;});return b;}
+  const fb=hist(F),nb=hist(NF),maxB=Math.max(...fb,...nb,1);
+  const pad={l:22,r:5,t:8,b:28};const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
+  const bw=(cW/BINS)*0.41;
+  ctx.strokeStyle='#1e2638';ctx.setLineDash([2,4]);
+  for(let g=0;g<=4;g++){const y=pad.t+(cH/4)*g;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#6b7fa3';ctx.font='8px IBM Plex Mono';ctx.textAlign='right';ctx.fillText(Math.round(maxB*(4-g)/4),pad.l-2,y+3);}
+  ctx.setLineDash([]);ctx.strokeStyle='#242d3f';ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  for(let b=0;b<BINS;b++){
+    const x=pad.l+(b/BINS)*cW,bx=cW/BINS,gap=(bx-bw*2-2)/2;
+    const nfH=(nb[b]/maxB)*cH;ctx.fillStyle='rgba(59,130,246,.75)';ctx.fillRect(x+gap,H-pad.b-nfH,bw,nfH);
+    const fH=(fb[b]/maxB)*cH;ctx.fillStyle='rgba(239,68,68,.75)';ctx.fillRect(x+gap+bw+2,H-pad.b-fH,bw,fH);
+    if(b%4===0){ctx.fillStyle='#6b7fa3';ctx.font='7px IBM Plex Mono';ctx.textAlign='center';ctx.fillText(`${Math.round(b*100/BINS)}%`,x+bx/2,H-pad.b+10);}
+  }
+  ctx.fillStyle='rgba(59,130,246,.75)';ctx.fillRect(pad.l,H-9,7,5);ctx.fillStyle='#6b7fa3';ctx.font='7px IBM Plex Mono';ctx.textAlign='left';ctx.fillText('No Finding',pad.l+10,H-5);
+  ctx.fillStyle='rgba(239,68,68,.75)';ctx.fillRect(pad.l+65,H-9,7,5);ctx.fillText('Finding',pad.l+75,H-5);
+}
+
+function renderBeeswarm(){
+  const svg=document.getElementById('beeswarm');if(!svg)return;
+  const W=svg.parentElement.offsetWidth-28;svg.setAttribute('width',W);
+  const H=260;const PAD={l:165,r:35,t:6,b:22};
+  const imp=computeGI().slice(0,10);const rowH=(H-PAD.t-PAD.b)/imp.length;
+  const zX=PAD.l+(W-PAD.l-PAD.r)/2;const xMax=0.22;
+  let html='';
+  imp.forEach((_,i)=>{if(i%2===0){const y=PAD.t+i*rowH;html+=`<rect x="${PAD.l}" y="${y}" width="${W-PAD.l-PAD.r}" height="${rowH}" fill="rgba(255,255,255,.012)" rx="2"/>`;}});
+  [-0.2,-0.1,0,0.1,0.2].forEach(v=>{
+    const xp=zX+(v/xMax)*(W-PAD.l-PAD.r)/2;
+    html+=`<line x1="${xp}" y1="${PAD.t}" x2="${xp}" y2="${H-PAD.b}" stroke="${v===0?'#2e3a52':'#192030'}" stroke-width="${v===0?1.5:1}" stroke-dasharray="${v===0?'':'3,4'}"/>`;
+    html+=`<text x="${xp}" y="${H-PAD.b+13}" fill="#6b7fa3" font-size="8" text-anchor="middle">${v>0?'+':''}${v.toFixed(1)}</text>`;
+  });
+  imp.forEach((f,fi)=>{
+    const yCtr=PAD.t+fi*rowH+rowH/2;
+    html+=`<text x="${PAD.l-6}" y="${yCtr+4}" fill="#94a3b8" font-size="9.5" text-anchor="end">${f.name.length>22?f.name.slice(0,20)+'…':f.name}</text>`;
+    const placed=[];
+    CLAIMS.forEach(c=>{
+      const sf=c.shapFeatures.find(s=>s.name===f.name);if(!sf)return;
+      const v=sf.shap,xp=zX+(v/xMax)*(W-PAD.l-PAD.r)/2;
+      let jitter=0;
+      for(let a=0;a<12;a++){const j=(Math.random()-.5)*rowH*.65;if(!placed.some(p=>Math.abs(p.x-xp)<6&&Math.abs(p.y-j)<5)){jitter=j;break;}}
+      placed.push({x:xp,y:jitter});
+      const clr=c.modified?'rgba(245,158,11,.9)':v>0.05?'rgba(239,68,68,.82)':v<-0.05?'rgba(59,130,246,.82)':'rgba(99,102,241,.7)';
+      html+=`<circle cx="${xp}" cy="${yCtr+jitter}" r="${Math.min(2+Math.abs(v)*34,7)}" fill="${clr}"/>`;
+    });
+  });
+  html+=`<text x="${zX}" y="${H}" fill="#6b7fa3" font-size="8.5" text-anchor="middle">SHAP Value</text>`;
+  svg.innerHTML=html;
+}
+
+// ═══════════════════════ POPULATION TABLE ═══════════════════════
+function renderPop(){
+  const el=document.getElementById('tab-pop');
+  el.innerHTML=`
+  <div class="slabel">All 100 Claims — Click any row to select · Click headers to sort</div>
+  <div class="pop-wrap">
+    <table class="pop-table"><thead><tr>
+      <th onclick="sortPop('idx')" id="th-idx">#</th>
+      <th onclick="sortPop('drg')" id="th-drg">DRG</th>
+      <th onclick="sortPop('isFinding')" id="th-isFinding">Outcome</th>
+      <th onclick="sortPop('score')" id="th-score">Score</th>
+      <th onclick="sortPop('geomRatio')" id="th-geomRatio">LOS Ratio</th>
+      <th onclick="sortPop('mccCount')" id="th-mccCount">MCC</th>
+      <th onclick="sortPop('ccCount')" id="th-ccCount">CC</th>
+      <th onclick="sortPop('los')" id="th-los">LOS</th>
+      <th>Top Driver</th><th>SHAP↑</th><th>SHAP↓</th>
+      <th onclick="sortPop('billed')" id="th-billed">Billed</th>
+      <th onclick="sortPop('paidAmt')" id="th-paidAmt">Paid</th>
+      <th>Modified</th>
+    </tr></thead><tbody id="ptbody"></tbody></table>
+  </div>`;
+  renderPopBody();
+}
+function sortPop(col){
+  if(popSortCol===col) popSortDir*=-1; else{popSortCol=col;popSortDir=-1;}
+  renderPopBody();
+}
+function renderPopBody(){
+  const tbody=document.getElementById('ptbody');if(!tbody)return;
+  document.querySelectorAll('.pop-table th').forEach(th=>th.classList.remove('sort-asc','sort-desc'));
+  const thEl=document.getElementById('th-'+popSortCol);
+  if(thEl) thEl.classList.add(popSortDir===-1?'sort-desc':'sort-asc');
+  const sorted=[...CLAIMS].sort((a,b)=>{
+    let av=a[popSortCol],bv=b[popSortCol];
+    if(typeof av==='boolean') av=av?1:0,bv=bv?1:0;
+    if(typeof av==='string') av=av.toLowerCase(),bv=bv.toLowerCase();
+    return av<bv?-popSortDir:av>bv?popSortDir:0;
+  });
+  tbody.innerHTML=sorted.map(c=>{
+    const tP=[...c.shapFeatures].filter(f=>f.shap>0).sort((a,b)=>b.shap-a.shap)[0];
+    const tN=[...c.shapFeatures].filter(f=>f.shap<0).sort((a,b)=>a.shap-b.shap)[0];
+    const top=c.shapFeatures[0];
+    const sc=c.score>0.6?'#ef4444':c.score>0.35?'#f59e0b':'#10b981';
+    return `<tr class="${c.idx===activeIdx?'sel':''}" onclick="activeIdx=${c.idx};applyFilters();renderDetail()">
+      <td style="color:var(--muted)">${c.idx+1}</td>
+      <td>${c.drg}</td>
+      <td><span class="ci-badge ${c.isFinding?'badge-f':'badge-n'}">${c.isFinding?'FINDING':'NO FINDING'}</span></td>
+      <td><div class="mbar-wrap"><div class="mbar" style="width:${Math.round(c.score*55)}px;background:${sc}"></div><span style="color:${sc};font-weight:700">${(c.score*100).toFixed(1)}%</span></div></td>
+      <td style="color:${c.geomRatio>1.3?'#ef4444':'#10b981'}">${c.geomRatio}x</td>
+      <td style="color:${c.mccCount>1?'#f59e0b':'var(--muted)'}">${c.mccCount}</td>
+      <td style="color:${c.ccCount>3?'#f59e0b':'var(--muted)'}">${c.ccCount}</td>
+      <td>${c.los}d</td>
+      <td style="font-size:8px">${top?.name.split(' ').slice(0,3).join(' ')||'—'}</td>
+      <td style="color:#f87171">${tP?'+'+tP.shap.toFixed(4):'—'}</td>
+      <td style="color:#60a5fa">${tN?tN.shap.toFixed(4):'—'}</td>
+      <td style="color:var(--purple)">$${Number(c.billed).toLocaleString()}</td>
+      <td>$${Number(c.paidAmt).toLocaleString()}</td>
+      <td>${c.modified?'<span class="modified-badge">EDITED</span>':'<span style="color:var(--muted);font-size:8px">—</span>'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════ TOOLTIP ═══════════════════════
+function showTT(e,title,body){
+  const tt=document.getElementById('tt');
+  document.getElementById('tt-t').textContent=title;
+  document.getElementById('tt-b').innerHTML=body.split('|').map(s=>`<div class="tt-row">${s.trim()}</div>`).join('');
+  tt.style.left=(e.clientX+12)+'px';tt.style.top=(e.clientY-8)+'px';tt.classList.add('show');
+}
+function hideTT(){document.getElementById('tt').classList.remove('show');}
+document.addEventListener('mousemove',e=>{
+  const tt=document.getElementById('tt');
+  if(tt.classList.contains('show')){tt.style.left=(e.clientX+12)+'px';tt.style.top=(e.clientY-8)+'px';}
+});
+
+// ═══════════════════════ IMPORTER ═══════════════════════
+function openImporter(){
+  document.getElementById('import-modal').style.display='flex';
+  document.getElementById('import-error').style.display='none';
+  document.getElementById('import-success').style.display='none';
+}
+function closeImporter(){
+  document.getElementById('import-modal').style.display='none';
+  document.getElementById('import-json').value='';
+}
+document.getElementById('import-modal').addEventListener('click',function(e){
+  if(e.target===this) closeImporter();
+});
+
+const SAMPLE_CLAIM_JSON = JSON.stringify([{
+  idx:0,drg:"291",drgLabel:"Heart Failure & Shock w/ MCC",drgSpec:"Cardiology",
+  isFinding:true,mcc:1,cc:1,mccCount:3,ccCount:6,geomRatio:2.14,los:12.5,
+  principalDx:"I5030",principalDxLabel:"Acute-on-Chronic Systolic CHF",
+  procCode:"5A02110",dischargeCode:"03",dischargeLabel:"SNF",
+  provider:{taxId:"270123456",name:"Northeast Medical Center",state:"NY",risk:0.62},
+  score:0.847,baseScore:0.342,billed:148250,paidAmt:79480,
+  memberId:"H482019",planCode:"H1234",admitDate:"2024-03-14",modified:false,
+  shapFeatures:[
+    {key:"geomRatio",   name:"LOS / Geom Mean Ratio", shap: 0.18230},
+    {key:"mccCount",    name:"MCC Count",              shap: 0.09120},
+    {key:"ccCount",     name:"CC Count",               shap: 0.05410},
+    {key:"mcc",         name:"MCC Present (Flag)",     shap: 0.07240},
+    {key:"cc",          name:"CC Present (Flag)",      shap: 0.03120},
+    {key:"principalDx", name:"Principal Diagnosis",    shap: 0.04870},
+    {key:"drgCode",     name:"DRG Code",               shap:-0.02140},
+    {key:"providerRisk",name:"Provider Tax ID",        shap: 0.06310},
+    {key:"procCode",    name:"Procedure Code",         shap:-0.01820},
+    {key:"dischStatus", name:"Discharge Status",       shap:-0.04210}
+  ]
+}], null, 2);
+
+function loadSample(){
+  document.getElementById('import-json').value = SAMPLE_CLAIM_JSON;
+  document.getElementById('import-error').style.display='none';
+  document.getElementById('import-success').style.display='none';
+}
+
+const REQUIRED_KEYS=['idx','drg','isFinding','mcc','cc','mccCount','ccCount',
+  'geomRatio','los','principalDx','procCode','dischargeCode','provider',
+  'score','baseScore','billed','paidAmt','memberId','planCode','admitDate','shapFeatures'];
+
+function importJSON(){
+  const raw=document.getElementById('import-json').value.trim();
+  const errEl=document.getElementById('import-error');
+  const okEl=document.getElementById('import-success');
+  errEl.style.display='none'; okEl.style.display='none';
+  if(!raw){errEl.textContent='Please paste a JSON array.';errEl.style.display='block';return;}
+  let parsed;
+  try{parsed=JSON.parse(raw);}
+  catch(e){errEl.textContent='JSON parse error: '+e.message;errEl.style.display='block';return;}
+  if(!Array.isArray(parsed)||parsed.length===0){
+    errEl.textContent='Expected a non-empty JSON array [ {...}, {...} ]';
+    errEl.style.display='block';return;
+  }
+  const first=parsed[0];
+  const missing=REQUIRED_KEYS.filter(k=>!(k in first));
+  if(missing.length){
+    errEl.textContent='Missing required keys in claim[0]: '+missing.join(', ');
+    errEl.style.display='block';return;
+  }
+  if(!first.provider||!('taxId' in first.provider)||!('risk' in first.provider)){
+    errEl.textContent='Each claim needs provider: {taxId, name, state, risk}';
+    errEl.style.display='block';return;
+  }
+  if(!Array.isArray(first.shapFeatures)||first.shapFeatures.length!==10){
+    errEl.textContent='shapFeatures must be an array of exactly 10 objects {key, name, shap}';
+    errEl.style.display='block';return;
+  }
+  const normalised=parsed.map((c,i)=>({
+    ...c, idx:i, modified:false,
+    drgLabel:c.drgLabel||c.drg, drgSpec:c.drgSpec||'--',
+    dischargeLabel:c.dischargeLabel||c.dischargeCode,
+    principalDxLabel:c.principalDxLabel||c.principalDx,
+    _orig:JSON.parse(JSON.stringify({
+      isFinding:c.isFinding,mccCount:c.mccCount,ccCount:c.ccCount,
+      mcc:c.mcc,cc:c.cc,geomRatio:c.geomRatio,los:c.los,
+      baseScore:c.baseScore,dischargeCode:c.dischargeCode,
+      billed:c.billed,drg:c.drg,provider:c.provider
+    }))
+  }));
+  CLAIMS.length=0;
+  normalised.forEach(c=>CLAIMS.push(c));
+  activeIdx=0;
+  okEl.textContent='Loaded '+CLAIMS.length+' claim'+(CLAIMS.length!==1?'s':'')+' successfully. Dashboard refreshed.';
+  okEl.style.display='block';
+  updateStatBar();applyFilters();renderDetail();
+  setTimeout(closeImporter,1400);
+}
+
+// ═══════════════════════ INIT ═══════════════════════
+updateStatBar();
+applyFilters();
+renderDetail();
+window.addEventListener('resize',()=>{
+  if(activeTab==='tab-global') setTimeout(()=>{renderDistChart();renderBeeswarm();},60);
+});
+</script>
+</body>
+</html>
