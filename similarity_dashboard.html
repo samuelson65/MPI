@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Code Similarity — FWA Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0d0f12;
+  --bg1:      #13161b;
+  --bg2:      #1a1e26;
+  --bg3:      #222836;
+  --border:   #2a3040;
+  --border2:  #3a4255;
+  --text:     #d4d8e0;
+  --text2:    #8892a4;
+  --text3:    #5a6275;
+  --accent:   #4af0a0;
+  --accent2:  #0a8f5a;
+  --red:      #f05050;
+  --orange:   #f0a050;
+  --yellow:   #f0d050;
+  --blue:     #50a0f0;
+  --purple:   #a050f0;
+
+  --ax-clin:  #e05040;
+  --ax-sev:   #e03030;
+  --ax-int:   #4080e0;
+  --ax-anat:  #40b080;
+  --ax-epis:  #9060d0;
+  --ax-bill:  #4090c0;
+  --ax-bund:  #c07030;
+  --ax-dxp:   #e04040;
+  --ax-fwa:   #d02020;
+  --ax-fin:   #3060b0;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Layout ── */
+.shell {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  min-height: 100vh;
+}
+
+header {
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.tagline {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text3);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.online  { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.status-dot.loading { background: var(--orange); animation: pulse 1s infinite; }
+.status-dot.offline { background: var(--red); }
+
+.status-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 0.05em;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  overflow: hidden;
+  height: calc(100vh - 52px);
+}
+
+/* ── Left panel ── */
+.left {
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text3);
+  padding: 16px 20px 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title::before {
+  content: '//';
+  color: var(--accent2);
+}
+
+/* ── Code inputs ── */
+.code-inputs {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.code-input-group {
+  position: relative;
+}
+
+.code-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.code-badge {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.code-badge.a { background: var(--accent2); color: var(--bg); }
+.code-badge.b { background: var(--blue); color: var(--bg); }
+
+.code-input-wrap {
+  position: relative;
+}
+
+.code-input {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  letter-spacing: 0.05em;
+}
+
+.code-input:focus {
+  border-color: var(--accent2);
+}
+
+.code-input.has-result {
+  border-color: var(--accent2);
+  background: color-mix(in srgb, var(--bg2) 85%, var(--accent) 15%);
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  z-index: 200;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+
+.dropdown-item:last-child { border-bottom: none; }
+.dropdown-item:hover { background: var(--bg3); }
+
+.di-code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.di-desc {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+
+.di-type {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--text3);
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.code-meta {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text2);
+  min-height: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.compare-btn {
+  background: var(--accent2);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s, opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.compare-btn:hover { background: var(--accent); }
+.compare-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Axis weight controls ── */
+.axis-controls {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+
+.axis-controls::-webkit-scrollbar { width: 3px; }
+.axis-controls::-webkit-scrollbar-track { background: transparent; }
+.axis-controls::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.axis-row {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.axis-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.axis-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.axis-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.axis-label {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.axis-slider-wrap {
+  position: relative;
+}
+
+input[type=range].axis-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border2);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type=range].axis-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+input[type=range].axis-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+}
+
+.axis-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  text-align: right;
+  font-weight: 500;
+}
+
+.reset-weights {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 6px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.reset-weights:hover { border-color: var(--border2); color: var(--text2); }
+
+/* ── Right panel ── */
+.right {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.right::-webkit-scrollbar { width: 4px; }
+.right::-webkit-scrollbar-track { background: transparent; }
+.right::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Empty / Loading state ── */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text3);
+  padding: 40px;
+  text-align: center;
+}
+
+.empty-glyph {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 48px;
+  color: var(--border2);
+  line-height: 1;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: var(--text3);
+  max-width: 280px;
+  line-height: 1.65;
+}
+
+/* ── Results ── */
+.results {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pulse  { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── Score card ── */
+.score-card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 20px;
+  align-items: center;
+}
+
+.sc-codes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sc-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-code-str {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sc-code-str.a { color: var(--accent); }
+.sc-code-str.b { color: var(--blue); }
+
+.sc-desc {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+
+.sc-type-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 5px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.sc-score-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.sc-score-ring {
+  position: relative;
+  width: 80px; height: 80px;
+}
+
+.sc-score-ring svg {
+  transform: rotate(-90deg);
+}
+
+.sc-score-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.sc-score-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sc-score-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  color: var(--text3);
+  letter-spacing: 0.08em;
+}
+
+.sc-score-caption {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: center;
+}
+
+.risk-badge {
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.risk-badge.LOW      { background: color-mix(in srgb, var(--bg2) 80%, #20a060 20%); border: 1px solid #20a06060; }
+.risk-badge.MEDIUM   { background: color-mix(in srgb, var(--bg2) 80%, #d08020 20%); border: 1px solid #d0802060; }
+.risk-badge.HIGH     { background: color-mix(in srgb, var(--bg2) 80%, #e05020 20%); border: 1px solid #e0502060; }
+.risk-badge.CRITICAL { background: color-mix(in srgb, var(--bg2) 80%, #d02020 20%); border: 1px solid #d0202060; }
+
+.risk-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.risk-level {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.risk-badge.LOW      .risk-level { color: #40d080; }
+.risk-badge.MEDIUM   .risk-level { color: #f0a040; }
+.risk-badge.HIGH     .risk-level { color: #f06020; }
+.risk-badge.CRITICAL .risk-level { color: var(--red); }
+
+.risk-reason {
+  font-size: 10px;
+  color: var(--text2);
+  line-height: 1.5;
+  max-width: 130px;
+}
+
+/* ── Axis breakdown ── */
+.axis-breakdown {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ab-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ab-header::before { content: '//'; color: var(--accent2); }
+
+.ab-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ab-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 52px 200px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ab-row:last-child { border-bottom: none; }
+.ab-row:hover { background: var(--bg2); }
+.ab-row.expanded { background: var(--bg2); }
+
+.ab-axis-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ab-bar-track {
+  height: 6px;
+  background: var(--bg3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ab-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+
+.ab-sim {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.ab-flag {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.ab-flag.warn  { color: var(--orange); }
+.ab-flag.alert { color: var(--red); }
+.ab-flag.good  { color: var(--accent); }
+
+.ab-explanation {
+  grid-column: 1/-1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.65;
+  margin: 0 0 4px;
+  display: none;
+}
+
+.ab-row.expanded .ab-explanation { display: block; }
+
+/* ── Weight contribution ── */
+.weight-contribution {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.wc-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 52px 52px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.wc-row:last-child { border-bottom: none; }
+.wc-row.header {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text3);
+  background: var(--bg2);
+}
+
+.wc-contrib-bar {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.wc-contrib-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent2);
+}
+
+.wc-val {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text2);
+  text-align: right;
+}
+
+.wc-contrib-pct {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  text-align: right;
+}
+
+/* ── FWA spotlight ── */
+.fwa-spotlight {
+  background: color-mix(in srgb, var(--bg1) 90%, var(--ax-fwa) 10%);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, var(--ax-fwa) 40%);
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.fwa-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.fwa-signal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fwa-sig-name {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.fwa-sig-bar {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.fwa-sig-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.fwa-sig-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Error ── */
+.error-banner {
+  background: color-mix(in srgb, var(--bg2) 80%, var(--red) 20%);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, var(--red) 50%);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #f08080;
+  margin: 20px;
+}
+
+.no-server {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  margin: 20px;
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.8;
+}
+
+.no-server code {
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">MedCode·SIM</div>
+  <div class="tagline">256-dim FWA Embedding Similarity Engine</div>
+  <span class="status-label" id="statusLabel">connecting…</span>
+  <div class="status-dot" id="statusDot"></div>
+</header>
+
+<div class="main">
+
+  <!-- ── Left Panel ── -->
+  <div class="left">
+
+    <div class="panel-title">Code Comparison</div>
+
+    <div class="code-inputs">
+
+      <!-- Code A -->
+      <div class="code-input-group" id="groupA">
+        <div class="code-label">
+          <span class="code-badge a">A</span>
+          Code A — Diagnosis / Procedure / CPT / HCPCS
+        </div>
+        <div class="code-input-wrap">
+          <input class="code-input" id="inputA" type="text"
+                 placeholder="e.g. I21.01  02703ZZ  93000" autocomplete="off">
+          <div class="dropdown" id="dropA" style="display:none"></div>
+        </div>
+        <div class="code-meta" id="metaA"></div>
+      </div>
+
+      <!-- Code B -->
+      <div class="code-input-group" id="groupB">
+        <div class="code-label">
+          <span class="code-badge b">B</span>
+          Code B — Diagnosis / Procedure / CPT / HCPCS
+        </div>
+        <div class="code-input-wrap">
+          <input class="code-input" id="inputB" type="text"
+                 placeholder="e.g. 27447  5A1945Z  99291" autocomplete="off">
+          <div class="dropdown" id="dropB" style="display:none"></div>
+        </div>
+        <div class="code-meta" id="metaB"></div>
+      </div>
+
+      <button class="compare-btn" id="compareBtn" disabled>
+        <span id="btnIcon">⟶</span>
+        <span id="btnText">Compare Codes</span>
+      </button>
+    </div>
+
+    <!-- Axis Weight Controls -->
+    <div class="panel-title">Axis Weights</div>
+
+    <div class="axis-controls" id="axisControls">
+      <!-- injected by JS -->
+    </div>
+
+  </div>
+
+  <!-- ── Right Panel ── -->
+  <div class="right" id="rightPanel">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-glyph">⊕</div>
+      <div class="empty-text">
+        Enter two medical codes on the left and click Compare.<br><br>
+        Supports ICD-10-CM, ICD-10-PCS, CPT (Category I/II/III), and HCPCS Level II.
+      </div>
+    </div>
+    <div id="resultsArea" style="display:none"></div>
+    <div id="noServerMsg" style="display:none">
+      <div class="no-server">
+        <strong style="color:var(--red);font-family:'IBM Plex Mono',monospace;">Backend not running</strong><br><br>
+        This dashboard requires the Python API to be running locally:<br><br>
+        <code>cd /path/to/outputs</code><br>
+        <code>python similarity_api.py</code><br><br>
+        The API loads the 256-dim embeddings file (<code>Medical_Embeddings_256_2026.csv</code>) and
+        serves similarity queries on <code>http://localhost:8765</code>.<br><br>
+        Once the API is running, reload this page. The status indicator (top-right) will turn green.
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8765';
+
+// ── Axis metadata (mirroring backend) ────────────────────────────────────────
+let AXES = [];
+let weights = {};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let codeA = null, codeB = null;
+let serverOnline = false;
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+function colorForSim(sim) {
+  if (sim >= 0.75) return '#4af0a0';
+  if (sim >= 0.50) return '#a0d050';
+  if (sim >= 0.30) return '#f0c040';
+  if (sim >= 0.10) return '#f08040';
+  return '#f05050';
+}
+
+function flagForAxis(axId, sim) {
+  const thresholds = {
+    dxproc:    { alert: 0.40, warn: 0.60 },
+    clinical:  { alert: 0.30, warn: 0.55 },
+    anatomical:{ alert: 0.15, warn: 0.50 },
+    bundling:  { alert: 0.70, warn: 0.55 },  // HIGH bundling = component risk
+    fwa:       { alert: 0.25, warn: 0.15 },
+    severity:  { alert: 0.90, warn: 0.75 },  // too similar = stacking
+  };
+  if (axId === 'bundling' || axId === 'fwa' || axId === 'severity') {
+    const t = thresholds[axId] || {};
+    if (sim >= (t.alert || 999)) return { cls:'alert', text:'⚠ FLAG' };
+    if (sim >= (t.warn  || 999)) return { cls:'warn',  text:'↑ watch' };
+    return { cls:'good', text:'✓ ok' };
+  }
+  const t = thresholds[axId] || {};
+  if (sim <= (t.alert || -1)) return { cls:'alert', text:'⚠ FLAG' };
+  if (sim <= (t.warn  || -1)) return { cls:'warn',  text:'↓ low' };
+  return { cls:'good', text:'✓ ok' };
+}
+
+// ── API calls ─────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });
+    if (r.ok) { setStatus('online'); return true; }
+  } catch {}
+  setStatus('offline');
+  return false;
+}
+
+async function loadAxes() {
+  try {
+    const r = await fetch(`${API}/axes`);
+    AXES = await r.json();
+    weights = Object.fromEntries(AXES.map(a => [a.id, 1.0]));
+    renderAxisControls();
+  } catch {}
+}
+
+async function searchCodes(query, which) {
+  if (query.length < 2) return;
+  try {
+    const r = await fetch(`${API}/search?q=${encodeURIComponent(query)}&limit=12`);
+    const data = await r.json();
+    renderDropdown(which, data);
+  } catch {}
+}
+
+async function compareNow() {
+  if (!codeA || !codeB) return;
+  setBtnLoading(true);
+  try {
+    const r = await fetch(`${API}/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code_a: codeA, code_b: codeB, weights })
+    });
+    const data = await r.json();
+    renderResults(data);
+  } catch (e) {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('resultsArea').style.display = 'none';
+    document.getElementById('noServerMsg').style.display = 'block';
+  } finally {
+    setBtnLoading(false);
+  }
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+function setStatus(state) {
+  const dot = document.getElementById('statusDot');
+  const lbl = document.getElementById('statusLabel');
+  serverOnline = state === 'online';
+  dot.className = 'status-dot ' + state;
+  lbl.textContent = state === 'online' ? `${AXES.length || '10'} axes · ${254128..toLocaleString()} codes` :
+                    state === 'loading' ? 'loading…' : 'server offline';
+  if (state === 'offline') {
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('noServerMsg').style.display = 'block';
+  }
+}
+
+// ── Axis controls ─────────────────────────────────────────────────────────────
+function renderAxisControls() {
+  const el = document.getElementById('axisControls');
+  if (!AXES.length) { el.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px 0;">Load axes from API first.</div>'; return; }
+  el.innerHTML = AXES.map(ax => `
+    <div class="axis-row" title="${ax.desc}">
+      <div class="axis-info">
+        <div class="axis-name-row">
+          <div class="axis-dot" style="background:${ax.color}"></div>
+          <span class="axis-label">${ax.name}</span>
+        </div>
+        <div class="axis-slider-wrap">
+          <input type="range" class="axis-slider" min="0" max="3" step="0.1"
+                 value="1" id="slider_${ax.id}" data-ax="${ax.id}"
+                 style="--fill-color:${ax.color}">
+        </div>
+      </div>
+      <div class="axis-value" id="wval_${ax.id}">1.0×</div>
+    </div>
+  `).join('') + `<button class="reset-weights" id="resetWeights">↺ Reset all to 1.0×</button>`;
+
+  AXES.forEach(ax => {
+    const slider = document.getElementById(`slider_${ax.id}`);
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      weights[ax.id] = v;
+      document.getElementById(`wval_${ax.id}`).textContent = v.toFixed(1) + '×';
+    });
+  });
+
+  document.getElementById('resetWeights').addEventListener('click', () => {
+    AXES.forEach(ax => {
+      weights[ax.id] = 1.0;
+      document.getElementById(`slider_${ax.id}`).value = 1.0;
+      document.getElementById(`wval_${ax.id}`).textContent = '1.0×';
+    });
+  });
+}
+
+// ── Dropdowns ─────────────────────────────────────────────────────────────────
+function renderDropdown(which, items) {
+  const drop = document.getElementById(`drop${which}`);
+  if (!items || !items.length) { drop.style.display = 'none'; return; }
+  drop.style.display = 'block';
+  drop.innerHTML = items.map(it => `
+    <div class="dropdown-item" data-code="${it.code}" data-which="${which}">
+      <div class="di-code">${it.code}</div>
+      <div class="di-desc">${it.desc}</div>
+      <div class="di-type">${it.type}</div>
+    </div>
+  `).join('');
+  drop.querySelectorAll('.dropdown-item').forEach(row => {
+    row.addEventListener('click', () => {
+      selectCode(which, row.dataset.code);
+      drop.style.display = 'none';
+    });
+  });
+}
+
+function selectCode(which, code) {
+  const input = document.getElementById(`input${which}`);
+  const meta  = document.getElementById(`meta${which}`);
+  input.value = code;
+  input.classList.add('has-result');
+  meta.innerHTML = `<span class="spinner"></span> loading…`;
+
+  fetch(`${API}/code?code=${encodeURIComponent(code)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (which === 'A') codeA = code;
+      else               codeB = code;
+      meta.innerHTML = `<span style="color:var(--accent);">${d.type}</span> · ${d.desc.substring(0,60)}${d.desc.length>60?'…':''}`;
+      checkCompareReady();
+    })
+    .catch(() => { meta.textContent = 'not found'; input.classList.remove('has-result'); });
+}
+
+function checkCompareReady() {
+  document.getElementById('compareBtn').disabled = !(codeA && codeB && serverOnline);
+}
+
+function setBtnLoading(loading) {
+  const btn  = document.getElementById('compareBtn');
+  const icon = document.getElementById('btnIcon');
+  const txt  = document.getElementById('btnText');
+  if (loading) { icon.innerHTML = '<span class="spinner"></span>'; txt.textContent = 'Comparing…'; btn.disabled = true; }
+  else         { icon.textContent = '⟶'; txt.textContent = 'Compare Codes'; btn.disabled = false; }
+}
+
+// ── Results rendering ─────────────────────────────────────────────────────────
+function renderResults(d) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('noServerMsg').style.display = 'none';
+  const area = document.getElementById('resultsArea');
+  area.style.display = 'block';
+
+  const wsim = d.weighted_similarity;
+  const risk = d.risk_level;
+  const ax   = d.axis_similarities;
+  const expl = d.explanations;
+
+  // Score ring
+  const pct  = Math.max(0, Math.min(1, (wsim + 1) / 2));  // map -1…1 → 0…1
+  const deg  = pct * 283;   // circumference of r=45 circle ≈ 283
+  const ringColor = colorForSim(wsim);
+
+  // Weight contributions
+  const totalW = Object.values(weights).reduce((a,b)=>a+b,0) || 1;
+  const contribs = AXES.map(a => ({
+    id: a.id, name: a.name, color: a.color,
+    w: weights[a.id] || 1,
+    sim: ax[a.id] || 0,
+    contrib: ((weights[a.id]||1)/totalW) * (ax[a.id]||0),
+  }));
+  const maxContrib = Math.max(...contribs.map(c=>Math.abs(c.contrib)));
+
+  area.innerHTML = `
+
+    <!-- Score card -->
+    <div class="results">
+      <div class="score-card">
+        <div class="sc-codes">
+          <div class="sc-code">
+            <span class="code-badge a">A</span>
+            <div>
+              <div class="sc-code-str a">${d.code_a.code}</div>
+              <div class="sc-desc">${d.code_a.desc.substring(0,65)}${d.code_a.desc.length>65?'…':''}</div>
+            </div>
+            <span class="sc-type-tag">${d.code_a.type}</span>
+          </div>
+          <div class="sc-code">
+            <span class="code-badge b">B</span>
+            <div>
+              <div class="sc-code-str b">${d.code_b.code}</div>
+              <div class="sc-desc">${d.code_b.desc.substring(0,65)}${d.code_b.desc.length>65?'…':''}</div>
+            </div>
+            <span class="sc-type-tag">${d.code_b.type}</span>
+          </div>
+        </div>
+
+        <div class="sc-score-section">
+          <div class="sc-score-ring">
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="33" fill="none" stroke="var(--bg3)" stroke-width="5"/>
+              <circle cx="40" cy="40" r="33" fill="none" stroke="${ringColor}" stroke-width="5"
+                stroke-dasharray="${(deg).toFixed(1)} 999"
+                stroke-linecap="round"/>
+            </svg>
+            <div class="sc-score-num">
+              <div class="sc-score-val" style="color:${ringColor}">${wsim.toFixed(3)}</div>
+              <div class="sc-score-label">weighted</div>
+            </div>
+          </div>
+          <div class="sc-score-caption">Full cosine: ${d.full_cosine.toFixed(4)}</div>
+        </div>
+
+        <div class="risk-badge ${risk}">
+          <div class="risk-label">Risk Level</div>
+          <div class="risk-level">${risk}</div>
+          <div class="risk-reason">${d.risk_reason}</div>
+        </div>
+      </div>
+
+      <!-- Axis breakdown -->
+      <div class="axis-breakdown">
+        <div class="ab-header">Axis-by-Axis Similarity &amp; Explainability</div>
+        <div class="ab-rows" id="abRows">
+          ${AXES.map(a => {
+            const sim = ax[a.id] || 0;
+            const barW = Math.max(0, Math.min(100, ((sim+1)/2)*100)).toFixed(1);
+            const color = colorForSim(sim);
+            const fl = flagForAxis(a.id, sim);
+            const w = (weights[a.id]||1).toFixed(1);
+            return `
+            <div class="ab-row" data-ax="${a.id}">
+              <div class="ab-axis-name">
+                <div class="axis-dot" style="background:${a.color}"></div>
+                ${a.name}
+              </div>
+              <div class="ab-bar-track">
+                <div class="ab-bar-fill" style="width:${barW}%;background:${color}"></div>
+              </div>
+              <div class="ab-sim" style="color:${color}">${sim.toFixed(4)}</div>
+              <div class="ab-flag ${fl.cls}">${fl.text} · w=${w}×</div>
+              <div class="ab-explanation">${expl[a.id] || '—'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Weight contribution table -->
+      <div class="weight-contribution">
+        <div class="ab-header">Weighted Contribution Breakdown</div>
+        <div class="wc-row header">
+          <div>Axis</div><div>Contribution</div><div>Sim</div><div>%</div>
+        </div>
+        ${contribs.sort((a,b)=>Math.abs(b.contrib)-Math.abs(a.contrib)).map(c => {
+          const pct = maxContrib > 0 ? Math.abs(c.contrib)/maxContrib*100 : 0;
+          const contribPct = totalW > 0 ? (c.w/totalW*100).toFixed(0) : 0;
+          return `
+          <div class="wc-row">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <div class="axis-dot" style="background:${c.color}"></div>
+              <span style="font-size:11px;color:var(--text)">${c.name}</span>
+            </div>
+            <div class="wc-contrib-bar">
+              <div class="wc-contrib-fill" style="width:${pct.toFixed(1)}%;background:${c.color};opacity:0.7"></div>
+            </div>
+            <div class="wc-val">${c.sim.toFixed(4)}</div>
+            <div class="wc-contrib-pct">${contribPct}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <!-- FWA Spotlight -->
+      <div class="fwa-spotlight">
+        <div class="ab-header" style="padding:0;border:none;margin-bottom:0">FWA Risk Signal Spotlight</div>
+        <div class="fwa-grid">
+          ${[
+            {label:'Upcoding', key:'fwa_upcoding',   idxA:208, idxB:208, desc:'E&M or proc upcoding'},
+            {label:'Unbundling',key:'fwa_unbundling', idxA:209, idxB:209, desc:'NCCI component billing'},
+            {label:'Over-Order',key:'fwa_ordering',   idxA:210, idxB:210, desc:'Unnecessary ordering'},
+            {label:'Phantom',   key:'fwa_phantom',    idxA:211, idxB:211, desc:'DME/phantom services'},
+          ].map(sig => {
+            const vA = d.code_a.fwa_composite || 0;
+            const vB = d.code_b.fwa_composite || 0;
+            const combined = (vA + vB) / 2;
+            const simSig = ax['fwa'] || 0;
+            const displayVal = Math.max(vA,vB);
+            const barW = Math.min(100, displayVal * 300).toFixed(0);
+            const sigColor = displayVal > 0.25 ? 'var(--red)' : displayVal > 0.12 ? 'var(--orange)' : 'var(--accent)';
+            return `
+            <div class="fwa-signal">
+              <div class="fwa-sig-name">${sig.label}</div>
+              <div style="font-size:9px;color:var(--text3);margin-bottom:2px">${sig.desc}</div>
+              <div class="fwa-sig-bar">
+                <div class="fwa-sig-fill" style="width:${barW}%;background:${sigColor}"></div>
+              </div>
+              <div class="fwa-sig-val" style="color:${sigColor}">${displayVal.toFixed(3)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:10px;font-size:10px;color:var(--text3);font-family:'IBM Plex Mono',monospace;line-height:1.6">
+          ${expl['fwa'] || ''}
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // Click-to-expand axis explanations
+  document.querySelectorAll('.ab-row').forEach(row => {
+    row.addEventListener('click', () => row.classList.toggle('expanded'));
+  });
+}
+
+// ── Input listeners ───────────────────────────────────────────────────────────
+function setupInput(which) {
+  const inp  = document.getElementById(`input${which}`);
+  const drop = document.getElementById(`drop${which}`);
+
+  const doSearch = debounce(q => searchCodes(q, which), 250);
+
+  inp.addEventListener('input', () => {
+    inp.classList.remove('has-result');
+    if (which === 'A') codeA = null; else codeB = null;
+    checkCompareReady();
+    const q = inp.value.trim();
+    if (q.length >= 2) doSearch(q);
+    else drop.style.display = 'none';
+  });
+
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const q = inp.value.trim();
+      if (q) selectCode(which, q);
+    }
+    if (e.key === 'Escape') drop.style.display = 'none';
+  });
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById(`group${which}`).contains(e.target))
+      drop.style.display = 'none';
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('compareBtn').addEventListener('click', compareNow);
+
+setupInput('A');
+setupInput('B');
+
+(async () => {
+  setStatus('loading');
+  const ok = await checkHealth();
+  if (ok) {
+    await loadAxes();
+    setStatus('online');
+  } else {
+    setStatus('offline');
+    renderAxisControls();   // render with empty axes so UI still shows
+  }
+  checkCompareReady();
+
+  // Poll health every 5s
+  setInterval(async () => {
+    const was = serverOnline;
+    const now = await checkHealth();
+    if (now && !was) { await loadAxes(); setStatus('online'); checkCompareReady(); }
+    else if (!now && was) { setStatus('offline'); }
+  }, 5000);
+})();
+</script>
+</body>
+</html>
