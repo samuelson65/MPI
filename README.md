@@ -1,175 +1,72 @@
-# ============================================
-# CPT AUDIT RECOMMENDATION ENGINE (PYSPARK)
-# ============================================
+import pandas as pd
 
-from pyspark.sql import functions as F
-from pyspark.sql.types import *
+INPUT_FILE = "input.csv"
+OUTPUT_FILE = "cleaned_output.csv"
+BAD_ROWS_FILE = "bad_rows.csv"
 
-# --------------------------------------------
-# PARAMETERS (TUNE THESE)
-# --------------------------------------------
+def clean_numeric_column(series):
+    """
+    Cleans and converts a pandas Series to numeric safely.
+    """
+    # Convert to string for uniform processing
+    series = series.astype(str).str.strip()
 
-MIN_VOLUME = 20         # minimum CPT occurrences
-ALPHA = 20              # Bayesian smoothing strength
-HIGH_RISK = 0.6
-MEDIUM_RISK = 0.4
-
-# --------------------------------------------
-# STEP 1: CLEAN INPUT
-# --------------------------------------------
-
-training_df = training_df.filter(F.col("cpt_findingline_dict").isNotNull())
-scoring_df = scoring_df.filter(F.col("cpt_findingline_dict").isNotNull())
-
-# --------------------------------------------
-# STEP 2: FLATTEN TRAINING DATA
-# --------------------------------------------
-
-train_flat = (
-    training_df
-    .select(
-        F.explode(F.map_entries("cpt_findingline_dict")).alias("kv")
+    # Remove common noise
+    series = (
+        series
+        .str.replace(',', '', regex=False)   # remove हजार separators
+        .str.replace(r'[^\d\.\-]', '', regex=True)  # keep digits, dot, minus
     )
-    .select(
-        F.col("kv.key").alias("CPT_Code"),
-        F.col("kv.value").cast("int").alias("line_denied")
-    )
-)
 
-# --------------------------------------------
-# STEP 3: GLOBAL DROP RATE
-# --------------------------------------------
+    # Convert to numeric
+    numeric_series = pd.to_numeric(series, errors='coerce')
 
-global_stats = train_flat.agg(
-    F.sum("line_denied").alias("total_drops"),
-    F.count("*").alias("total_count")
-).collect()[0]
+    return numeric_series
 
-global_rate = (
-    global_stats["total_drops"] / global_stats["total_count"]
-    if global_stats["total_count"] > 0 else 0.0
-)
 
-# --------------------------------------------
-# STEP 4: CPT-LEVEL BAYESIAN PROBABILITY
-# --------------------------------------------
+def process_csv(file_path):
+    chunksize = 100000  # adjust based on memory
+    cleaned_chunks = []
+    bad_rows_list = []
 
-agg_df = (
-    train_flat
-    .groupBy("CPT_Code")
-    .agg(
-        F.count("*").alias("N"),
-        F.sum("line_denied").alias("D")
-    )
-    .withColumn(
-        "Drop_Probability",
-        (F.col("D") + F.lit(ALPHA * global_rate)) /
-        (F.col("N") + F.lit(ALPHA))
-    )
-)
+    for chunk in pd.read_csv(file_path, chunksize=chunksize, low_memory=False):
+        chunk_original = chunk.copy()
 
-# --------------------------------------------
-# STEP 5: FILTER LOW VOLUME CPTs
-# --------------------------------------------
+        for col in chunk.columns:
+            # Try converting column to numeric
+            converted = clean_numeric_column(chunk[col])
 
-agg_filtered = agg_df.filter(F.col("N") >= MIN_VOLUME)
+            # Heuristic: if most values become numeric, treat column as numeric
+            valid_ratio = converted.notna().mean()
 
-# --------------------------------------------
-# STEP 6: FLATTEN SCORING DATA
-# --------------------------------------------
+            if valid_ratio > 0.8:  # threshold (tune if needed)
+                # Capture bad rows BEFORE replacing
+                bad_mask = converted.isna() & chunk[col].notna()
+                if bad_mask.any():
+                    bad_rows = chunk_original.loc[bad_mask, [col]]
+                    bad_rows["column_name"] = col
+                    bad_rows_list.append(bad_rows)
 
-score_flat = (
-    scoring_df
-    .select(
-        "claim_id",
-        F.explode(F.map_entries("cpt_findingline_dict")).alias("kv")
-    )
-    .select(
-        "claim_id",
-        F.col("kv.key").alias("CPT_Code")
-    )
-)
+                chunk[col] = converted  # replace with cleaned numeric
 
-# --------------------------------------------
-# STEP 7: JOIN WITH CPT PROBABILITY
-# --------------------------------------------
+        cleaned_chunks.append(chunk)
 
-score_with_prob = (
-    score_flat
-    .join(agg_filtered.select("CPT_Code", "Drop_Probability"),
-          on="CPT_Code", how="left")
-    .withColumn(
-        "Drop_Probability",
-        F.coalesce(F.col("Drop_Probability"), F.lit(global_rate))
-    )
-)
+    # Combine all chunks
+    final_df = pd.concat(cleaned_chunks, ignore_index=True)
 
-# --------------------------------------------
-# STEP 8: ADD RISK BUCKETS
-# --------------------------------------------
+    # Save cleaned data
+    final_df.to_csv(OUTPUT_FILE, index=False)
 
-score_with_prob = score_with_prob.withColumn(
-    "risk_bucket",
-    F.when(F.col("Drop_Probability") >= HIGH_RISK, "HIGH")
-     .when(F.col("Drop_Probability") >= MEDIUM_RISK, "MEDIUM")
-     .otherwise("LOW")
-)
+    # Save bad rows if any
+    if bad_rows_list:
+        bad_df = pd.concat(bad_rows_list, ignore_index=True)
+        bad_df.to_csv(BAD_ROWS_FILE, index=False)
 
-# --------------------------------------------
-# STEP 9: BUILD CPT → {prob, risk} MAP
-# --------------------------------------------
+    print("✅ Cleaning completed")
+    print(f"Cleaned file saved to: {OUTPUT_FILE}")
+    if bad_rows_list:
+        print(f"⚠️ Bad rows saved to: {BAD_ROWS_FILE}")
 
-cpt_map = (
-    score_with_prob
-    .groupBy("claim_id")
-    .agg(
-        F.map_from_entries(
-            F.collect_list(
-                F.struct(
-                    F.col("CPT_Code"),
-                    F.struct(
-                        F.col("Drop_Probability").alias("prob"),
-                        F.col("risk_bucket").alias("risk")
-                    )
-                )
-            )
-        ).alias("cpt_audit_recommendation")
-    )
-)
 
-# --------------------------------------------
-# STEP 10: CLAIM-LEVEL METRICS
-# --------------------------------------------
-
-claim_metrics = (
-    score_with_prob
-    .groupBy("claim_id")
-    .agg(
-        F.max("Drop_Probability").alias("claim_max_risk"),
-        F.avg("Drop_Probability").alias("claim_avg_risk")
-    )
-)
-
-# --------------------------------------------
-# STEP 11: FINAL OUTPUT
-# --------------------------------------------
-
-final_df = (
-    scoring_df
-    .join(cpt_map, on="claim_id", how="left")
-    .join(claim_metrics, on="claim_id", how="left")
-    .select(
-        "claim_id",
-        "findings_status",
-        "cpt_findingline_dict",
-        "cpt_audit_recommendation",
-        "claim_max_risk",
-        "claim_avg_risk"
-    )
-)
-
-# --------------------------------------------
-# OUTPUT
-# --------------------------------------------
-
-final_df.show(truncate=False)
+if __name__ == "__main__":
+    process_csv(INPUT_FILE)
