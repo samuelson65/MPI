@@ -1,0 +1,2134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Payment Integrity Modeling Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+/* Mirror list used if a primary CDN is blocked (corporate proxy, offline, sandboxed iframe). */
+window.__CDN = {
+  xlsx: [
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ],
+  plotly: [
+    'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js',
+    'https://unpkg.com/plotly.js-dist-min@2.27.0/plotly.min.js'
+  ]
+};
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0F1524;        /* base */
+  --panel:#18203247;    /* unused fallback */
+  --panel-solid:#1A2233;
+  --rule:#2B364E;       /* hairlines */
+  --amber:#E0A458;      /* ledger accent */
+  --teal:#4FB3A4;       /* findings */
+  --coral:#D9705F;      /* no-findings */
+  --text:#E7EBF2;
+  --muted:#8C99B0;
+}
+*{box-sizing:border-box}
+html,body{background:var(--ink);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;margin:0}
+h1,h2,h3,.display{font-family:'Space Grotesk',system-ui,sans-serif;letter-spacing:-0.01em}
+.mono,input[type=number],table td.num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.panel{background:var(--panel-solid);border:1px solid var(--rule);border-radius:10px}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.stage{position:relative;padding:10px 14px;border-left:1px solid var(--rule);min-width:150px;opacity:.38;transition:opacity .35s ease}
+.stage.live{opacity:1}
+.stage.live::before{content:"";position:absolute;left:-1px;top:0;bottom:0;width:2px;background:var(--amber)}
+.stage-n{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--amber)}
+.stage-l{font-size:12px;color:var(--muted)}
+.stage-v{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600}
+.navbtn{font-family:'Space Grotesk',sans-serif;font-size:13.5px;text-align:left;width:100%;padding:9px 12px;border-radius:8px;color:var(--muted);display:flex;gap:10px;align-items:baseline;border:1px solid transparent}
+.navbtn:hover{color:var(--text);background:#1E2739}
+.navbtn.active{background:#212C42;color:var(--text);border-color:var(--rule)}
+.navbtn .idx{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--amber)}
+label.fld{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.02em}
+select,input[type=text],input[type=number]{background:#141B2A;border:1px solid var(--rule);color:var(--text);border-radius:6px;padding:7px 9px;font-size:13px;width:100%}
+select:focus,input:focus,button:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+select[multiple]{padding:4px}
+button.act{background:var(--amber);color:#1A1206;font-weight:600;border-radius:7px;padding:9px 16px;font-size:13px;font-family:'Space Grotesk',sans-serif}
+button.act:hover{filter:brightness(1.08)}
+button.act:disabled{opacity:.4;cursor:not-allowed}
+button.ghost{border:1px solid var(--rule);color:var(--muted);border-radius:7px;padding:7px 12px;font-size:12px}
+button.ghost:hover{color:var(--text);border-color:var(--amber)}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.seg button{padding:7px 16px;font-size:12.5px;color:var(--muted);background:transparent;font-family:'Space Grotesk',sans-serif}
+.seg button.on{background:var(--amber);color:#1A1206;font-weight:600}
+.scopebox{display:inline-flex;flex-wrap:wrap;gap:6px;border:1px solid var(--rule);border-radius:8px;padding:6px}
+.scopechk{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--rule);border-radius:6px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;font-family:'Space Grotesk',sans-serif;background:#141B29}
+.scopechk:hover{border-color:#3C4A66}
+.scopechk input{accent-color:var(--amber);width:14px;height:14px;margin:0;cursor:pointer}
+.scopechk:has(input:checked){background:rgba(224,164,88,.14);border-color:var(--amber);color:var(--text)}
+.scopechk b{font-size:11px;color:var(--muted);font-weight:500}
+.scopechk:has(input:checked) b{color:var(--amber)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:7px 8px;border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--panel-solid)}
+td{padding:6px 8px;border-bottom:1px solid #222C40}
+tbody tr:hover{background:#1F2839}
+.scroll{overflow:auto}
+.scroll::-webkit-scrollbar{width:9px;height:9px}
+.scroll::-webkit-scrollbar-thumb{background:#2E3A52;border-radius:9px}
+.kpi{padding:12px 14px;border:1px solid var(--rule);border-radius:9px;background:#161D2C}
+.kpi .v{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600}
+.chk{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text);padding:5px 0}
+.chk input{accent-color:var(--amber);width:15px;height:15px}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--rule);color:var(--muted)}
+.rule-card{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:#161D2C;margin-bottom:8px}
+.rule-logic{font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.6;color:#CFD8E8;word-break:break-word}
+.kw{color:var(--amber)}
+#overlay{position:fixed;inset:0;background:rgba(11,16,27,.86);backdrop-filter:blur(3px);z-index:80;display:none;align-items:center;justify-content:center}
+#overlay.on{display:flex}
+.spin{width:46px;height:46px;border:2px solid #2E3A52;border-top-color:var(--amber);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 18px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:3px;background:#2E3A52;border-radius:3px;overflow:hidden;width:280px;margin:14px auto 0}
+.bar > div{height:100%;background:var(--amber);width:0%;transition:width .18s linear}
+.hide{display:none !important}
+.note{font-size:11.5px;color:var(--muted);line-height:1.55}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+@media (max-width:900px){#rail{position:static;width:100%!important}#shell{flex-direction:column}}
+</style>
+</head>
+<body>
+
+<div id="overlay"><div class="text-center"><div class="spin"></div>
+  <div id="ovTitle" class="display text-lg">Working</div>
+  <div id="ovMsg" class="note mt-1">…</div>
+  <div class="bar"><div id="ovBar"></div></div></div></div>
+
+<header class="border-b" style="border-color:var(--rule)">
+  <div class="px-5 pt-4 pb-3 flex flex-wrap items-end gap-x-6 gap-y-2">
+    <div>
+      <div class="eyebrow">Payment integrity · provider-level audit analytics</div>
+      <h1 class="text-[22px] font-bold mt-1">Modeling Dashboard &amp; Rules Sandbox</h1>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span class="pill" id="anchorPill">anchor · DRG</span>
+      <span class="pill" id="rowsPill">no data</span>
+    </div>
+  </div>
+  <!-- pipeline ribbon: the five stages of the workflow, lit as each is satisfied -->
+  <div class="flex flex-wrap px-5 pb-1 overflow-x-auto" id="ribbon">
+    <div class="stage" data-st="1"><div class="stage-n">01</div><div class="stage-l">Claims loaded</div><div class="stage-v" id="st1">—</div></div>
+    <div class="stage" data-st="2"><div class="stage-n">02</div><div class="stage-l">Labeled audits</div><div class="stage-v" id="st2">—</div></div>
+    <div class="stage" data-st="3"><div class="stage-n">03</div><div class="stage-l">Features encoded</div><div class="stage-v" id="st3">—</div></div>
+    <div class="stage" data-st="4"><div class="stage-n">04</div><div class="stage-l">Test ROC-AUC</div><div class="stage-v" id="st4">—</div></div>
+    <div class="stage" data-st="5"><div class="stage-n">05</div><div class="stage-l">Rules extracted</div><div class="stage-v" id="st5">—</div></div>
+  </div>
+</header>
+
+<div id="shell" class="flex gap-5 p-5 items-start">
+  <nav id="rail" class="w-[212px] shrink-0 sticky top-4 space-y-1">
+    <button class="navbtn active" data-tab="data"><span class="idx">01</span><span>Data &amp; schema</span></button>
+    <button class="navbtn" data-tab="target"><span class="idx">02</span><span>Anchor &amp; target</span></button>
+    <button class="navbtn" data-tab="model"><span class="idx">03</span><span>Train &amp; validate</span></button>
+    <button class="navbtn" data-tab="explain"><span class="idx">04</span><span>Feature explorer</span></button>
+    <button class="navbtn" data-tab="rules"><span class="idx">05</span><span>Rules discovery</span></button>
+    <div class="pt-4 note px-3">Everything runs in this browser tab. No claim data leaves the machine.</div>
+  </nav>
+  <main class="flex-1 min-w-0 space-y-5">
+
+<!-- ============ 01 DATA ============ -->
+<section id="tab-data" class="tabpane space-y-5">
+  <div class="panel p-4">
+    <div class="eyebrow">Step 01</div>
+    <h2 class="text-lg font-bold mt-1 mb-3">Load provider-level claim data</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="border border-dashed rounded-lg p-4" style="border-color:var(--rule)">
+        <div class="text-sm font-semibold mb-1">Training workbook (.xlsx / .xls / .csv)</div>
+        <p class="note mb-3">Every column in the sheet is read dynamically — the listed schema is expected, not required.</p>
+        <input type="file" id="fileTrain" accept=".xlsx,.xls,.csv" class="text-xs w-full"/>
+        <div id="trainInfo" class="note mt-2"></div>
+      </div>
+      <div class="border border-dashed rounded-lg p-4" style="border-color:var(--rule)">
+        <div class="text-sm font-semibold mb-1">Out-of-sample workbook (optional)</div>
+        <p class="note mb-3">Use a separate holdout period or region. Leave empty to split the training file instead.</p>
+        <input type="file" id="fileTest" accept=".xlsx,.xls,.csv" class="text-xs w-full"/>
+        <div id="testInfo" class="note mt-2"></div>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mt-4">
+      <label class="fld mb-0 mr-1">Sheet</label>
+      <select id="sheetPick" class="w-auto min-w-[180px]"></select>
+      <button class="ghost" id="btnReload">Reload sheet</button>
+      <button class="ghost" id="btnDemo">Load sample data</button>
+      <button class="ghost" id="btnClear">Clear all data</button>
+    </div>
+    <div id="libStatus" class="note mt-3"></div>
+  </div>
+
+  <div class="grid md:grid-cols-4 gap-3" id="dataKpis"></div>
+
+  <div class="panel p-4">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div><div class="eyebrow">Derived metrics engine</div>
+      <h3 class="text-base font-bold mt-1">Engineered features</h3></div>
+      <button class="ghost" id="btnRebuildFE">Rebuild features</button>
+    </div>
+    <p class="note mb-3">Built only where the source columns exist. Ratios are fit on training rows and the same fit is reapplied to test rows.</p>
+    <div id="feList" class="grid md:grid-cols-3 gap-x-6"></div>
+  </div>
+
+  <div class="panel p-4">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div><div class="eyebrow">Detected schema</div>
+      <h3 class="text-base font-bold mt-1">Columns, types and completeness</h3></div>
+      <input type="text" id="schemaFilter" placeholder="Filter columns" class="w-[220px]"/>
+    </div>
+    <div class="scroll" style="max-height:460px"><table id="schemaTable"><thead><tr>
+      <th>Column</th><th>Type</th><th>Non-null</th><th>Missing</th><th>Distinct</th><th>Sample values</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ 02 TARGET ============ -->
+<section id="tab-target" class="tabpane hide space-y-5">
+  <div class="panel p-4">
+    <div class="eyebrow">Step 02</div>
+    <h2 class="text-lg font-bold mt-1 mb-1">Define the audit anchor and the target variable</h2>
+    <p class="note mb-4">The anchor sets the default pools. Records with no audit type or no outcome are held out of model training and only re-enter through the rules-engine population scope.</p>
+    <div class="grid lg:grid-cols-3 gap-5">
+      <div>
+        <label class="fld">Modeling anchor</label>
+        <div class="seg" id="anchorSeg">
+          <button data-anchor="DRG" class="on">DRG model</button>
+          <button data-anchor="CVA">CVA model</button>
+        </div>
+        <div class="mt-4">
+          <label class="fld">Audit type column</label>
+          <select id="colAuditType"></select>
+          <p class="note mt-1">Column that says whether a claim was a DRG review or a clinical validation audit.</p>
+        </div>
+        <div class="mt-3 scroll panel p-2" style="max-height:230px">
+          <div class="eyebrow mb-1 px-1">Map values to anchors</div>
+          <div id="auditMap" class="text-xs"></div>
+        </div>
+      </div>
+      <div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="fld">Finding column</label><select id="colFinding"></select></div>
+          <div><label class="fld">No-finding column</label><select id="colNoFinding"></select></div>
+          <div><label class="fld">Appeal column</label><select id="colAppeal"></select></div>
+          <div><label class="fld">Overturn column</label><select id="colOverturn"></select></div>
+        </div>
+        <div class="mt-4">
+          <div class="eyebrow mb-1">Findings pool (target = 1)</div>
+          <label class="chk"><input type="checkbox" id="fpDRG" checked> DRG findings</label>
+          <label class="chk"><input type="checkbox" id="fpCVA"> CVA findings</label>
+          <div class="eyebrow mb-1 mt-3">No-findings pool (target = 0)</div>
+          <label class="chk"><input type="checkbox" id="npDRG" checked> DRG no-findings</label>
+          <label class="chk"><input type="checkbox" id="npCVA"> CVA no-findings <span class="note">— more conservative</span></label>
+        </div>
+        <button class="act mt-4" id="btnApplyTarget">Apply target definition</button>
+      </div>
+      <div>
+        <div class="eyebrow mb-2">Resulting population</div>
+        <div id="targetKpis" class="space-y-2"></div>
+        <div id="targetBreak" class="mt-3 scroll" style="max-height:240px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="panel p-4">
+    <h3 class="text-base font-bold mb-3">Outcome mix by audit type</h3>
+    <div id="chartTarget" style="height:300px"></div>
+  </div>
+</section>
+
+<!-- ============ 03 MODEL ============ -->
+<section id="tab-model" class="tabpane hide space-y-5">
+  <div class="panel p-4">
+    <div class="eyebrow">Step 03</div>
+    <h2 class="text-lg font-bold mt-1 mb-4">Train on audited claims, validate out of sample</h2>
+    <div class="grid lg:grid-cols-4 gap-5">
+      <div class="space-y-3">
+        <div><label class="fld">Algorithm</label>
+          <select id="algo">
+            <option value="gbt">Gradient boosted trees (CatBoost-style)</option>
+            <option value="forest">Random forest</option>
+            <option value="tree">Decision tree (single, readable)</option>
+            <option value="logit">Logistic regression</option>
+          </select></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="fld">Trees</label><input type="number" id="hpTrees" value="200" min="1" max="600"/></div>
+          <div><label class="fld">Max depth</label><input type="number" id="hpDepth" value="3" min="1" max="12"/></div>
+          <div><label class="fld">Learning rate</label><input type="number" id="hpLR" value="0.06" step="0.01" min="0.01" max="1"/></div>
+          <div><label class="fld">Min leaf rows</label><input type="number" id="hpLeaf" value="25" min="1"/></div>
+        </div>
+        <div><label class="fld">Categorical encoding</label>
+          <select id="catEnc">
+            <option value="target">Target encoding (smoothed)</option>
+            <option value="frequency">Frequency encoding</option>
+            <option value="onehot">One-hot (low cardinality)</option>
+          </select></div>
+        <div><label class="fld">Numeric imputation</label>
+          <select id="numImp"><option value="median">Median</option><option value="mean">Mean</option><option value="zero">Zero</option></select></div>
+      </div>
+      <div class="space-y-3">
+        <div><label class="fld">Validation strategy</label>
+          <select id="splitMode">
+            <option value="holdout">Hold out a share of the training file</option>
+            <option value="file">Use the uploaded out-of-sample file</option>
+          </select></div>
+        <div id="holdoutWrap">
+          <label class="fld">Training share · <span id="splitLbl" class="mono">80%</span></label>
+          <input type="range" id="splitPct" min="50" max="95" value="80" class="w-full" style="accent-color:var(--amber)"/>
+          <label class="chk mt-1"><input type="checkbox" id="stratify" checked> Stratify the split on the target</label>
+        </div>
+        <div><label class="fld">Random seed</label><input type="number" id="seed" value="42"/></div>
+        <div><label class="fld">Decision threshold · <span id="thrLbl" class="mono">0.50</span></label>
+          <input type="range" id="thr" min="1" max="99" value="50" class="w-full" style="accent-color:var(--amber)"/>
+          <p class="note mt-1">Sets which claims get flagged for audit, and therefore the projected hitrate.</p></div>
+        <button class="act w-full" id="btnTrain">Train model</button>
+      </div>
+      <div class="lg:col-span-2">
+        <div class="flex items-center justify-between mb-1">
+          <label class="fld mb-0">Model features <span id="featCount" class="mono"></span></label>
+          <div class="flex gap-2"><button class="ghost" id="btnFeatAll">All</button><button class="ghost" id="btnFeatNone">None</button><button class="ghost" id="btnFeatSmart">Reset to safe set</button></div>
+        </div>
+        <div class="scroll panel p-2" style="max-height:290px"><div id="featPick" class="grid md:grid-cols-2"></div></div>
+        <p class="note mt-2">Outcome columns (finding, no-finding, appeal, overturn, savings) are excluded by default — they leak the answer. Re-add them only to test a leakage hypothesis.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="modelResults" class="space-y-5 hide">
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="panel p-4"><div class="eyebrow mb-2">Training set</div><div id="kpiTrain" class="grid grid-cols-2 gap-3"></div></div>
+      <div class="panel p-4"><div class="eyebrow mb-2">Test set (out of sample)</div><div id="kpiTest" class="grid grid-cols-2 gap-3"></div></div>
+    </div>
+    <div class="panel p-4">
+      <h3 class="text-base font-bold mb-1">Business KPIs at the current threshold</h3>
+      <p class="note mb-3">Flagged = claims the model would send to audit. Compare against auditing everything (the base row).</p>
+      <div class="scroll"><table id="kpiTable"><thead><tr><th>Population</th><th>Claims</th><th>Flagged</th><th>Findings</th><th>No-findings</th><th>Projected hitrate</th><th>Lift vs base</th><th>Appeal rate</th><th>Overturn rate</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="grid lg:grid-cols-2 gap-5">
+      <div class="panel p-4"><h3 class="text-base font-bold mb-2">ROC curves</h3><div id="chartROC" style="height:330px"></div></div>
+      <div class="panel p-4"><h3 class="text-base font-bold mb-2">Hitrate by predicted-risk decile (test)</h3><div id="chartGain" style="height:330px"></div></div>
+    </div>
+    <div class="panel p-4"><h3 class="text-base font-bold mb-2">Feature importance</h3><div id="chartImp" style="height:420px"></div></div>
+  </div>
+</section>
+
+<!-- ============ 04 EXPLAIN ============ -->
+<section id="tab-explain" class="tabpane hide space-y-5">
+  <div class="panel p-4">
+    <div class="eyebrow">Step 04 · univariate</div>
+    <h2 class="text-lg font-bold mt-1 mb-3">Does this feature hold up on its own?</h2>
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-[260px]"><label class="fld">Feature</label><select id="uniFeat"></select></div>
+      <div class="w-[130px]"><label class="fld">Bins</label><input type="number" id="uniBins" value="10" min="2" max="30"/></div>
+      <div class="w-[170px]"><label class="fld">Binning</label><select id="uniMethod"><option value="quantile">Quantile (deciles)</option><option value="equal">Equal width</option></select></div>
+      <button class="act" id="btnUni">Analyze feature</button>
+    </div>
+    <div id="uniSummary" class="grid md:grid-cols-4 gap-3 mt-4"></div>
+    <div class="grid lg:grid-cols-2 gap-5 mt-4">
+      <div><h3 class="text-sm font-bold mb-2">Volume vs hitrate and appeal rate</h3><div id="chartUni" style="height:360px"></div></div>
+      <div><h3 class="text-sm font-bold mb-2">Distribution: findings vs no-findings</h3><div id="chartUniDist" style="height:360px"></div></div>
+    </div>
+    <div class="scroll mt-4" style="max-height:340px"><table id="uniTable"><thead><tr><th>Bin</th><th>Audited n</th><th>Findings</th><th>No-findings</th><th>Hitrate</th><th>Lift</th><th>Appeal rate</th><th>Overturn rate</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="panel p-4">
+    <div class="eyebrow">Step 04 · multivariate</div>
+    <h2 class="text-lg font-bold mt-1 mb-3">Interaction profiler</h2>
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-[320px]"><label class="fld">Features (pick 2 or more · ctrl/cmd-click)</label>
+        <select id="mvFeats" multiple size="8"></select></div>
+      <div class="w-[130px]"><label class="fld">Bins per feature</label><input type="number" id="mvBins" value="5" min="2" max="12"/></div>
+      <div class="w-[190px]"><label class="fld">View</label>
+        <select id="mvView"><option value="auto">Auto</option><option value="heat">Heatmap</option><option value="par">Parallel coordinates</option><option value="s3d">3D scatter</option></select></div>
+      <div class="w-[150px]"><label class="fld">Min cell n</label><input type="number" id="mvMinN" value="15" min="1"/></div>
+      <button class="act" id="btnMV">Profile interaction</button>
+    </div>
+    <div id="mvNote" class="note mt-3"></div>
+    <div id="chartMV" style="height:520px" class="mt-2"></div>
+    <h3 class="text-sm font-bold mt-4 mb-2">Top 5 most impactful combinations</h3>
+    <p class="note mb-2">Ranked by how far the joint hitrate moves from the base rate, weighted by volume.</p>
+    <div class="scroll" style="max-height:300px"><table id="mvTable"><thead><tr><th>Combination</th><th>Audited n</th><th>Findings</th><th>Joint hitrate</th><th>Lift</th><th>Appeal rate</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ 05 RULES ============ -->
+<section id="tab-rules" class="tabpane hide space-y-5">
+  <div class="panel p-4">
+    <div class="eyebrow">Step 05</div>
+    <h2 class="text-lg font-bold mt-1 mb-3">Black box vs. white box</h2>
+    <div class="flex flex-wrap gap-3 items-end">
+      <div><label class="fld">Population scope for n-counts</label>
+        <div class="scopebox" id="scopeSeg">
+          <label class="scopechk"><input type="checkbox" id="scopeAll"/><span>ALL</span></label>
+          <label class="scopechk"><input type="checkbox" data-scope="cva" checked/><span>CVA audited</span><b id="cntCva" class="mono"></b></label>
+          <label class="scopechk"><input type="checkbox" data-scope="drg" checked/><span>DRG audited</span><b id="cntDrg" class="mono"></b></label>
+          <label class="scopechk"><input type="checkbox" data-scope="nulls"/><span>Non-audited (null)</span><b id="cntNull" class="mono"></b></label>
+        </div></div>
+      <div class="w-[110px]"><label class="fld">Rules (N)</label><input type="number" id="ruleN" value="8" min="1" max="40"/></div>
+      <div class="w-[130px]"><label class="fld">Max conditions</label><input type="number" id="ruleDepth" value="3" min="1" max="4"/></div>
+      <div class="w-[140px]"><label class="fld">Min audited n</label><input type="number" id="ruleMinN" value="40" min="5"/></div>
+      <div class="w-[150px]"><label class="fld">Candidate features</label><input type="number" id="ruleTopF" value="20" min="3" max="60"/></div>
+      <button class="act" id="btnRules">Extract rules</button>
+    </div>
+    <p class="note mt-2" id="scopeNote"></p>
+  </div>
+  <div class="grid lg:grid-cols-5 gap-5 items-start">
+    <div class="panel p-4 lg:col-span-2">
+      <div class="eyebrow">Left · black box</div>
+      <h3 class="text-base font-bold mt-1 mb-3">Active model summary</h3>
+      <div id="ruleModelSummary" class="space-y-3"><p class="note">Train a model in step 03 to compare its lift against the extracted rules.</p></div>
+    </div>
+    <div class="lg:col-span-3 space-y-5">
+      <div class="panel p-4">
+        <div class="eyebrow">Right · white box</div>
+        <h3 class="text-base font-bold mt-1 mb-1" style="color:var(--teal)">Max-yield rules — audit these</h3>
+        <p class="note mb-3">Highest hitrate subgroups that clear the minimum volume.</p>
+        <div id="rulesMax"><p class="note">No rules yet.</p></div>
+      </div>
+      <div class="panel p-4">
+        <h3 class="text-base font-bold mb-1" style="color:var(--coral)">Anti-patterns — suppress these</h3>
+        <p class="note mb-3">Lowest hitrate subgroups. Removing them cuts false positives without losing findings.</p>
+        <div id="rulesMin"><p class="note">No rules yet.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+  </main>
+</div>
+<footer class="px-5 py-6 note border-t" style="border-color:var(--rule)">
+  Client-side only · parsing, encoding, training and rule search all run in this tab.
+</footer>
+
+<script>
+/* ==========================================================================
+   0 · UTILITIES
+   ========================================================================== */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextTick = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
+function safeDiv(a, b, fallback = null) {
+  const n = Number(a), d = Number(b);
+  if (!isFinite(n) || !isFinite(d) || d === 0) return fallback;
+  return n / d;
+}
+const pct = (v, dp = 1) => (v === null || v === undefined || !isFinite(v)) ? '—' : (v * 100).toFixed(dp) + '%';
+const num = (v, dp = 2) => (v === null || v === undefined || !isFinite(v)) ? '—' : Number(v).toFixed(dp);
+const int = v => (v === null || v === undefined || !isFinite(v)) ? '—' : Math.round(v).toLocaleString();
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return NaN;
+  if (typeof v === 'number') return isFinite(v) ? v : NaN;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  const s = String(v).trim().replace(/[$,%,]/g, '').replace(/,/g, '');
+  if (s === '' || /^(na|n\/a|null|none|nan|-)$/i.test(s)) return NaN;
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+function flagVal(v) { // outcome columns may be counts, 1/0, or Y/N
+  if (v === null || v === undefined || v === '') return 0;
+  const n = toNum(v);
+  if (isFinite(n)) return n > 0 ? n : 0;
+  return /^(y|yes|true|t)$/i.test(String(v).trim()) ? 1 : 0;
+}
+function isBlank(v) { return v === null || v === undefined || v === '' || (typeof v === 'string' && !v.trim()); }
+
+/* Iterative min/max. Math.min(...arr) throws "Maximum call stack size exceeded"
+   once an array passes ~100k elements, which is exactly the size real claim files hit. */
+function minOf(a) { let m = Infinity; for (let i = 0; i < a.length; i++) if (a[i] < m) m = a[i]; return isFinite(m) ? m : NaN; }
+function maxOf(a) { let m = -Infinity; for (let i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return isFinite(m) ? m : NaN; }
+
+/* dynamic library loading with mirrors */
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = () => res(true);
+    s.onerror = () => rej(new Error('blocked: ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureLib(globalName, urls) {
+  if (window[globalName]) return true;
+  for (const u of urls) {
+    try { await loadScript(u); if (window[globalName]) return true; } catch (e) { /* try next mirror */ }
+  }
+  return !!window[globalName];
+}
+const ensureXLSX = () => ensureLib('XLSX', window.__CDN.xlsx);
+const ensurePlotly = () => ensureLib('Plotly', window.__CDN.plotly);
+
+/* RFC-4180 delimited-text parser: lets CSV/TSV still load when SheetJS is unreachable */
+function parseDelimited(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const head = text.slice(0, 5000);
+  const delim = (head.split('\t').length > head.split(',').length) ? '\t'
+              : (head.split(';').length > head.split(',').length) ? ';' : ',';
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell.length || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(v => (v === '' ? null : v)));
+}
+
+function mean(a) { return a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN; }
+function quantileSorted(sorted, q) {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * q, base = Math.floor(pos), rest = pos - base;
+  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+}
+function median(arr) { const s = arr.slice().sort((a, b) => a - b); return quantileSorted(s, .5); }
+function geoMean(arr) {
+  const v = arr.filter(x => isFinite(x) && x > 0);
+  if (!v.length) return NaN;
+  return Math.exp(v.reduce((s, x) => s + Math.log(x), 0) / v.length);
+}
+function mulberry(seed) { let a = seed >>> 0; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* loading overlay */
+let ovDepth = 0;
+function ovShow(title, msg) { ovDepth++; $('#ovTitle').textContent = title; $('#ovMsg').textContent = msg || ''; $('#ovBar').style.width = '0%'; $('#overlay').classList.add('on'); }
+function ovStep(msg, frac) { $('#ovMsg').textContent = msg; if (frac != null) $('#ovBar').style.width = Math.max(0, Math.min(1, frac)) * 100 + '%'; }
+function ovHide() { ovDepth = Math.max(0, ovDepth - 1); if (!ovDepth) $('#overlay').classList.remove('on'); }
+async function withOverlay(title, msg, fn) {
+  ovShow(title, msg); await nextTick();
+  try { return await fn(); }
+  catch (e) { console.error(e); alert('That step failed: ' + (e && e.message ? e.message : e)); }
+  finally { ovHide(); }
+}
+
+/* plot defaults */
+const PLOT_LAYOUT = {
+  paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+  font: { color: '#B9C3D6', family: 'IBM Plex Sans, sans-serif', size: 11 },
+  margin: { l: 55, r: 55, t: 24, b: 70 },
+  xaxis: { gridcolor: '#242E42', zerolinecolor: '#2B364E' },
+  yaxis: { gridcolor: '#242E42', zerolinecolor: '#2B364E' },
+  legend: { orientation: 'h', y: -0.22 }
+};
+const PLOT_CFG = { displayModeBar: false, responsive: true };
+const C = { amber: '#E0A458', teal: '#4FB3A4', coral: '#D9705F', muted: '#8C99B0', slate: '#3C4A66' };
+function draw(id, data, layout) {
+  if (!window.Plotly) {
+    ensurePlotly().then(ok => { if (ok) draw(id, data, layout); else { const el = $('#' + id); if (el) el.innerHTML = '<p class="note">Charts unavailable — the plotting library is blocked on this network. Tables and exports still work.</p>'; } });
+    return;
+  }
+  Plotly.react(id, data, Object.assign({}, PLOT_LAYOUT, layout || {}), PLOT_CFG);
+}
+function purgePlot(id) { if (window.Plotly) try { Plotly.purge(id); } catch (e) {} }
+
+/* ==========================================================================
+   1 · STATE
+   ========================================================================== */
+const S = {
+  wbTrain: null, wbTest: null, sheetName: null,
+  train: [], test: [],
+  columns: [], meta: {},          // meta[col] = {type, nonNull, missing, distinct, samples}
+  engineered: [],                 // names of derived features
+  feFit: null,                    // fits reused on test rows
+  thrTouched: false,
+  cfg: {
+    anchor: 'DRG',
+    auditCol: null, auditMap: {},  // rawValue -> 'DRG' | 'CVA' | 'IGNORE'
+    findCol: null, noFindCol: null, appealCol: null, overturnCol: null,
+    findPools: { DRG: true, CVA: false }, noFindPools: { DRG: true, CVA: false }
+  },
+  labeled: false,
+  features: [],                   // selected feature columns
+  model: null, prep: null, evalTrain: null, evalTest: null,
+  ruleScope: { cva: true, drg: true, nulls: false }, rules: null
+};
+
+const LEAK_HINTS = ['finding', 'nofinding', 'no_finding', 'appeal', 'overturn', 'savings', 'saving'];
+function looksLeaky(col) {
+  const c = col.toLowerCase();
+  if ([S.cfg.findCol, S.cfg.noFindCol, S.cfg.appealCol, S.cfg.overturnCol].includes(col)) return true;
+  return LEAK_HINTS.some(h => c.includes(h));
+}
+const NARRATIVE_HINTS = ['why', 'concat', 'name', 'hospitalname'];
+function looksNarrative(col) { const c = col.toLowerCase(); return NARRATIVE_HINTS.some(h => c.endsWith(h)); }
+
+/* ==========================================================================
+   2 · LOADING & SCHEMA INFERENCE
+   ========================================================================== */
+const MAX_FILE_MB = 120;
+
+async function readWorkbook(file) {
+  if (!file || !file.size) throw new Error('That file is empty or could not be read. Try re-saving it from Excel.');
+  const mb = file.size / 1048576;
+  if (mb > MAX_FILE_MB) {
+    throw new Error(`That file is ${mb.toFixed(0)} MB. Browser memory tops out around ${MAX_FILE_MB} MB — save the sheet as CSV, or split it, and load again.`);
+  }
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const isText = ['csv', 'tsv', 'txt'].includes(ext);
+  const buf = await file.arrayBuffer();
+
+  const haveXLSX = await ensureXLSX();
+  if (!haveXLSX) {
+    if (isText) {
+      const aoa = parseDelimited(new TextDecoder('utf-8').decode(buf));
+      return { SheetNames: ['CSV'], __rows: { CSV: aoaToRows(aoa) } };
+    }
+    throw new Error('The Excel reader could not load — every CDN mirror was blocked (offline, corporate proxy, or a sandboxed preview). Save the sheet as CSV and load that, or open this file in a normal browser tab.');
+  }
+
+  // Old-format .xls files that are really HTML or CSV in disguise are common exports.
+  let wb;
+  try {
+    wb = XLSX.read(buf, { type: 'array', cellDates: true, cellNF: false, cellStyles: false, dense: true });
+  } catch (e) {
+    if (isText) {
+      const aoa = parseDelimited(new TextDecoder('utf-8').decode(buf));
+      return { SheetNames: ['CSV'], __rows: { CSV: aoaToRows(aoa) } };
+    }
+    if (/password|encrypt/i.test(e.message || '')) {
+      throw new Error('That workbook is password protected. Remove the protection in Excel (File → Info → Protect Workbook) and re-save.');
+    }
+    throw new Error('Excel could not parse that file: ' + (e.message || e) + '. If it came from a report export, open it in Excel and re-save as .xlsx.');
+  }
+  if (!wb.SheetNames || !wb.SheetNames.length) throw new Error('That workbook contains no sheets.');
+  return wb;
+}
+
+function sheetToRows(wb, name) {
+  if (wb.__rows) return wb.__rows[name || wb.SheetNames[0]] || [];
+  const ws = wb.Sheets[name || wb.SheetNames[0]];
+  if (!ws) return [];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true, blankrows: false });
+  return aoaToRows(aoa);
+}
+
+/* Turns a sheet's raw grid into objects. Handles the two things that silently break
+   real exports: title/banner rows above the header, and unnamed padding columns. */
+function aoaToRows(aoa) {
+  if (!aoa || !aoa.length) return [];
+  const probe = aoa.slice(0, 60);
+  const width = probe.reduce((m, r) => Math.max(m, r ? r.length : 0), 0);
+  if (!width) return [];
+
+  // header = first row that fills at least half the grid and is mostly text
+  let h = 0;
+  for (let i = 0; i < Math.min(aoa.length, 30); i++) {
+    const r = aoa[i] || [];
+    const filled = r.filter(v => !isBlank(v));
+    if (filled.length < Math.max(2, Math.ceil(width * 0.5))) continue;
+    const texty = filled.filter(v => typeof v === 'string' && isNaN(Number(v))).length / filled.length;
+    if (texty >= 0.6) { h = i; break; }
+  }
+
+  const used = new Set();
+  const header = [];
+  for (let c = 0; c < width; c++) {
+    let name = String((aoa[h] || [])[c] ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) name = 'column_' + (c + 1);
+    let base = name, n = 2;
+    while (used.has(name)) name = base + '_' + n++;
+    used.add(name); header.push(name);
+  }
+
+  const rows = [];
+  for (let i = h + 1; i < aoa.length; i++) {
+    const src = aoa[i]; if (!src) continue;
+    const o = {}; let any = false;
+    for (let c = 0; c < width; c++) {
+      let v = src[c];
+      if (typeof v === 'string') { v = v.trim(); if (v === '') v = null; }
+      if (v === undefined) v = null;
+      if (v !== null) any = true;
+      o[header[c]] = v;
+    }
+    if (any) rows.push(o);
+  }
+
+  // drop padding columns that are blank all the way down
+  const dead = header.filter(k => rows.every(r => isBlank(r[k])));
+  if (dead.length && dead.length < header.length) for (const r of rows) for (const k of dead) delete r[k];
+  return rows;
+}
+
+function inferSchema(rows) {
+  const cols = [];
+  const seen = new Set();
+  const limit = Math.min(rows.length, 3000);
+  for (let i = 0; i < limit; i++) for (const k of Object.keys(rows[i])) if (!seen.has(k)) { seen.add(k); cols.push(k); }
+  const meta = {};
+  for (const col of cols) {
+    let nonNull = 0, numeric = 0;
+    const uniq = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i][col];
+      if (isBlank(v)) continue;
+      nonNull++;
+      if (isFinite(toNum(v))) numeric++;
+      if (uniq.size < 500) { const key = String(v); uniq.set(key, (uniq.get(key) || 0) + 1); }
+    }
+    const distinct = uniq.size;
+    const numericShare = safeDiv(numeric, nonNull, 0);
+    const type = (nonNull > 0 && numericShare >= 0.9 && !(distinct <= 2 && numericShare < 1)) ? 'numeric' : 'categorical';
+    meta[col] = {
+      type, nonNull, missing: rows.length - nonNull, distinct,
+      samples: Array.from(uniq.keys()).slice(0, 4),
+      topValues: Array.from(uniq.entries()).sort((a, b) => b[1] - a[1]).slice(0, 25).map(e => e[0])
+    };
+  }
+  return { cols, meta };
+}
+
+function guessCol(cands, cols) {
+  for (const c of cands) { const hit = cols.find(k => k.toLowerCase() === c); if (hit) return hit; }
+  for (const c of cands) { const hit = cols.find(k => k.toLowerCase().includes(c)); if (hit) return hit; }
+  return null;
+}
+
+/* ==========================================================================
+   3 · FEATURE ENGINEERING
+   ========================================================================== */
+const FE_DEFS = [
+  { name: 'lengthofstay_ratio', needs: ['los', 'drg'], desc: 'Length of stay ÷ geometric mean stay for the same DRG' },
+  { name: 'los_minus_drg_geomean', needs: ['los', 'drg'], desc: 'Absolute days above or below the DRG geometric mean' },
+  { name: 'cc_mcc_burden', needs: ['cc', 'mcc'], desc: 'CC count + MCC count' },
+  { name: 'mcc_share_of_burden', needs: ['cc', 'mcc'], desc: 'MCC count ÷ total complication count' },
+  { name: 'financial_clinical_risk_score', needs: ['risk', 'cc'], desc: 'Risk convergence × clinical complexity, scaled 0–100' },
+  { name: 'spend_per_day', needs: ['spend', 'los'], desc: 'Claim spend ÷ length of stay' },
+  { name: 'spend_vs_drg_median', needs: ['spend', 'drg'], desc: 'Claim spend ÷ median spend for the same DRG' },
+  { name: 'markup_x_costtocharge', needs: ['markup', 'ctc'], desc: 'Markup ratio × cost-to-charge ratio' },
+  { name: 'drg_claim_frequency', needs: ['drg'], desc: 'How often this DRG appears in the file' },
+  { name: 'provider_claim_volume', needs: ['ccn'], desc: 'Claims per provider in the file' },
+  { name: 'drg_concentration_x_distinct', needs: ['hhi', 'distinct'], desc: 'DRG concentration ÷ distinct DRG count' },
+  { name: 'flag_count', needs: ['flags'], desc: 'Number of cost-report risk flags raised' }
+];
+
+function feSources(cols) {
+  return {
+    los: guessCol(['b.lengthofstay', 'lengthofstay', 'losdays'], cols),
+    drg: guessCol(['b.drgcode', 'drgcode', 'drg'], cols),
+    cc: guessCol(['b.ccccount', 'ccccount', 'cccount'], cols),
+    mcc: guessCol(['b.cmcccount', 'cmcccount', 'mcccount'], cols),
+    risk: guessCol(['b.riskconvergencescore', 'riskconvergencescore'], cols),
+    spend: guessCol(['b.spend', 'spend'], cols),
+    markup: guessCol(['b.markupratiochargepay', 'markupratio'], cols),
+    ctc: guessCol(['b.costtochargeratio', 'costtochargeratio'], cols),
+    ccn: guessCol(['ccn', 'b.ccn', 'b.ccnhospitalname', 'providerccn'], cols),
+    hhi: guessCol(['b.drgconcentrationhhi', 'drgconcentrationhhi'], cols),
+    distinct: guessCol(['b.distinctdrgs', 'distinctdrgs'], cols),
+    flags: cols.filter(c => /^b?\.?flag/i.test(c) || c.toLowerCase().includes('flag'))
+  };
+}
+
+function buildFeatureEngineering(trainRows, cols) {
+  const src = feSources(cols);
+  const fit = { src, losGeo: {}, spendMed: {}, drgFreq: {}, ccnFreq: {}, riskStats: null, ccStats: null, available: [] };
+  const has = k => src[k] && (Array.isArray(src[k]) ? src[k].length : true);
+
+  if (has('los') && has('drg')) {
+    const g = {};
+    for (const r of trainRows) { const d = String(r[src.drg]); const v = toNum(r[src.los]); if (!isFinite(v)) continue; (g[d] = g[d] || []).push(v); }
+    for (const d in g) fit.losGeo[d] = geoMean(g[d]);
+    fit.losGeoGlobal = geoMean(trainRows.map(r => toNum(r[src.los])).filter(isFinite));
+  }
+  if (has('spend') && has('drg')) {
+    const g = {};
+    for (const r of trainRows) { const d = String(r[src.drg]); const v = toNum(r[src.spend]); if (!isFinite(v)) continue; (g[d] = g[d] || []).push(v); }
+    for (const d in g) fit.spendMed[d] = median(g[d]);
+    fit.spendMedGlobal = median(trainRows.map(r => toNum(r[src.spend])).filter(isFinite));
+  }
+  if (has('drg')) for (const r of trainRows) { const d = String(r[src.drg]); fit.drgFreq[d] = (fit.drgFreq[d] || 0) + 1; }
+  if (has('ccn')) for (const r of trainRows) { const d = String(r[src.ccn]); fit.ccnFreq[d] = (fit.ccnFreq[d] || 0) + 1; }
+  if (has('risk')) { const v = trainRows.map(r => toNum(r[src.risk])).filter(isFinite); fit.riskStats = { min: minOf(v), max: maxOf(v) }; }
+  if (has('cc')) { const v = trainRows.map(r => toNum(r[src.cc])).filter(isFinite); fit.ccStats = { min: minOf(v), max: maxOf(v) }; }
+
+  for (const def of FE_DEFS) if (def.needs.every(n => has(n))) fit.available.push(def.name);
+  return fit;
+}
+
+function applyFeatureEngineering(rows, fit) {
+  const src = fit.src, av = new Set(fit.available);
+  const norm = (v, st) => (!st || !isFinite(v) || st.max === st.min) ? 0 : (v - st.min) / (st.max - st.min);
+  for (const r of rows) {
+    if (av.has('lengthofstay_ratio')) {
+      const los = toNum(r[src.los]); const gm = fit.losGeo[String(r[src.drg])] ?? fit.losGeoGlobal;
+      r['lengthofstay_ratio'] = isFinite(los) ? safeDiv(los, gm, null) : null;
+      r['los_minus_drg_geomean'] = (isFinite(los) && isFinite(gm)) ? los - gm : null;
+    }
+    if (av.has('cc_mcc_burden')) {
+      const cc = toNum(r[src.cc]) || 0, mcc = toNum(r[src.mcc]) || 0;
+      r['cc_mcc_burden'] = cc + mcc;
+      r['mcc_share_of_burden'] = safeDiv(mcc, cc + mcc, null);
+    }
+    if (av.has('financial_clinical_risk_score')) {
+      const risk = norm(toNum(r[src.risk]), fit.riskStats), cc = norm(toNum(r[src.cc]), fit.ccStats);
+      r['financial_clinical_risk_score'] = Math.round((0.6 * risk + 0.4 * cc) * 1000) / 10;
+    }
+    if (av.has('spend_per_day')) r['spend_per_day'] = safeDiv(toNum(r[src.spend]), toNum(r[src.los]), null);
+    if (av.has('spend_vs_drg_median')) {
+      const md = fit.spendMed[String(r[src.drg])] ?? fit.spendMedGlobal;
+      r['spend_vs_drg_median'] = safeDiv(toNum(r[src.spend]), md, null);
+    }
+    if (av.has('markup_x_costtocharge')) {
+      const a = toNum(r[src.markup]), b = toNum(r[src.ctc]);
+      r['markup_x_costtocharge'] = (isFinite(a) && isFinite(b)) ? a * b : null;
+    }
+    if (av.has('drg_claim_frequency')) r['drg_claim_frequency'] = fit.drgFreq[String(r[src.drg])] || 0;
+    if (av.has('provider_claim_volume')) r['provider_claim_volume'] = fit.ccnFreq[String(r[src.ccn])] || 0;
+    if (av.has('drg_concentration_x_distinct')) r['drg_concentration_x_distinct'] = safeDiv(toNum(r[src.hhi]), toNum(r[src.distinct]), null);
+    if (av.has('flag_count')) r['flag_count'] = src.flags.reduce((s, c) => s + (flagVal(r[c]) > 0 ? 1 : 0), 0);
+  }
+  return rows;
+}
+
+/* ==========================================================================
+   4 · TARGET DEFINITION
+   ========================================================================== */
+function auditTypeOf(row) {
+  const c = S.cfg.auditCol;
+  if (!c) return null;
+  const raw = row[c];
+  if (isBlank(raw)) return null;
+  const m = S.cfg.auditMap[String(raw)];
+  return (m === 'DRG' || m === 'CVA') ? m : null;
+}
+/* Writes __y (1 / 0 / null), __at, __f, __nf, __ap, __ov onto every row. */
+function labelRows(rows) {
+  const cfg = S.cfg;
+  let f = 0, nf = 0, unl = 0;
+  for (const r of rows) {
+    const at = auditTypeOf(r);
+    const fv = cfg.findCol ? flagVal(r[cfg.findCol]) : 0;
+    const nv = cfg.noFindCol ? flagVal(r[cfg.noFindCol]) : 0;
+    r.__at = at;
+    r.__f = fv; r.__nf = nv;
+    r.__ap = cfg.appealCol ? flagVal(r[cfg.appealCol]) : 0;
+    r.__ov = cfg.overturnCol ? flagVal(r[cfg.overturnCol]) : 0;
+    const hasOutcome = fv > 0 || nv > 0;
+    if (!at || !hasOutcome) { r.__y = null; unl++; continue; }
+    if (fv > 0 && cfg.findPools[at]) { r.__y = 1; f++; }
+    else if (nv > 0 && nv >= fv && cfg.noFindPools[at]) { r.__y = 0; nf++; }
+    else { r.__y = null; unl++; }
+  }
+  return { findings: f, noFindings: nf, unlabeled: unl };
+}
+const labeledRows = rows => rows.filter(r => r.__y === 1 || r.__y === 0);
+
+function poolStats(rows) {
+  let n = 0, f = 0, nf = 0, ap = 0, ov = 0;
+  for (const r of rows) { n++; if (r.__y === 1) { f += 1; ap += r.__ap > 0 ? 1 : 0; ov += r.__ov > 0 ? 1 : 0; } else if (r.__y === 0) nf += 1; }
+  return { n, f, nf, ap, ov, hitrate: safeDiv(f, f + nf), appealRate: safeDiv(ap, f), overturnRate: safeDiv(ov, f) };
+}
+
+/* ==========================================================================
+   5 · DATA TAB RENDER
+   ========================================================================== */
+function renderRibbon() {
+  const set = (id, v, live) => { $('#' + id).textContent = v; $(`#ribbon .stage[data-st="${id.slice(2)}"]`).classList.toggle('live', !!live); };
+  set('st1', S.train.length ? int(S.train.length) : '—', S.train.length > 0);
+  const lab = S.labeled ? labeledRows(S.train).length : 0;
+  set('st2', S.labeled ? int(lab) : '—', lab > 0);
+  set('st3', S.prep ? int(S.prep.names.length) : '—', !!S.prep);
+  set('st4', S.evalTest ? num(S.evalTest.auc, 3) : '—', !!S.evalTest);
+  set('st5', S.rules ? int(S.rules.max.length + S.rules.min.length) : '—', !!S.rules);
+  $('#rowsPill').textContent = S.train.length ? `${int(S.train.length)} rows · ${S.columns.length} cols` : 'no data';
+  $('#anchorPill').textContent = 'anchor · ' + S.cfg.anchor;
+}
+
+function kpiCard(label, value, sub) {
+  return `<div class="kpi"><div class="eyebrow">${esc(label)}</div><div class="v">${value}</div>${sub ? `<div class="note mt-1">${sub}</div>` : ''}</div>`;
+}
+
+function renderDataTab() {
+  const numeric = S.columns.filter(c => S.meta[c].type === 'numeric').length;
+  $('#dataKpis').innerHTML = [
+    kpiCard('Training rows', int(S.train.length)),
+    kpiCard('Test rows', S.test.length ? int(S.test.length) : '—', S.test.length ? 'from uploaded file' : 'split from training'),
+    kpiCard('Columns read', int(S.columns.length), `${numeric} numeric · ${S.columns.length - numeric} categorical`),
+    kpiCard('Engineered', int(S.engineered.length), 'derived metrics')
+  ].join('');
+
+  $('#feList').innerHTML = FE_DEFS.map(d => {
+    const on = S.engineered.includes(d.name);
+    return `<div class="py-1.5" style="opacity:${on ? 1 : .38}">
+      <div class="text-[12.5px] font-semibold mono">${on ? '●' : '○'} ${esc(d.name)}</div>
+      <div class="note">${esc(d.desc)}${on ? '' : ' — source columns not found'}</div></div>`;
+  }).join('');
+
+  renderSchemaTable();
+  renderRibbon();
+}
+
+function renderSchemaTable() {
+  const q = ($('#schemaFilter').value || '').toLowerCase();
+  const rows = S.columns.filter(c => !q || c.toLowerCase().includes(q)).map(c => {
+    const m = S.meta[c];
+    const badge = m.type === 'numeric' ? `<span style="color:var(--teal)">numeric</span>` : `<span style="color:var(--amber)">categorical</span>`;
+    const eng = S.engineered.includes(c) ? ' <span class="pill">derived</span>' : '';
+    return `<tr><td class="mono">${esc(c)}${eng}</td><td>${badge}</td><td class="num mono">${int(m.nonNull)}</td>
+      <td class="num mono">${pct(safeDiv(m.missing, S.train.length, 0), 0)}</td><td class="num mono">${int(m.distinct)}</td>
+      <td class="note">${esc(m.samples.join(' · ').slice(0, 90))}</td></tr>`;
+  }).join('');
+  $('#schemaTable tbody').innerHTML = rows || `<tr><td colspan="6" class="note">No columns match that filter.</td></tr>`;
+}
+
+/* ==========================================================================
+   6 · TARGET TAB RENDER
+   ========================================================================== */
+function fillSelect(sel, options, selected, allowEmpty) {
+  sel.innerHTML = (allowEmpty ? `<option value="">— none —</option>` : '') +
+    options.map(o => `<option value="${esc(o)}" ${o === selected ? 'selected' : ''}>${esc(o)}</option>`).join('');
+}
+
+function initTargetControls() {
+  const cols = S.columns;
+  const cfg = S.cfg;
+  cfg.auditCol = cfg.auditCol && cols.includes(cfg.auditCol) ? cfg.auditCol :
+    guessCol(['b.codetype', 'codetype', 'audittype', 'b.audittype', 'reviewtype', 'b.drgconditiontype'], cols);
+  cfg.findCol = cfg.findCol && cols.includes(cfg.findCol) ? cfg.findCol : guessCol(['b.finding', 'finding'], cols);
+  cfg.noFindCol = cfg.noFindCol && cols.includes(cfg.noFindCol) ? cfg.noFindCol : guessCol(['b.nofinding', 'nofinding', 'no_finding'], cols);
+  cfg.appealCol = cfg.appealCol && cols.includes(cfg.appealCol) ? cfg.appealCol : guessCol(['b.appeal', 'appeal'], cols);
+  cfg.overturnCol = cfg.overturnCol && cols.includes(cfg.overturnCol) ? cfg.overturnCol : guessCol(['b.overturn', 'overturn'], cols);
+
+  fillSelect($('#colAuditType'), cols, cfg.auditCol, true);
+  fillSelect($('#colFinding'), cols, cfg.findCol, true);
+  fillSelect($('#colNoFinding'), cols, cfg.noFindCol, true);
+  fillSelect($('#colAppeal'), cols, cfg.appealCol, true);
+  fillSelect($('#colOverturn'), cols, cfg.overturnCol, true);
+  renderAuditMap();
+}
+
+function renderAuditMap() {
+  const col = S.cfg.auditCol;
+  const box = $('#auditMap');
+  if (!col || !S.meta[col]) { box.innerHTML = `<p class="note p-1">Pick the column that separates DRG reviews from clinical validation audits.</p>`; return; }
+  const vals = S.meta[col].topValues.slice(0, 20);
+  if (!S.cfg._mapForCol || S.cfg._mapForCol !== col) {
+    S.cfg.auditMap = {}; S.cfg._mapForCol = col;
+    for (const v of vals) {
+      const s = String(v).toUpperCase();
+      // DRG is checked first: "DRG Validation" contains "VALID" but is not a clinical validation audit
+      S.cfg.auditMap[v] = /DRG|CODING|CODE REVIEW/.test(s) ? 'DRG' : /CVA|CLIN|VALID/.test(s) ? 'CVA' : 'IGNORE';
+    }
+  }
+  box.innerHTML = vals.map(v => `<div class="flex items-center gap-2 py-1 border-b" style="border-color:#222C40">
+      <span class="mono flex-1 truncate" title="${esc(v)}">${esc(v)}</span>
+      <select data-map="${esc(v)}" class="w-[110px] text-[11px]">
+        ${['DRG', 'CVA', 'IGNORE'].map(o => `<option value="${o}" ${S.cfg.auditMap[v] === o ? 'selected' : ''}>${o}</option>`).join('')}
+      </select></div>`).join('');
+  box.querySelectorAll('select[data-map]').forEach(s => s.onchange = () => { S.cfg.auditMap[s.dataset.map] = s.value; });
+}
+
+function renderTargetSummary() {
+  if (typeof updateScopeNote === 'function' && $('#cntCva')) updateScopeNote();
+  const lab = labeledRows(S.train), st = poolStats(lab);
+  const nulls = S.train.length - lab.length;
+  $('#targetKpis').innerHTML =
+    kpiCard('Findings (y=1)', int(st.f)) +
+    kpiCard('No-findings (y=0)', int(st.nf)) +
+    kpiCard('Base hitrate', pct(st.hitrate), 'findings ÷ audited') +
+    kpiCard('Excluded (null type or outcome)', int(nulls), 'held out of ML training') +
+    kpiCard('Appeal rate', pct(st.appealRate), 'appeals ÷ findings') +
+    kpiCard('Overturn rate', pct(st.overturnRate), 'overturns ÷ findings');
+
+  // breakdown by audit type
+  const groups = {};
+  for (const r of S.train) {
+    const k = r.__at || '(null / unmapped)';
+    const g = groups[k] = groups[k] || { n: 0, f: 0, nf: 0, ap: 0, ov: 0 };
+    g.n++; if (r.__f > 0) g.f++; else if (r.__nf > 0) g.nf++;
+    g.ap += r.__ap > 0 ? 1 : 0; g.ov += r.__ov > 0 ? 1 : 0;
+  }
+  const keys = Object.keys(groups);
+  $('#targetBreak').innerHTML = `<table><thead><tr><th>Audit type</th><th>Claims</th><th>Findings</th><th>No-find</th><th>Hitrate</th></tr></thead><tbody>` +
+    keys.map(k => { const g = groups[k]; return `<tr><td>${esc(k)}</td><td class="num mono">${int(g.n)}</td><td class="num mono">${int(g.f)}</td><td class="num mono">${int(g.nf)}</td><td class="num mono">${pct(safeDiv(g.f, g.f + g.nf))}</td></tr>`; }).join('') + `</tbody></table>`;
+
+  const cats = keys;
+  draw('chartTarget', [
+    { x: cats, y: cats.map(k => groups[k].f), type: 'bar', name: 'Findings', marker: { color: C.teal } },
+    { x: cats, y: cats.map(k => groups[k].nf), type: 'bar', name: 'No-findings', marker: { color: C.coral } },
+    { x: cats, y: cats.map(k => groups[k].n - groups[k].f - groups[k].nf), type: 'bar', name: 'No outcome recorded', marker: { color: C.slate } }
+  ], { barmode: 'stack', yaxis: { title: 'Claims', gridcolor: '#242E42' } });
+  renderRibbon();
+}
+
+async function applyTarget() {
+  const cfg = S.cfg;
+  cfg.auditCol = $('#colAuditType').value || null;
+  cfg.findCol = $('#colFinding').value || null;
+  cfg.noFindCol = $('#colNoFinding').value || null;
+  cfg.appealCol = $('#colAppeal').value || null;
+  cfg.overturnCol = $('#colOverturn').value || null;
+  cfg.findPools = { DRG: $('#fpDRG').checked, CVA: $('#fpCVA').checked };
+  cfg.noFindPools = { DRG: $('#npDRG').checked, CVA: $('#npCVA').checked };
+  if (!cfg.findCol || !cfg.noFindCol) { alert('Pick both a finding column and a no-finding column first.'); return; }
+
+  await withOverlay('Labeling claims', 'Applying the target definition to every row', async () => {
+    labelRows(S.train); if (S.test.length) labelRows(S.test);
+    S.labeled = true; await nextTick();
+    renderTargetSummary(); buildFeaturePicker(); refreshExplorerFeatures();
+  });
+}
+
+/* ==========================================================================
+   7 · AUTOMATED PREPROCESSING (fit on train, applied unchanged to test)
+   ========================================================================== */
+function fitPreprocess(rows, feats, opts) {
+  const prep = { feats: [], names: [], catEnc: opts.catEnc, numImp: opts.numImp, prior: 0 };
+  const ys = rows.map(r => r.__y);
+  prep.prior = mean(ys.filter(y => y === 0 || y === 1)) || 0;
+  const smooth = 20;
+
+  for (const f of feats) {
+    const m = S.meta[f] || { type: 'numeric' };
+    if (m.type === 'numeric') {
+      const vals = rows.map(r => toNum(r[f])).filter(isFinite);
+      let fill = 0;
+      if (opts.numImp === 'median') fill = vals.length ? median(vals) : 0;
+      else if (opts.numImp === 'mean') fill = vals.length ? mean(vals) : 0;
+      if (!isFinite(fill)) fill = 0;
+      if (vals.length < 2) continue;                    // constant / empty column carries no signal
+      prep.feats.push({ col: f, kind: 'num', fill });
+      prep.names.push(f);
+    } else {
+      const counts = new Map(), sums = new Map();
+      for (const r of rows) {
+        const k = isBlank(r[f]) ? 'Unknown' : String(r[f]);
+        counts.set(k, (counts.get(k) || 0) + 1);
+        if (r.__y === 0 || r.__y === 1) sums.set(k, (sums.get(k) || 0) + r.__y);
+      }
+      const levels = Array.from(counts.keys());
+      if (opts.catEnc === 'onehot' && levels.length <= 15) {
+        const keep = levels.sort((a, b) => counts.get(b) - counts.get(a)).slice(0, 15);
+        prep.feats.push({ col: f, kind: 'onehot', levels: keep });
+        keep.forEach(l => prep.names.push(`${f}=${l}`));
+      } else if (opts.catEnc === 'frequency') {
+        const total = rows.length || 1;
+        const map = new Map(); counts.forEach((v, k) => map.set(k, v / total));
+        prep.feats.push({ col: f, kind: 'freq', map, fallback: 0 });
+        prep.names.push(`${f}·freq`);
+      } else {
+        const map = new Map();
+        counts.forEach((n, k) => map.set(k, ((sums.get(k) || 0) + smooth * prep.prior) / (n + smooth)));
+        prep.feats.push({ col: f, kind: 'target', map, fallback: prep.prior });
+        prep.names.push(`${f}·te`);
+        // a second view of the same column keeps rare-level volume information
+        const total = rows.length || 1, fmap = new Map(); counts.forEach((v, k) => fmap.set(k, v / total));
+        prep.feats.push({ col: f, kind: 'freq', map: fmap, fallback: 0 });
+        prep.names.push(`${f}·freq`);
+      }
+    }
+  }
+  return prep;
+}
+
+function transformRow(row, prep) {
+  const out = [];
+  for (const f of prep.feats) {
+    if (f.kind === 'num') { const v = toNum(row[f.col]); out.push(isFinite(v) ? v : f.fill); }
+    else {
+      const k = isBlank(row[f.col]) ? 'Unknown' : String(row[f.col]);
+      if (f.kind === 'onehot') for (const l of f.levels) out.push(k === l ? 1 : 0);
+      else out.push(f.map.has(k) ? f.map.get(k) : f.fallback);
+    }
+  }
+  return out;
+}
+function transformAll(rows, prep) { return rows.map(r => transformRow(r, prep)); }
+
+function standardize(X) {
+  const p = X[0] ? X[0].length : 0, mu = new Array(p).fill(0), sd = new Array(p).fill(1);
+  for (let j = 0; j < p; j++) {
+    let s = 0; for (let i = 0; i < X.length; i++) s += X[i][j];
+    mu[j] = s / (X.length || 1);
+    let v = 0; for (let i = 0; i < X.length; i++) v += (X[i][j] - mu[j]) ** 2;
+    sd[j] = Math.sqrt(v / (X.length || 1)) || 1;
+  }
+  return { mu, sd };
+}
+const applyStd = (X, st) => X.map(r => r.map((v, j) => (v - st.mu[j]) / st.sd[j]));
+
+/* ==========================================================================
+   8 · MODELS
+   ========================================================================== */
+const sigmoid = z => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+
+async function trainLogit(X, y, opts, onProg) {
+  const st = standardize(X), Z = applyStd(X, st);
+  const p = Z[0] ? Z[0].length : 0, n = Z.length;
+  let w = new Array(p).fill(0), b = 0;
+  const lr = 0.5, epochs = Math.max(30, Math.min(600, opts.epochs || 300)), l2 = 1e-4;
+  for (let e = 0; e < epochs; e++) {
+    const gw = new Array(p).fill(0); let gb = 0;
+    for (let i = 0; i < n; i++) {
+      const err = sigmoid(Z[i].reduce((s, v, j) => s + v * w[j], b)) - y[i];
+      for (let j = 0; j < p; j++) gw[j] += err * Z[i][j];
+      gb += err;
+    }
+    for (let j = 0; j < p; j++) w[j] -= lr * (gw[j] / n + l2 * w[j]);
+    b -= lr * gb / n;
+    if (e % 15 === 0) { onProg && onProg(e / epochs); await nextTick(); }
+  }
+  return {
+    kind: 'logit', st, w, b,
+    predict(x) { const z = applyStd([x], this.st)[0]; return sigmoid(z.reduce((s, v, j) => s + v * this.w[j], this.b)); },
+    importance() { return this.w.map(Math.abs); }
+  };
+}
+
+/* Histogram-based CART. Features are pre-binned once per run, so split search
+   costs one pass per feature per node instead of one pass per threshold. */
+const MAX_BINS = 32;
+function binMatrix(X) {
+  const n = X.length, p = n ? X[0].length : 0, edges = [], XB = [];
+  for (let j = 0; j < p; j++) {
+    const col = new Float64Array(n);
+    for (let i = 0; i < n; i++) col[i] = X[i][j];
+    const sorted = Array.from(col).sort((a, b) => a - b);
+    const e = [];
+    for (let k = 1; k < MAX_BINS; k++) {
+      const q = quantileSorted(sorted, k / MAX_BINS);
+      if (isFinite(q) && (!e.length || q > e[e.length - 1])) e.push(q);
+    }
+    const b = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      let lo = 0, hi = e.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (col[i] > e[mid]) lo = mid + 1; else hi = mid; }
+      b[i] = lo;
+    }
+    edges.push(e); XB.push(b);
+  }
+  return { XB, edges, p, n, nbins: MAX_BINS };
+}
+
+function growTree(B, target, idx, opts, depth, rnd) {
+  const node = {};
+  const nrows = idx.length;
+  let sum = 0; for (let k = 0; k < nrows; k++) sum += target[idx[k]];
+  if (opts.hess) {                      // boosting: leaf = Newton step sum(g) / (sum(h) + lambda)
+    let h = 0; for (let k = 0; k < nrows; k++) h += opts.hess[idx[k]];
+    node.value = sum / (h + (opts.lambda || 1));
+  } else node.value = sum / (nrows || 1);
+  if (depth >= opts.depth || nrows < opts.minLeaf * 2) return node;
+
+  const p = B.p;
+  let cand = null;
+  if (opts.featureFrac && opts.featureFrac < 1) {
+    cand = [];
+    for (let j = 0; j < p; j++) if (rnd() < opts.featureFrac) cand.push(j);
+    if (!cand.length) cand = [Math.floor(rnd() * p)];
+  } else { cand = new Array(p); for (let j = 0; j < p; j++) cand[j] = j; }
+
+  const baseSSE = sum * sum / (nrows || 1);   // variance-reduction form: maximize sumL²/nL + sumR²/nR
+  const cnt = new Float64Array(MAX_BINS), acc = new Float64Array(MAX_BINS);
+  let best = null;
+  for (const j of cand) {
+    const edges = B.edges[j];
+    if (!edges.length) continue;
+    cnt.fill(0); acc.fill(0);
+    const col = B.XB[j];
+    for (let k = 0; k < nrows; k++) { const i = idx[k], b = col[i]; cnt[b]++; acc[b] += target[i]; }
+    let cl = 0, sl = 0;
+    for (let b = 0; b < edges.length; b++) {
+      cl += cnt[b]; sl += acc[b];
+      const cr = nrows - cl, sr = sum - sl;
+      if (cl < opts.minLeaf || cr < opts.minLeaf) continue;
+      const gain = sl * sl / cl + sr * sr / cr - baseSSE;
+      if (!best || gain > best.gain) best = { j, b, t: edges[b], gain, lM: sl / cl, rM: sr / cr };
+    }
+  }
+  if (!best || best.gain <= 1e-10) return node;
+  const L = [], R = [];
+  const col = B.XB[best.j];
+  for (let k = 0; k < nrows; k++) { const i = idx[k]; (col[i] <= best.b ? L : R).push(i); }
+  if (!L.length || !R.length) return node;
+  node.j = best.j; node.t = best.t; node.gain = best.gain;
+  node.left = growTree(B, target, L, opts, depth + 1, rnd);
+  node.right = growTree(B, target, R, opts, depth + 1, rnd);
+  return node;
+}
+function treePredict(node, x) { while (node.left) node = (x[node.j] <= node.t ? node.left : node.right); return node.value; }
+function treeImportance(node, imp) { if (!node || !node.left) return; imp[node.j] = (imp[node.j] || 0) + (node.gain || 0); treeImportance(node.left, imp); treeImportance(node.right, imp); }
+
+async function trainTree(X, y, opts) {
+  const rnd = mulberry(opts.seed), B = binMatrix(X);
+  const root = growTree(B, y, X.map((_, i) => i), { depth: opts.depth, minLeaf: opts.minLeaf, featureFrac: 1 }, 0, rnd);
+  const p = B.p;
+  return { kind: 'tree', root, predict(x) { return treePredict(this.root, x); }, importance() { const imp = new Array(p).fill(0); treeImportance(this.root, imp); return imp; } };
+}
+
+async function trainForest(X, y, opts, onProg) {
+  const rnd = mulberry(opts.seed), n = X.length, B = binMatrix(X), p = B.p, trees = [];
+  const T = Math.max(1, Math.min(400, opts.trees));
+  for (let t = 0; t < T; t++) {
+    const idx = new Array(n);
+    for (let i = 0; i < n; i++) idx[i] = Math.floor(rnd() * n);
+    trees.push(growTree(B, y, idx, { depth: opts.depth + 2, minLeaf: opts.minLeaf, featureFrac: Math.max(.3, 1 / Math.sqrt(p)) }, 0, rnd));
+    if (t % 4 === 0) { onProg && onProg(t / T); await nextTick(); }
+  }
+  return {
+    kind: 'forest', trees,
+    predict(x) { let s = 0; for (const tr of this.trees) s += treePredict(tr, x); return s / this.trees.length; },
+    importance() { const imp = new Array(p).fill(0); for (const tr of this.trees) treeImportance(tr, imp); return imp; }
+  };
+}
+
+/* Gradient boosted trees on the log-odds. Ordered target statistics do the
+   categorical work upstream in the preprocessing step, CatBoost-style. */
+async function trainGBT(X, y, opts, onProg) {
+  const rnd = mulberry(opts.seed), n = X.length, B = binMatrix(X), p = B.p;
+  const mu = Math.min(1 - 1e-6, Math.max(1e-6, mean(y)));
+  const base = Math.log(mu / (1 - mu));
+  const F = new Float64Array(n).fill(base), trees = [];
+  const T = Math.max(1, Math.min(600, opts.trees)), lr = opts.lr || 0.1;
+  const allIdx = new Array(n); for (let i = 0; i < n; i++) allIdx[i] = i;
+  const grad = new Float64Array(n), hess = new Float64Array(n);
+  for (let t = 0; t < T; t++) {
+    for (let i = 0; i < n; i++) { const p_ = sigmoid(F[i]); grad[i] = y[i] - p_; hess[i] = Math.max(1e-6, p_ * (1 - p_)); }
+    let sub = allIdx;
+    if (opts.subsample && opts.subsample < 1) {
+      sub = [];
+      for (let i = 0; i < n; i++) if (rnd() < opts.subsample) sub.push(i);
+      if (sub.length < opts.minLeaf * 2) sub = allIdx;
+    }
+    const tr = growTree(B, grad, sub, { depth: opts.depth, minLeaf: opts.minLeaf, hess, lambda: 1, featureFrac: Math.max(.5, 1 / Math.sqrt(p)) }, 0, rnd);
+    trees.push(tr);
+    for (let i = 0; i < n; i++) F[i] += lr * treePredict(tr, X[i]);
+    if (t % 5 === 0) { onProg && onProg(t / T); await nextTick(); }
+  }
+  return {
+    kind: 'gbt', base, lr, trees,
+    predict(x) { let f = this.base; for (const tr of this.trees) f += this.lr * treePredict(tr, x); return sigmoid(f); },
+    importance() { const imp = new Array(p).fill(0); for (const tr of this.trees) treeImportance(tr, imp); return imp; }
+  };
+}
+
+/* ==========================================================================
+   9 · METRICS
+   ========================================================================== */
+function rocAuc(y, s) {
+  const pairs = y.map((v, i) => [s[i], v]).sort((a, b) => a[0] - b[0]);
+  let pos = 0, neg = 0; for (const v of y) v === 1 ? pos++ : neg++;
+  if (!pos || !neg) return null;
+  let rank = 1, i = 0, sumRankPos = 0;
+  while (i < pairs.length) {
+    let j = i; while (j + 1 < pairs.length && pairs[j + 1][0] === pairs[i][0]) j++;
+    const avgRank = (rank + (rank + (j - i))) / 2;
+    for (let k = i; k <= j; k++) if (pairs[k][1] === 1) sumRankPos += avgRank;
+    rank += (j - i + 1); i = j + 1;
+  }
+  return (sumRankPos - pos * (pos + 1) / 2) / (pos * neg);
+}
+function rocCurve(y, s, points = 60) {
+  const out = [{ x: 0, y: 0 }];
+  let pos = 0, neg = 0; for (const v of y) v === 1 ? pos++ : neg++;
+  if (!pos || !neg) return out;
+  for (let k = points; k >= 0; k--) {
+    const t = k / points; let tp = 0, fp = 0;
+    for (let i = 0; i < y.length; i++) if (s[i] >= t) { y[i] === 1 ? tp++ : fp++; }
+    out.push({ x: fp / neg, y: tp / pos });
+  }
+  out.push({ x: 1, y: 1 });
+  return out;
+}
+function classMetrics(y, s, thr) {
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  for (let i = 0; i < y.length; i++) {
+    const pred = s[i] >= thr ? 1 : 0;
+    if (pred === 1 && y[i] === 1) tp++; else if (pred === 1) fp++; else if (y[i] === 1) fn++; else tn++;
+  }
+  return {
+    tp, fp, tn, fn,
+    accuracy: safeDiv(tp + tn, tp + tn + fp + fn),
+    precision: safeDiv(tp, tp + fp),
+    recall: safeDiv(tp, tp + fn),
+    f1: safeDiv(2 * tp, 2 * tp + fp + fn)
+  };
+}
+function businessKpis(rows, scores, thr) {
+  let flagged = 0, f = 0, nf = 0, ap = 0, ov = 0;
+  for (let i = 0; i < rows.length; i++) {
+    if (scores[i] < thr) continue;
+    flagged++;
+    const r = rows[i];
+    if (r.__y === 1) { f++; ap += r.__ap > 0 ? 1 : 0; ov += r.__ov > 0 ? 1 : 0; } else if (r.__y === 0) nf++;
+  }
+  return { flagged, f, nf, hitrate: safeDiv(f, f + nf), appealRate: safeDiv(ap, f), overturnRate: safeDiv(ov, f) };
+}
+
+/* ==========================================================================
+   10 · FEATURE PICKER
+   ========================================================================== */
+function candidateFeatures() {
+  return S.columns.filter(c => !c.startsWith('__') && ![S.cfg.auditCol].includes(c) && (S.meta[c].distinct > 1 || S.engineered.includes(c)));
+}
+function safeDefaultFeatures() {
+  return candidateFeatures().filter(c => !looksLeaky(c) && !looksNarrative(c) && S.meta[c].distinct <= 200 && S.meta[c].nonNull > 0);
+}
+function buildFeaturePicker() {
+  const cands = candidateFeatures();
+  if (!S.features.length) S.features = safeDefaultFeatures();
+  const chosen = new Set(S.features);
+  $('#featPick').innerHTML = cands.map(c => {
+    const leak = looksLeaky(c), m = S.meta[c];
+    return `<label class="chk"><input type="checkbox" data-feat="${esc(c)}" ${chosen.has(c) ? 'checked' : ''}>
+      <span class="truncate mono text-[11.5px]" title="${esc(c)}">${esc(c)}</span>
+      <span class="pill ml-auto">${m.type === 'numeric' ? 'num' : m.distinct + ' lvl'}</span>
+      ${leak ? '<span class="pill" style="color:var(--coral);border-color:var(--coral)">leak</span>' : ''}</label>`;
+  }).join('');
+  $('#featPick').querySelectorAll('input[data-feat]').forEach(cb => cb.onchange = () => {
+    const f = cb.dataset.feat;
+    if (cb.checked) { if (!S.features.includes(f)) S.features.push(f); }
+    else S.features = S.features.filter(x => x !== f);
+    $('#featCount').textContent = `· ${S.features.length} selected`;
+  });
+  $('#featCount').textContent = `· ${S.features.length} selected`;
+}
+
+/* ==========================================================================
+   11 · TRAIN & VALIDATE
+   ========================================================================== */
+function splitData(rows, pctTrain, stratify, seed) {
+  const rnd = mulberry(seed);
+  const shuffled = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  if (!stratify) { const a = shuffled(rows), c = Math.floor(a.length * pctTrain); return [a.slice(0, c), a.slice(c)]; }
+  const pos = shuffled(rows.filter(r => r.__y === 1)), neg = shuffled(rows.filter(r => r.__y === 0));
+  const cp = Math.floor(pos.length * pctTrain), cn = Math.floor(neg.length * pctTrain);
+  return [shuffled(pos.slice(0, cp).concat(neg.slice(0, cn))), shuffled(pos.slice(cp).concat(neg.slice(cn)))];
+}
+
+async function trainModel() {
+  if (!S.labeled) { alert('Apply a target definition in step 02 first.'); return; }
+  if (!S.features.length) { alert('Select at least one feature to train on.'); return; }
+
+  await withOverlay('Training model', 'Preparing the audited population', async () => {
+    const seed = Number($('#seed').value) || 42;
+    const mode = $('#splitMode').value;
+
+    // ML SCOPE: audited rows only — anything with a null audit type or outcome is out.
+    let trRows, teRows;
+    const labTrain = labeledRows(S.train);
+    if (labTrain.length < 20) throw new Error('Fewer than 20 labeled claims. Widen the findings / no-findings pools.');
+    if (mode === 'file') {
+      if (!S.test.length) throw new Error('No out-of-sample file loaded. Upload one in step 01 or switch to a holdout split.');
+      trRows = labTrain; teRows = labeledRows(S.test);
+      if (!teRows.length) throw new Error('The out-of-sample file has no labeled claims under this target definition.');
+    } else {
+      [trRows, teRows] = splitData(labTrain, Number($('#splitPct').value) / 100, $('#stratify').checked, seed);
+    }
+
+    ovStep('Encoding categoricals and imputing gaps', .12); await nextTick();
+    const prep = fitPreprocess(trRows, S.features, { catEnc: $('#catEnc').value, numImp: $('#numImp').value });
+    if (!prep.names.length) throw new Error('No usable features after preprocessing.');
+    const Xtr = transformAll(trRows, prep), ytr = trRows.map(r => r.__y);
+    const Xte = transformAll(teRows, prep), yte = teRows.map(r => r.__y);
+
+    ovStep('Fitting ' + $('#algo').selectedOptions[0].text, .25); await nextTick();
+    const opts = {
+      trees: Number($('#hpTrees').value), depth: Number($('#hpDepth').value),
+      lr: Number($('#hpLR').value), minLeaf: Number($('#hpLeaf').value),
+      epochs: 300, subsample: 0.8, seed
+    };
+    const algo = $('#algo').value;
+    const onProg = f => ovStep('Fitting model · ' + Math.round(f * 100) + '%', .25 + f * .55);
+    let model;
+    if (algo === 'logit') model = await trainLogit(Xtr, ytr, opts, onProg);
+    else if (algo === 'tree') model = await trainTree(Xtr, ytr, opts);
+    else if (algo === 'forest') model = await trainForest(Xtr, ytr, opts, onProg);
+    else model = await trainGBT(Xtr, ytr, opts, onProg);
+
+    ovStep('Scoring train and test sets', .88); await nextTick();
+    const str = Xtr.map(x => model.predict(x)), ste = Xte.map(x => model.predict(x));
+
+    if (!S.thrTouched) {   // an imbalanced target makes 0.50 flag almost nothing — start at the base rate
+      const bh = poolStats(trRows).hitrate;
+      if (bh !== null) { const v = Math.max(5, Math.min(90, Math.round(bh * 100))); $('#thr').value = v; $('#thrLbl').textContent = num(v / 100, 2); }
+    }
+    S.prep = prep; S.model = model;
+    S.evalTrain = { rows: trRows, y: ytr, s: str, auc: rocAuc(ytr, str) };
+    S.evalTest = { rows: teRows, y: yte, s: ste, auc: rocAuc(yte, ste) };
+    renderModelResults(Number($('#thr').value) / 100);
+    renderRuleModelSummary();
+    renderRibbon();
+  });
+}
+
+function renderModelResults(thr) {
+  const T = S.evalTrain, E = S.evalTest;
+  $('#modelResults').classList.remove('hide');
+  const box = (ev, el) => {
+    const m = classMetrics(ev.y, ev.s, thr);
+    $(el).innerHTML =
+      kpiCard('ROC-AUC', num(ev.auc, 3)) +
+      kpiCard('Accuracy', pct(m.accuracy)) +
+      kpiCard('Precision', pct(m.precision), 'of flagged claims') +
+      kpiCard('Recall', pct(m.recall), 'of all findings caught') +
+      kpiCard('Claims', int(ev.rows.length)) +
+      kpiCard('Findings', int(ev.y.filter(v => v === 1).length));
+  };
+  box(T, '#kpiTrain'); box(E, '#kpiTest');
+
+  const rowFor = (name, ev) => {
+    const base = poolStats(ev.rows);
+    const k = businessKpis(ev.rows, ev.s, thr);
+    const lift = safeDiv(k.hitrate, base.hitrate);
+    return `<tr><td>${name}</td><td class="num mono">${int(ev.rows.length)}</td><td class="num mono">${int(k.flagged)}</td>
+      <td class="num mono">${int(k.f)}</td><td class="num mono">${int(k.nf)}</td>
+      <td class="num mono" style="color:var(--teal)">${pct(k.hitrate)}</td>
+      <td class="num mono">${lift === null ? '—' : num(lift, 2) + '×'}</td>
+      <td class="num mono">${pct(k.appealRate)}</td><td class="num mono">${pct(k.overturnRate)}</td></tr>`;
+  };
+  const baseRow = ev => {
+    const b = poolStats(ev.rows);
+    return `<tr style="opacity:.7"><td>Audit everything (base)</td><td class="num mono">${int(b.n)}</td><td class="num mono">${int(b.n)}</td>
+      <td class="num mono">${int(b.f)}</td><td class="num mono">${int(b.nf)}</td><td class="num mono">${pct(b.hitrate)}</td><td class="num mono">1.00×</td>
+      <td class="num mono">${pct(b.appealRate)}</td><td class="num mono">${pct(b.overturnRate)}</td></tr>`;
+  };
+  $('#kpiTable tbody').innerHTML = baseRow(E) + rowFor('Model-flagged · test', E) + rowFor('Model-flagged · train', T);
+
+  const ct = rocCurve(T.y, T.s), ce = rocCurve(E.y, E.s);
+  draw('chartROC', [
+    { x: [0, 1], y: [0, 1], mode: 'lines', line: { dash: 'dot', color: C.slate }, name: 'Random' },
+    { x: ct.map(p => p.x), y: ct.map(p => p.y), mode: 'lines', line: { color: C.muted }, name: 'Train ' + num(T.auc, 3) },
+    { x: ce.map(p => p.x), y: ce.map(p => p.y), mode: 'lines', line: { color: C.amber, width: 3 }, name: 'Test ' + num(E.auc, 3) }
+  ], { xaxis: { title: 'False positive rate', gridcolor: '#242E42' }, yaxis: { title: 'True positive rate', gridcolor: '#242E42' } });
+
+  // decile gains on test
+  const order = E.rows.map((r, i) => ({ r, s: E.s[i] })).sort((a, b) => b.s - a.s);
+  const per = Math.max(1, Math.floor(order.length / 10)), dec = [];
+  for (let d = 0; d < 10; d++) {
+    const slice = order.slice(d * per, d === 9 ? order.length : (d + 1) * per);
+    const st = poolStats(slice.map(o => o.r));
+    dec.push({ label: 'D' + (d + 1), n: st.n, hr: st.hitrate });
+  }
+  const baseHr = poolStats(E.rows).hitrate;
+  draw('chartGain', [
+    { x: dec.map(d => d.label), y: dec.map(d => d.n), type: 'bar', name: 'Claims', marker: { color: C.slate }, yaxis: 'y2' },
+    { x: dec.map(d => d.label), y: dec.map(d => d.hr), type: 'scatter', mode: 'lines+markers', name: 'Hitrate', line: { color: C.teal, width: 3 } },
+    { x: dec.map(d => d.label), y: dec.map(() => baseHr), type: 'scatter', mode: 'lines', name: 'Base hitrate', line: { color: C.coral, dash: 'dot' } }
+  ], {
+    yaxis: { title: 'Hitrate', tickformat: '.0%', gridcolor: '#242E42' },
+    yaxis2: { title: 'Claims', overlaying: 'y', side: 'right', gridcolor: 'rgba(0,0,0,0)' },
+    xaxis: { title: 'Predicted-risk decile (D1 = riskiest)' }
+  });
+
+  const imp = S.model.importance ? S.model.importance() : [];
+  const pairs = imp.map((v, i) => ({ name: S.prep.names[i] || 'f' + i, v })).filter(p => isFinite(p.v));
+  const tot = pairs.reduce((s, p) => s + p.v, 0) || 1;
+  const top = pairs.sort((a, b) => b.v - a.v).slice(0, 25).reverse();
+  draw('chartImp', [{ x: top.map(p => p.v / tot), y: top.map(p => p.name), type: 'bar', orientation: 'h', marker: { color: C.amber } }],
+    { margin: { l: 210, r: 30, t: 10, b: 40 }, xaxis: { title: 'Share of total split gain', tickformat: '.0%', gridcolor: '#242E42' } });
+}
+
+/* ==========================================================================
+   12 · BINNING + FEATURE EXPLORER
+   ========================================================================== */
+function makeBinner(rows, feat, nbins, method) {
+  const m = S.meta[feat] || { type: 'numeric' };
+  if (m.type === 'categorical') {
+    const counts = new Map();
+    for (const r of rows) { const k = isBlank(r[feat]) ? 'Unknown' : String(r[feat]); counts.set(k, (counts.get(k) || 0) + 1); }
+    const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, nbins).map(e => e[0]);
+    const set = new Set(top);
+    const labels = top.slice(); if (counts.size > top.length) labels.push('Other');
+    return {
+      type: 'cat', labels,
+      assign(row) { const k = isBlank(row[feat]) ? 'Unknown' : String(row[feat]); return set.has(k) ? labels.indexOf(k) : labels.indexOf('Other'); },
+      mid(i) { return i; }
+    };
+  }
+  const vals = rows.map(r => toNum(r[feat])).filter(isFinite).sort((a, b) => a - b);
+  if (!vals.length) return { type: 'num', labels: ['Missing'], assign: () => 0, mid: () => 0 };
+  let edges = [];
+  if (method === 'equal') {
+    const lo = vals[0], hi = vals[vals.length - 1];
+    for (let i = 0; i <= nbins; i++) edges.push(lo + (hi - lo) * i / nbins);
+  } else {
+    for (let i = 0; i <= nbins; i++) edges.push(quantileSorted(vals, i / nbins));
+  }
+  edges = Array.from(new Set(edges.map(e => Number(e.toPrecision(8))))).sort((a, b) => a - b);
+  if (edges.length < 2) edges = [vals[0], vals[0] + 1];
+  const fmt = v => Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : Number(v.toPrecision(4)).toString();
+  const labels = [];
+  for (let i = 0; i < edges.length - 1; i++) labels.push(`${fmt(edges[i])} – ${fmt(edges[i + 1])}`);
+  const hasMissing = rows.some(r => !isFinite(toNum(r[feat])));
+  if (hasMissing) labels.push('Missing');
+  return {
+    type: 'num', edges, labels,
+    assign(row) {
+      const v = toNum(row[feat]);
+      if (!isFinite(v)) return hasMissing ? labels.length - 1 : -1;
+      for (let i = 0; i < edges.length - 1; i++) if (v <= edges[i + 1] || i === edges.length - 2) return i;
+      return edges.length - 2;
+    },
+    mid(i) { return (i < edges.length - 1) ? (edges[i] + edges[i + 1]) / 2 : i; }
+  };
+}
+
+function explorerRows() { return labeledRows(S.train); }
+
+function refreshExplorerFeatures() {
+  const feats = candidateFeatures().filter(c => !looksNarrative(c));
+  const uni = $('#uniFeat'), mv = $('#mvFeats');
+  const keepU = uni.value;
+  uni.innerHTML = feats.map(f => `<option value="${esc(f)}">${esc(f)}${S.engineered.includes(f) ? ' ·derived' : ''}</option>`).join('');
+  if (feats.includes(keepU)) uni.value = keepU;
+  mv.innerHTML = feats.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
+}
+
+async function runUnivariate() {
+  const feat = $('#uniFeat').value;
+  if (!feat) return;
+  if (!S.labeled) { alert('Apply a target definition in step 02 first.'); return; }
+  await withOverlay('Analyzing feature', feat, async () => {
+    const rows = explorerRows();
+    if (!rows.length) throw new Error('No labeled claims to analyze.');
+    const b = makeBinner(rows, feat, Number($('#uniBins').value), $('#uniMethod').value);
+    const cells = b.labels.map(l => ({ label: l, n: 0, f: 0, nf: 0, ap: 0, ov: 0 }));
+    for (const r of rows) {
+      const i = b.assign(r); if (i < 0 || !cells[i]) continue;
+      const c = cells[i]; c.n++;
+      if (r.__y === 1) { c.f++; c.ap += r.__ap > 0 ? 1 : 0; c.ov += r.__ov > 0 ? 1 : 0; } else c.nf++;
+    }
+    const base = poolStats(rows);
+    await nextTick();
+
+    const shown = cells.filter(c => c.n > 0);
+    $('#uniTable tbody').innerHTML = shown.map(c => {
+      const hr = safeDiv(c.f, c.f + c.nf);
+      return `<tr><td class="mono">${esc(c.label)}</td><td class="num mono">${int(c.n)}</td><td class="num mono">${int(c.f)}</td>
+        <td class="num mono">${int(c.nf)}</td><td class="num mono" style="color:${hr > base.hitrate ? 'var(--teal)' : 'var(--coral)'}">${pct(hr)}</td>
+        <td class="num mono">${hr === null ? '—' : num(safeDiv(hr, base.hitrate), 2) + '×'}</td>
+        <td class="num mono">${pct(safeDiv(c.ap, c.f))}</td><td class="num mono">${pct(safeDiv(c.ov, c.f))}</td></tr>`;
+    }).join('');
+
+    const hrs = shown.map(c => safeDiv(c.f, c.f + c.nf));
+    const _hf = hrs.filter(isFinite); const spread = maxOf(_hf) - minOf(_hf);
+    const missingPct = safeDiv(S.meta[feat].missing, S.train.length, 0);
+    $('#uniSummary').innerHTML =
+      kpiCard('Base hitrate', pct(base.hitrate), 'all audited claims') +
+      kpiCard('Hitrate spread', pct(spread), 'best bin − worst bin') +
+      kpiCard('Missing', pct(missingPct, 0), 'share of all rows') +
+      kpiCard('Distinct values', int(S.meta[feat].distinct), S.meta[feat].type);
+
+    draw('chartUni', [
+      { x: shown.map(c => c.label), y: shown.map(c => c.n), type: 'bar', name: 'Audited volume', marker: { color: C.slate }, yaxis: 'y2' },
+      { x: shown.map(c => c.label), y: shown.map(c => safeDiv(c.f, c.f + c.nf)), type: 'scatter', mode: 'lines+markers', name: 'Hitrate', line: { color: C.teal, width: 3 } },
+      { x: shown.map(c => c.label), y: shown.map(c => safeDiv(c.ap, c.f)), type: 'scatter', mode: 'lines+markers', name: 'Appeal rate', line: { color: C.amber, dash: 'dot' } },
+      { x: shown.map(c => c.label), y: shown.map(() => base.hitrate), type: 'scatter', mode: 'lines', name: 'Base hitrate', line: { color: C.coral, dash: 'dash' } }
+    ], {
+      yaxis: { title: 'Rate', tickformat: '.0%', gridcolor: '#242E42' },
+      yaxis2: { title: 'Claims', overlaying: 'y', side: 'right', gridcolor: 'rgba(0,0,0,0)' },
+      xaxis: { tickangle: -35, automargin: true }
+    });
+
+    // distribution, findings vs no-findings
+    if (S.meta[feat].type === 'numeric') {
+      const f = rows.filter(r => r.__y === 1).map(r => toNum(r[feat])).filter(isFinite);
+      const nf = rows.filter(r => r.__y === 0).map(r => toNum(r[feat])).filter(isFinite);
+      draw('chartUniDist', [
+        { x: nf, type: 'histogram', name: 'No-findings', histnorm: 'probability', marker: { color: C.coral }, opacity: .6, nbinsx: 30 },
+        { x: f, type: 'histogram', name: 'Findings', histnorm: 'probability', marker: { color: C.teal }, opacity: .6, nbinsx: 30 }
+      ], { barmode: 'overlay', xaxis: { title: feat }, yaxis: { title: 'Share of class', tickformat: '.0%', gridcolor: '#242E42' } });
+    } else {
+      const totF = shown.reduce((s, c) => s + c.f, 0) || 1, totN = shown.reduce((s, c) => s + c.nf, 0) || 1;
+      draw('chartUniDist', [
+        { x: shown.map(c => c.label), y: shown.map(c => c.nf / totN), type: 'bar', name: 'No-findings', marker: { color: C.coral } },
+        { x: shown.map(c => c.label), y: shown.map(c => c.f / totF), type: 'bar', name: 'Findings', marker: { color: C.teal } }
+      ], { barmode: 'group', yaxis: { title: 'Share of class', tickformat: '.0%', gridcolor: '#242E42' }, xaxis: { tickangle: -35, automargin: true } });
+    }
+  });
+}
+
+async function runMultivariate() {
+  const feats = Array.from($('#mvFeats').selectedOptions).map(o => o.value);
+  if (feats.length < 2) { alert('Pick at least two features.'); return; }
+  if (!S.labeled) { alert('Apply a target definition in step 02 first.'); return; }
+  await withOverlay('Profiling interaction', feats.join(' × '), async () => {
+    const rows = explorerRows();
+    const nb = Number($('#mvBins').value), minN = Number($('#mvMinN').value);
+    const binners = feats.map(f => makeBinner(rows, f, nb, 'quantile'));
+    const cells = new Map();
+    for (const r of rows) {
+      const idx = binners.map(b => b.assign(r));
+      if (idx.some(i => i < 0)) continue;
+      const key = idx.join('|');
+      let c = cells.get(key);
+      if (!c) { c = { idx, n: 0, f: 0, nf: 0, ap: 0 }; cells.set(key, c); }
+      c.n++;
+      if (r.__y === 1) { c.f++; c.ap += r.__ap > 0 ? 1 : 0; } else c.nf++;
+    }
+    const base = poolStats(rows);
+    const list = Array.from(cells.values()).map(c => Object.assign(c, {
+      hr: safeDiv(c.f, c.f + c.nf),
+      label: c.idx.map((i, k) => `${feats[k]} ∈ ${binners[k].labels[i]}`).join('  ·  ')
+    })).filter(c => c.n >= minN);
+    await nextTick();
+
+    if (!list.length) {
+      $('#mvNote').textContent = 'No combination reaches the minimum cell size. Lower "Min cell n" or use fewer bins.';
+      purgePlot('chartMV'); $('#mvTable tbody').innerHTML = '';
+      return;
+    }
+    let view = $('#mvView').value;
+    if (view === 'auto') view = feats.length === 2 ? 'heat' : (feats.length === 3 ? 's3d' : 'par');
+    $('#mvNote').textContent = `${list.length} combinations at or above ${minN} audited claims · base hitrate ${pct(base.hitrate)} · ${feats.length} features`;
+
+    if (view === 'heat' && feats.length === 2) {
+      const [bx, by] = binners;
+      const z = by.labels.map(() => bx.labels.map(() => null));
+      const text = by.labels.map(() => bx.labels.map(() => ''));
+      for (const c of list) { z[c.idx[1]][c.idx[0]] = c.hr; text[c.idx[1]][c.idx[0]] = `n=${c.n}<br>findings=${c.f}<br>hitrate=${pct(c.hr)}`; }
+      draw('chartMV', [{
+        z, x: bx.labels, y: by.labels, type: 'heatmap', text, hoverinfo: 'text',
+        colorscale: [[0, C.coral], [0.5, '#3A4560'], [1, C.teal]], colorbar: { title: 'Hitrate', tickformat: '.0%' }
+      }], { xaxis: { title: feats[0], tickangle: -30, automargin: true }, yaxis: { title: feats[1], automargin: true }, margin: { l: 150, r: 40, t: 20, b: 110 } });
+    } else if (view === 's3d' && feats.length >= 3) {
+      draw('chartMV', [{
+        type: 'scatter3d', mode: 'markers',
+        x: list.map(c => binners[0].mid(c.idx[0])), y: list.map(c => binners[1].mid(c.idx[1])), z: list.map(c => binners[2].mid(c.idx[2])),
+        text: list.map(c => `${c.label}<br>n=${c.n} · hitrate=${pct(c.hr)}`), hoverinfo: 'text',
+        marker: { size: list.map(c => Math.max(5, Math.min(26, 5 + Math.sqrt(c.n)))), color: list.map(c => c.hr), colorscale: [[0, C.coral], [0.5, '#3A4560'], [1, C.teal]], colorbar: { title: 'Hitrate', tickformat: '.0%' }, opacity: .85 }
+      }], { scene: { xaxis: { title: feats[0] }, yaxis: { title: feats[1] }, zaxis: { title: feats[2] } }, margin: { l: 0, r: 0, t: 10, b: 0 } });
+    } else {
+      const dims = feats.map((f, k) => ({
+        label: f, values: list.map(c => c.idx[k]),
+        tickvals: binners[k].labels.map((_, i) => i), ticktext: binners[k].labels.map(l => String(l).slice(0, 16)),
+        range: [0, Math.max(1, binners[k].labels.length - 1)]
+      }));
+      dims.push({ label: 'Hitrate', values: list.map(c => c.hr || 0), range: [0, maxOf(list.map(c => c.hr || 0)) || 1] });
+      draw('chartMV', [{
+        type: 'parcoords', line: { color: list.map(c => c.hr || 0), colorscale: [[0, C.coral], [0.5, '#3A4560'], [1, C.teal]], showscale: true, colorbar: { title: 'Hitrate', tickformat: '.0%' } },
+        dimensions: dims
+      }], { margin: { l: 90, r: 60, t: 40, b: 30 } });
+    }
+
+    const ranked = list.slice().sort((a, b) => Math.abs(b.hr - base.hitrate) * Math.sqrt(b.n) - Math.abs(a.hr - base.hitrate) * Math.sqrt(a.n)).slice(0, 5);
+    $('#mvTable tbody').innerHTML = ranked.map(c => `<tr>
+      <td class="mono text-[11.5px]">${esc(c.label)}</td><td class="num mono">${int(c.n)}</td><td class="num mono">${int(c.f)}</td>
+      <td class="num mono" style="color:${c.hr > base.hitrate ? 'var(--teal)' : 'var(--coral)'}">${pct(c.hr)}</td>
+      <td class="num mono">${num(safeDiv(c.hr, base.hitrate), 2)}×</td><td class="num mono">${pct(safeDiv(c.ap, c.f))}</td></tr>`).join('');
+  });
+}
+
+/* ==========================================================================
+   13 · RULES DISCOVERY ENGINE
+   ========================================================================== */
+function wilson(f, n, z = 1.96) {
+  if (!n) return [0, 1];
+  const p = f / n, d = 1 + z * z / n;
+  const c = p + z * z / (2 * n), m = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n));
+  return [Math.max(0, (c - m) / d), Math.min(1, (c + m) / d)];
+}
+
+function buildConditions(rows, feats) {
+  const conds = [];
+  for (const f of feats) {
+    const m = S.meta[f];
+    if (!m) continue;
+    if (m.type === 'numeric') {
+      const vals = rows.map(r => toNum(r[f])).filter(isFinite).sort((a, b) => a - b);
+      if (vals.length < 20) continue;
+      const cuts = new Set();
+      for (let q = 1; q <= 4; q++) cuts.add(Number(quantileSorted(vals, q / 5).toPrecision(6)));
+      for (const t of cuts) {
+        if (!isFinite(t)) continue;
+        const fmt = Math.abs(t) >= 1000 ? Math.round(t).toLocaleString() : t;
+        conds.push({ feat: f, label: `${f} > ${fmt}`, test: r => { const v = toNum(r[f]); return isFinite(v) && v > t; } });
+        conds.push({ feat: f, label: `${f} <= ${fmt}`, test: r => { const v = toNum(r[f]); return isFinite(v) && v <= t; } });
+      }
+    } else {
+      const counts = new Map();
+      for (const r of rows) { const k = isBlank(r[f]) ? 'Unknown' : String(r[f]); counts.set(k, (counts.get(k) || 0) + 1); }
+      const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      for (const [v] of top) {
+        conds.push({ feat: f, label: `${f} == '${v}'`, test: r => (isBlank(r[f]) ? 'Unknown' : String(r[f])) === v });
+        if (counts.size > 2) conds.push({ feat: f, label: `${f} != '${v}'`, test: r => (isBlank(r[f]) ? 'Unknown' : String(r[f])) !== v });
+      }
+    }
+  }
+  return conds;
+}
+
+function evalSubset(lab, idx) {
+  let f = 0, nf = 0, ap = 0, ov = 0;
+  for (const i of idx) { const r = lab[i]; if (r.__y === 1) { f++; ap += r.__ap > 0 ? 1 : 0; ov += r.__ov > 0 ? 1 : 0; } else nf++; }
+  const n = f + nf;
+  return { n, f, nf, ap, ov, hitrate: safeDiv(f, n), appealRate: safeDiv(ap, f), overturnRate: safeDiv(ov, f) };
+}
+
+/* ---- scope helpers -------------------------------------------------------
+   cva / drg select which audited claims the rules are MINED on (they carry the
+   outcome, so they set hitrate). nulls only widens the n-count projection,
+   because unaudited claims have no outcome to learn from.                     */
+function scopePools(rows) {
+  const sc = S.ruleScope;
+  const lab = [];
+  const nulls = [];
+  for (const r of rows) {
+    if (r.__y === 1 || r.__y === 0) {
+      if ((r.__at === 'CVA' && sc.cva) || (r.__at === 'DRG' && sc.drg)) lab.push(r);
+    } else if (sc.nulls) nulls.push(r);
+  }
+  return { lab, nulls };
+}
+function scopeCounts(rows) {
+  let cva = 0, drg = 0, nul = 0;
+  for (const r of rows) {
+    if (r.__y === 1 || r.__y === 0) { if (r.__at === 'CVA') cva++; else if (r.__at === 'DRG') drg++; }
+    else nul++;
+  }
+  return { cva, drg, nul, all: rows.length };
+}
+function scopeLabels() {
+  const sc = S.ruleScope, out = [];
+  if (sc.cva) out.push('CVA audited');
+  if (sc.drg) out.push('DRG audited');
+  if (sc.nulls) out.push('non-audited');
+  return out;
+}
+
+async function extractRules() {
+  if (!S.labeled) { alert('Apply a target definition in step 02 first.'); return; }
+  if (!S.ruleScope.cva && !S.ruleScope.drg) {
+    alert('Rules are mined from claims that have an outcome. Tick CVA audited, DRG audited, or both.');
+    return;
+  }
+  await withOverlay('Extracting rules', scopeLabels().join(' + '), async () => {
+    const pools = scopePools(S.train);
+    const lab = pools.lab;
+    if (lab.length < 30) throw new Error(`Only ${lab.length} labeled claims in the selected scope. Widen the scope or relax the target definition.`);
+    const nullPool = pools.nulls;
+    const N = Number($('#ruleN').value), maxDepth = Number($('#ruleDepth').value);
+    const minN = Number($('#ruleMinN').value), topF = Number($('#ruleTopF').value);
+    const base = poolStats(lab);
+    const feats = S.features.length ? S.features.filter(f => !looksLeaky(f) && !looksNarrative(f)) : safeDefaultFeatures();
+
+    ovStep('Building candidate conditions', .1); await nextTick();
+    let conds = buildConditions(lab, feats);
+
+    // score every single condition, keep the strongest features only
+    const allIdx = lab.map((_, i) => i);
+    const scoreOf = st => {
+      if (st.n < minN) return -1;
+      const [lo, hi] = wilson(st.f, st.n);
+      return Math.max(lo - base.hitrate, base.hitrate - hi);
+    };
+    const single = [];
+    for (let k = 0; k < conds.length; k++) {
+      const c = conds[k], idx = [], mask = new Uint8Array(lab.length);
+      for (let i = 0; i < lab.length; i++) if (c.test(lab[i])) { idx.push(i); mask[i] = 1; }
+      const st = evalSubset(lab, idx);
+      single.push({ cond: c, idx, mask, st, score: scoreOf(st) });
+      if (k % 40 === 0) { ovStep(`Scoring conditions ${k}/${conds.length}`, .1 + .35 * k / conds.length); await nextTick(); }
+    }
+    const featScore = {};
+    for (const s of single) featScore[s.cond.feat] = Math.max(featScore[s.cond.feat] ?? -1, s.score);
+    const keep = new Set(Object.entries(featScore).sort((a, b) => b[1] - a[1]).slice(0, topF).map(e => e[0]));
+    const pool = single.filter(s => keep.has(s.cond.feat) && s.st.n >= minN);
+
+    // beam search over condition conjunctions
+    ovStep('Growing rules', .5); await nextTick();
+    const beamWidth = 40;
+    let beam = pool.map(s => ({ conds: [s.cond], idx: s.idx, st: s.st, score: s.score }))
+      .sort((a, b) => b.score - a.score).slice(0, beamWidth);
+    const found = new Map();
+    const record = r => {
+      const key = r.conds.map(c => c.label).sort().join(' AND ');
+      if (!found.has(key)) found.set(key, r);
+    };
+    beam.forEach(record);
+    for (let d = 1; d < maxDepth; d++) {
+      const next = [];
+      for (const r of beam) {
+        const used = new Set(r.conds.map(c => c.feat));
+        for (const s of pool) {
+          if (used.has(s.cond.feat)) continue;
+          const m = s.mask, src = r.idx, idx = [];
+          for (let k = 0; k < src.length; k++) if (m[src[k]]) idx.push(src[k]);
+          if (idx.length < minN) continue;
+          const st = evalSubset(lab, idx);
+          const cand = { conds: r.conds.concat([s.cond]), idx, st, score: scoreOf(st) };
+          if (cand.score <= r.score - 1e-9) continue;      // only keep refinements that sharpen the signal
+          next.push(cand);
+        }
+      }
+      next.sort((a, b) => b.score - a.score);
+      beam = next.slice(0, beamWidth);
+      beam.forEach(record);
+      ovStep(`Growing rules · depth ${d + 1}`, .5 + .3 * (d / maxDepth)); await nextTick();
+    }
+
+    const all = Array.from(found.values());
+    for (const r of all) {
+      r.scopeAudited = r.st.n;
+      r.scopeAll = null;
+      r.lift = safeDiv(r.st.hitrate, base.hitrate);
+      r.coverage = safeDiv(r.st.f, base.f);
+    }
+
+    const distinct = (arr, n) => {
+      const out = [];
+      for (const r of arr) {
+        if (out.length >= n) break;
+        // drop rules whose claim set is nearly identical to one already kept
+        const dup = out.some(o => {
+          const setO = new Set(o.idx); let hit = 0;
+          for (const i of r.idx) if (setO.has(i)) hit++;
+          return safeDiv(hit, Math.min(r.idx.length, o.idx.length), 0) > 0.85;
+        });
+        if (!dup) out.push(r);
+      }
+      return out;
+    };
+    const eligible = all.filter(r => r.st.n >= minN);
+    const maxRules = distinct(eligible.slice().sort((a, b) => wilson(b.st.f, b.st.n)[0] - wilson(a.st.f, a.st.n)[0]), N);
+    const minRules = distinct(eligible.slice().sort((a, b) => wilson(a.st.f, a.st.n)[1] - wilson(b.st.f, b.st.n)[1]), N);
+
+    // projected coverage over the null pool, computed only for the rules on screen
+    ovStep('Counting projected coverage', .9); await nextTick();
+    if (nullPool.length) {
+      const shown = maxRules.concat(minRules);
+      for (const r of shown) {
+        let extra = 0;
+        for (const row of nullPool) if (r.conds.every(c => c.test(row))) extra++;
+        r.nullHits = extra;
+        r.scopeAll = r.st.n + extra;
+      }
+      await nextTick();
+    }
+
+    S.rules = {
+      max: maxRules, min: minRules, base,
+      scope: Object.assign({}, S.ruleScope),
+      scopeLabel: scopeLabels().join(' + '),
+      labN: lab.length, nullPool: nullPool.length
+    };
+    renderRules();
+    renderRuleModelSummary();
+    renderRibbon();
+  });
+}
+
+function ruleCard(r, kind, base) {
+  const logic = r.conds.map((c, i) => `${i === 0 ? '<span class="kw">IF</span>' : '<span class="kw">AND</span>'} ${esc(c.label)}`).join('<br>');
+  const sc = (S.rules && S.rules.scope) || S.ruleScope;
+  const withNulls = sc.nulls && r.scopeAll != null;
+  const scopeN = withNulls ? r.scopeAll : r.scopeAudited;
+  const audLabel = [sc.cva ? 'CVA' : null, sc.drg ? 'DRG' : null].filter(Boolean).join('+') || 'audited';
+  const scopeLabel = withNulls ? `in scope (${audLabel} + ${int(r.nullHits)} non-audited)` : `${audLabel} audited claims`;
+  const col = kind === 'max' ? 'var(--teal)' : 'var(--coral)';
+  return `<div class="rule-card">
+    <div class="rule-logic">${logic}<br><span class="kw">THEN</span> ${kind === 'max' ? 'send to audit' : 'suppress — do not audit'}</div>
+    <div class="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-[11.5px]">
+      <span><span class="note">n</span> <b class="mono">${int(scopeN)}</b> <span class="note">${scopeLabel}</span></span>
+      <span><span class="note">hitrate</span> <b class="mono" style="color:${col}">${pct(r.st.hitrate)}</b></span>
+      <span><span class="note">lift</span> <b class="mono">${num(r.lift, 2)}×</b></span>
+      <span><span class="note">appeal</span> <b class="mono">${pct(r.st.appealRate)}</b></span>
+      <span><span class="note">overturn</span> <b class="mono">${pct(r.st.overturnRate)}</b></span>
+      <span><span class="note">findings</span> <b class="mono">${int(r.st.f)}</b> / ${int(r.st.n)} audited</span>
+      <span><span class="note">covers</span> <b class="mono">${pct(r.coverage)}</b> <span class="note">of findings in scope</span></span>
+    </div></div>`;
+}
+function renderRules() {
+  if (!S.rules) return;
+  const { max, min, base } = S.rules;
+  $('#rulesMax').innerHTML = max.length ? max.map(r => ruleCard(r, 'max', base)).join('') : `<p class="note">No subgroup clears the minimum volume. Lower "Min audited n".</p>`;
+  $('#rulesMin').innerHTML = min.length ? min.map(r => ruleCard(r, 'min', base)).join('') : `<p class="note">No subgroup clears the minimum volume. Lower "Min audited n".</p>`;
+}
+function renderRuleModelSummary() {
+  const el = $('#ruleModelSummary');
+  const base = S.labeled ? poolStats(labeledRows(S.train)) : null;
+  if (!S.evalTest) { el.innerHTML = `<p class="note">Train a model in step 03 to compare its lift against the extracted rules.</p>`; return; }
+  const thr = Number($('#thr').value) / 100;
+  const k = businessKpis(S.evalTest.rows, S.evalTest.s, thr);
+  const b = poolStats(S.evalTest.rows);
+  const bestRule = S.rules && S.rules.max.length ? S.rules.max[0] : null;
+  el.innerHTML =
+    kpiCard('Test ROC-AUC', num(S.evalTest.auc, 3), $('#algo').selectedOptions[0].text) +
+    `<div class="grid grid-cols-2 gap-3">
+      ${kpiCard('Model hitrate', pct(k.hitrate), `at threshold ${num(thr, 2)}`)}
+      ${kpiCard('Model lift', num(safeDiv(k.hitrate, b.hitrate), 2) + '×', 'vs auditing everything')}
+      ${kpiCard('Flagged', int(k.flagged), `of ${int(S.evalTest.rows.length)} test claims`)}
+      ${kpiCard('Findings caught', pct(safeDiv(k.f, b.f)), 'recall on test')}
+    </div>` +
+    (bestRule ? `<div class="note pt-1">Best single rule reaches ${pct(bestRule.st.hitrate)} hitrate (${num(bestRule.lift, 2)}× base) on ${int(bestRule.st.n)} audited claims — a readable slice of what the model is using.</div>` : '') +
+    (base ? `<div class="note">Anchor ${S.cfg.anchor} · base hitrate ${pct(base.hitrate)} across ${int(base.n)} audited claims.</div>` : '');
+}
+
+/* ==========================================================================
+   14 · LOAD PIPELINE
+   ========================================================================== */
+function processTrainRows(rows) {
+  if (!rows.length) throw new Error('That sheet has no rows.');
+  const rawCols = [];
+  const seen = new Set();
+  for (let i = 0; i < Math.min(rows.length, 3000); i++) for (const k of Object.keys(rows[i])) if (!seen.has(k)) { seen.add(k); rawCols.push(k); }
+  S.feFit = buildFeatureEngineering(rows, rawCols);
+  applyFeatureEngineering(rows, S.feFit);
+  const { cols, meta } = inferSchema(rows);
+  S.train = rows; S.columns = cols; S.meta = meta;
+  S.engineered = S.feFit.available.filter(n => cols.includes(n));
+  S.features = []; S.model = null; S.prep = null; S.evalTrain = null; S.evalTest = null; S.rules = null;
+  S.labeled = false;
+  $('#modelResults').classList.add('hide');
+  initTargetControls();
+  renderDataTab();
+  buildFeaturePicker();
+  refreshExplorerFeatures();
+  // auto-label when the expected outcome columns are present
+  if (S.cfg.findCol && S.cfg.noFindCol) { labelRows(S.train); S.labeled = true; renderTargetSummary(); }
+}
+function processTestRows(rows) {
+  if (S.feFit) applyFeatureEngineering(rows, S.feFit);   // train-fit reapplied, never refit
+  S.test = rows;
+  if (S.labeled) labelRows(S.test);
+  const lab = S.labeled ? labeledRows(S.test).length : 0;
+  $('#testInfo').innerHTML = `${int(rows.length)} rows loaded${S.labeled ? ` · ${int(lab)} labeled under the current target` : ''}`;
+  renderDataTab();
+}
+
+/* Report exports often bury the data behind cover sheets, so default to the widest sheet. */
+function bestSheet(wb) {
+  let best = wb.SheetNames[0], bestScore = -1;
+  for (const n of wb.SheetNames) {
+    let score = 0;
+    if (wb.__rows) score = (wb.__rows[n] || []).length;
+    else {
+      const ref = wb.Sheets[n] && wb.Sheets[n]['!ref'];
+      if (ref && window.XLSX) { const r = XLSX.utils.decode_range(ref); score = (r.e.r - r.s.r) * Math.max(1, r.e.c - r.s.c); }
+    }
+    if (score > bestScore) { bestScore = score; best = n; }
+  }
+  return best;
+}
+
+async function onTrainFile(file) {
+  await withOverlay('Reading workbook', file.name, async () => {
+    S.wbTrain = await readWorkbook(file);
+    S.sheetName = bestSheet(S.wbTrain);
+    $('#sheetPick').innerHTML = S.wbTrain.SheetNames
+      .map(n => `<option${n === S.sheetName ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    ovStep('Parsing rows', .5); await nextTick();
+    const rows = sheetToRows(S.wbTrain, S.sheetName);
+    if (!rows.length) throw new Error(`Sheet "${S.sheetName}" has no data rows. Pick a different sheet from the dropdown and hit Reload sheet.`);
+    ovStep('Engineering features and inferring schema', .75); await nextTick();
+    processTrainRows(rows);
+    $('#trainInfo').innerHTML = `${esc(file.name)} · sheet <b>${esc(S.sheetName)}</b> · ${int(rows.length)} rows · ${int(S.columns.length)} columns`;
+  });
+}
+async function onTestFile(file) {
+  await withOverlay('Reading out-of-sample workbook', file.name, async () => {
+    S.wbTest = await readWorkbook(file);
+    const rows = sheetToRows(S.wbTest, bestSheet(S.wbTest));
+    if (!rows.length) throw new Error('No data rows found in that workbook.');
+    processTestRows(rows);
+    $('#splitMode').value = 'file'; $('#holdoutWrap').classList.add('hide');
+  });
+}
+
+/* Same file re-selected should re-trigger; drag-and-drop should work on the dashed panels. */
+function wireDrop(zone, handler) {
+  ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); zone.style.borderColor = 'var(--amber)';
+  }));
+  ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); zone.style.borderColor = 'var(--rule)';
+  }));
+  zone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handler(f); });
+}
+
+/* sample data so the dashboard can be exercised without a file */
+function demoRows(n, seed) {
+  const rnd = mulberry(seed);
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const drgs = ['470', '871', '291', '682', '190', '392', '378', '177', '312', '246'];
+  const states = ['TX', 'FL', 'CA', 'NY', 'OH', 'PA', 'GA', 'MI'];
+  const controls = ['Voluntary Nonprofit', 'Proprietary', 'Government - Local', 'Church'];
+  const clusters = ['Stressed margin', 'Stable core', 'High growth', 'Thin liquidity'];
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const drg = pick(drgs);
+    const rural = rnd() < .3 ? 'Rural' : 'Urban';
+    const los = Math.max(1, Math.round(2 + rnd() * 12 + (drg === '871' ? 3 : 0)));
+    const cc = Math.floor(rnd() * 5), mcc = Math.floor(rnd() * 3);
+    const risk = Math.round(rnd() * 100);
+    const ctc = 0.15 + rnd() * 0.5, markup = 1.5 + rnd() * 4;
+    const beds = Math.round(30 + rnd() * 600);
+    const spend = Math.round(4000 + los * (900 + rnd() * 1400) + rnd() * 6000);
+    // hidden truth: long stays with few complications at aggressive-pricing providers pay off
+    let p = 0.10 + 0.22 * (los > 8 && mcc === 0 ? 1 : 0) + 0.15 * (risk > 70 ? 1 : 0)
+      + 0.10 * (markup > 4 ? 1 : 0) + 0.06 * (rural === 'Urban' ? 1 : 0) - 0.07 * (cc > 2 ? 1 : 0);
+    p = Math.max(0.02, Math.min(0.9, p));
+    const isCVA = rnd() < .35;
+    const audited = rnd() < .82;
+    const finding = audited && rnd() < p ? 1 : 0;
+    rows.push({
+      'b.codetype': audited ? (isCVA ? 'Clinical Validation' : 'DRG Validation') : null,
+      'b.drgcode': drg, 'b.mdcn': String(1 + Math.floor(rnd() * 25)),
+      'b.lengthofstay': los, 'b.ccccount': cc, 'b.cmcccount': mcc,
+      'b.drgconditiontype': pick(['Surgical', 'Medical']),
+      'primarydiag': 'D' + (100 + Math.floor(rnd() * 400)),
+      'b.spend': spend, 'b.savings': finding ? Math.round(spend * (0.1 + rnd() * .4)) : 0,
+      'b.finding': audited ? finding : null, 'b.nofinding': audited ? (finding ? 0 : 1) : null,
+      'b.appeal': finding && rnd() < .3 ? 1 : 0, 'b.overturn': finding && rnd() < .12 ? 1 : 0,
+      'b.providerstate': pick(states), 'b.ccnstate': pick(states),
+      'b.ccnhospitalname': 'Provider ' + (1 + Math.floor(rnd() * 120)),
+      'b.typeofcontrol': pick(controls), 'b.ruralversusurban': rural,
+      'b.numberofbeds': beds, 'b.occupancyrate': Math.round(rnd() * 90) / 100,
+      'b.operatingmargin': Math.round((rnd() * 0.3 - 0.12) * 1000) / 1000,
+      'b.costtochargeratio': Math.round(ctc * 1000) / 1000,
+      'b.markupratiochargepay': Math.round(markup * 100) / 100,
+      'b.medicaidpercentofrevenue': Math.round(rnd() * 60) / 100,
+      'b.distinctdrgs': 40 + Math.floor(rnd() * 250),
+      'b.drgconcentrationhhi': Math.round(rnd() * 2000),
+      'b.riskconvergencescore': risk,
+      'b.financialhealthcluster': pick(clusters),
+      'b.flagaggressivepricing': markup > 4 ? 1 : 0,
+      'b.flaghighbaddebt': rnd() < .2 ? 1 : 0,
+      'b.flagcontractlaborstress': rnd() < .15 ? 1 : 0,
+      'b.billingprimaryspecialization': pick(['Acute Care', 'Critical Access', 'Cardiology', 'Orthopedic'])
+    });
+  }
+  return rows;
+}
+
+/* ==========================================================================
+   15 · WIRING
+   ========================================================================== */
+function showTab(name) {
+  $$('.tabpane').forEach(p => p.classList.add('hide'));
+  $('#tab-' + name).classList.remove('hide');
+  $$('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  setTimeout(() => { if (window.Plotly) $$(`#tab-${name} .js-plotly-plot`).forEach(g => Plotly.Plots.resize(g)); }, 30);
+}
+$$('.navbtn').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+$('#fileTrain').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) onTrainFile(f); };
+$('#fileTest').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) onTestFile(f); };
+wireDrop($('#fileTrain').closest('div'), onTrainFile);
+wireDrop($('#fileTest').closest('div'), onTestFile);
+$('#sheetPick').onchange = () => { if (S.wbTrain) $('#btnReload').click(); };
+$('#btnReload').onclick = () => {
+  if (!S.wbTrain) { alert('Load a training workbook first.'); return; }
+  withOverlay('Reloading sheet', $('#sheetPick').value, async () => {
+    S.sheetName = $('#sheetPick').value;
+    await nextTick();
+    processTrainRows(sheetToRows(S.wbTrain, S.sheetName));
+  });
+};
+$('#btnDemo').onclick = () => withOverlay('Building sample data', '2,000 synthetic claims', async () => {
+  await nextTick();
+  processTrainRows(demoRows(2000, 7));
+  $('#trainInfo').innerHTML = 'Sample data · 2,000 synthetic claims with a planted interaction to find';
+  processTestRows(demoRows(700, 99));
+  $('#testInfo').innerHTML = 'Sample out-of-sample data · 700 claims';
+});
+$('#btnClear').onclick = () => {
+  S.train = []; S.test = []; S.columns = []; S.meta = {}; S.engineered = []; S.labeled = false;
+  S.model = null; S.prep = null; S.evalTest = null; S.evalTrain = null; S.rules = null; S.features = [];
+  $('#trainInfo').textContent = ''; $('#testInfo').textContent = '';
+  $('#modelResults').classList.add('hide'); $('#dataKpis').innerHTML = ''; $('#schemaTable tbody').innerHTML = '';
+  $('#feList').innerHTML = ''; $('#targetKpis').innerHTML = ''; $('#targetBreak').innerHTML = '';
+  $('#rulesMax').innerHTML = '<p class="note">No rules yet.</p>'; $('#rulesMin').innerHTML = '<p class="note">No rules yet.</p>';
+  ['chartTarget', 'chartROC', 'chartGain', 'chartImp', 'chartUni', 'chartUniDist', 'chartMV'].forEach(id => purgePlot(id));
+  renderRibbon();
+};
+$('#btnRebuildFE').onclick = () => {
+  if (!S.train.length) { alert('Load data first.'); return; }
+  withOverlay('Rebuilding features', 'Refitting derived metrics', async () => { await nextTick(); processTrainRows(S.train); if (S.test.length) processTestRows(S.test); });
+};
+$('#schemaFilter').oninput = renderSchemaTable;
+
+$('#anchorSeg').onclick = e => {
+  const b = e.target.closest('button[data-anchor]'); if (!b) return;
+  S.cfg.anchor = b.dataset.anchor;
+  $$('#anchorSeg button').forEach(x => x.classList.toggle('on', x === b));
+  const drg = S.cfg.anchor === 'DRG';
+  $('#fpDRG').checked = drg; $('#fpCVA').checked = !drg;
+  $('#npDRG').checked = drg; $('#npCVA').checked = !drg;
+  renderRibbon(); updateScopeNote();
+};
+$('#colAuditType').onchange = () => { S.cfg.auditCol = $('#colAuditType').value || null; renderAuditMap(); };
+$('#btnApplyTarget').onclick = applyTarget;
+
+$('#splitMode').onchange = e => $('#holdoutWrap').classList.toggle('hide', e.target.value === 'file');
+$('#splitPct').oninput = e => $('#splitLbl').textContent = e.target.value + '%';
+$('#thr').oninput = e => {
+  S.thrTouched = true;
+  $('#thrLbl').textContent = num(Number(e.target.value) / 100, 2);
+  if (S.evalTest) { renderModelResults(Number(e.target.value) / 100); renderRuleModelSummary(); }
+};
+$('#btnTrain').onclick = trainModel;
+$('#btnFeatAll').onclick = () => { S.features = candidateFeatures(); buildFeaturePicker(); };
+$('#btnFeatNone').onclick = () => { S.features = []; buildFeaturePicker(); };
+$('#btnFeatSmart').onclick = () => { S.features = safeDefaultFeatures(); buildFeaturePicker(); };
+
+$('#btnUni').onclick = runUnivariate;
+$('#btnMV').onclick = runMultivariate;
+
+function updateScopeNote() {
+  const c = scopeCounts(S.train);
+  $('#cntCva').textContent = c.cva ? int(c.cva) : '0';
+  $('#cntDrg').textContent = c.drg ? int(c.drg) : '0';
+  $('#cntNull').textContent = c.nul ? int(c.nul) : '0';
+
+  const sc = S.ruleScope;
+  $('#scopeAll').checked = sc.cva && sc.drg && sc.nulls;
+  $$('#scopeSeg input[data-scope]').forEach(i => { i.checked = !!sc[i.dataset.scope]; });
+
+  const el = $('#scopeNote');
+  if (!sc.cva && !sc.drg) {
+    el.innerHTML = '<span style="color:var(--coral)">Pick at least one audited segment. Rules need claims with a recorded outcome — non-audited claims can only widen the n-count, never the hitrate.</span>';
+    return;
+  }
+  const mined = (sc.cva ? c.cva : 0) + (sc.drg ? c.drg : 0);
+  let t = `Rules are mined on ${int(mined)} labeled claims (${[sc.cva ? 'CVA' : null, sc.drg ? 'DRG' : null].filter(Boolean).join(' + ')}). Hitrate, lift, appeal and overturn all come from this population.`;
+  t += sc.nulls
+    ? ` The ${int(c.nul)} non-audited claims are added to each rule's n, so n shows total projected volume if the rule were deployed under the ${S.cfg.anchor} anchor.`
+    : ` Non-audited claims are excluded, so n and hitrate describe exactly the same claims.`;
+  el.textContent = t;
+}
+$('#scopeSeg').onchange = e => {
+  const t = e.target;
+  if (t.id === 'scopeAll') {
+    const on = t.checked;
+    S.ruleScope = { cva: on, drg: on, nulls: on };
+  } else if (t.dataset.scope) {
+    S.ruleScope[t.dataset.scope] = t.checked;
+  } else return;
+  updateScopeNote();
+  if (S.rules && (S.ruleScope.cva || S.ruleScope.drg)) extractRules();
+};
+$('#btnRules').onclick = extractRules;
+
+showTab('data');
+renderRibbon();
+updateScopeNote();
+
+/* Startup self-check: tells you immediately if a library is unreachable,
+   rather than failing silently the moment you pick a file. */
+(async () => {
+  const el = $('#libStatus');
+  el.innerHTML = 'Checking reader libraries…';
+  const [x, p] = await Promise.all([ensureXLSX(), ensurePlotly()]);
+  const bits = [];
+  bits.push(x ? '<span style="color:var(--teal)">✓ Excel reader ready</span>'
+              : '<span style="color:var(--coral)">✗ Excel reader blocked — .xlsx uploads will fail on this network. CSV still works. Try a normal browser tab, or ask IT to allow cdn.sheetjs.com / cdnjs.cloudflare.com.</span>');
+  bits.push(p ? '<span style="color:var(--teal)">✓ Charts ready</span>'
+              : '<span style="color:var(--coral)">✗ Charts blocked</span>');
+  el.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+})();
+</script>
+</body>
+</html>
