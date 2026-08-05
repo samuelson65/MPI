@@ -1,0 +1,2353 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rateplane — Price Transparency Analytics</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: {
+  sans: ['Inter','system-ui','sans-serif'], mono: ['JetBrains Mono','monospace'] } } } };
+</script>
+
+<!-- Chart.js core + community controllers. Each is feature-detected at runtime,
+     so a CDN hiccup degrades one card into an empty state instead of breaking the page. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4.2.4/build/index.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@2.3.0/dist/chartjs-chart-treemap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.13.0/dist/chartjs-chart-sankey.min.js"></script>
+
+<style>
+  :root{
+    --bg:#07080d; --bg2:#0b0d16; --panel:255,255,255; --panel-a:.045;
+    --stroke:255,255,255; --stroke-a:.09;
+    --txt:#e8eaf2; --txt-dim:#9aa1b8; --txt-faint:#646c85;
+    --c1:#7c5cff; --c2:#22d3ee; --c3:#34d399; --c4:#fbbf24; --c5:#fb7185; --c6:#a78bfa;
+    --grid:rgba(255,255,255,.06);
+  }
+  html:not(.dark){
+    --bg:#f6f7fb; --bg2:#eef0f7; --panel:255,255,255; --panel-a:.75;
+    --stroke:15,23,42; --stroke-a:.08;
+    --txt:#0f172a; --txt-dim:#475069; --txt-faint:#7c8499;
+    --grid:rgba(15,23,42,.07);
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* Ambient gradient field */
+  body::before{
+    content:''; position:fixed; inset:0; z-index:-2; pointer-events:none;
+    background:
+      radial-gradient(60rem 40rem at 12% -8%, rgba(124,92,255,.20), transparent 60%),
+      radial-gradient(50rem 34rem at 92% 4%, rgba(34,211,238,.14), transparent 60%),
+      radial-gradient(46rem 32rem at 60% 105%, rgba(52,211,153,.10), transparent 60%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+  }
+  html:not(.dark) body::before{
+    background:
+      radial-gradient(60rem 40rem at 12% -8%, rgba(124,92,255,.16), transparent 60%),
+      radial-gradient(50rem 34rem at 92% 4%, rgba(34,211,238,.13), transparent 60%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+  }
+  .glass{
+    background:rgba(var(--panel),var(--panel-a));
+    border:1px solid rgba(var(--stroke),var(--stroke-a));
+    backdrop-filter:blur(20px) saturate(1.3);
+    -webkit-backdrop-filter:blur(20px) saturate(1.3);
+  }
+  .dim{color:var(--txt-dim)} .faint{color:var(--txt-faint)}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .grad-text{background:linear-gradient(92deg,var(--c1),var(--c2) 55%,var(--c3));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hair{border-color:rgba(var(--stroke),var(--stroke-a))}
+
+  /* Cards */
+  .card{border-radius:16px; position:relative; transition:transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s}
+  .card:hover{transform:translateY(-2px); border-color:rgba(var(--stroke),calc(var(--stroke-a) * 2.2)); box-shadow:0 18px 50px -22px rgba(0,0,0,.75)}
+  .card__glow{position:absolute; inset:-1px; border-radius:16px; opacity:0; transition:opacity .3s; pointer-events:none;
+    background:linear-gradient(120deg,rgba(124,92,255,.35),rgba(34,211,238,.22),transparent 65%); mask:linear-gradient(#000,#000) content-box, linear-gradient(#000,#000); mask-composite:exclude; -webkit-mask:linear-gradient(#000,#000) content-box, linear-gradient(#000,#000); -webkit-mask-composite:xor; padding:1px}
+  .card:hover .card__glow{opacity:1}
+  .card-actions{opacity:0; transition:opacity .2s}
+  .card:hover .card-actions, .card:focus-within .card-actions{opacity:1}
+
+  .kpi-spark{position:absolute; inset:auto 0 0 0; height:34px; opacity:.5}
+
+  /* Skeletons */
+  @keyframes shimmer{100%{transform:translateX(100%)}}
+  .skel{position:relative; overflow:hidden; background:rgba(var(--stroke),.07); border-radius:8px}
+  .skel::after{content:''; position:absolute; inset:0; transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(var(--stroke),.10),transparent); animation:shimmer 1.5s infinite}
+
+  @keyframes fadeUp{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+  .fade-up{animation:fadeUp .45s cubic-bezier(.2,.8,.2,1) both}
+
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{animation:spin .9s linear infinite}
+
+  /* Nav */
+  .nav-item{position:relative; transition:background .18s,color .18s}
+  .nav-item:hover{background:rgba(var(--stroke),.06)}
+  .nav-item.active{background:rgba(124,92,255,.14); color:var(--txt)}
+  .nav-item.active::before{content:''; position:absolute; left:0; top:18%; bottom:18%; width:2.5px; border-radius:2px;
+    background:linear-gradient(180deg,var(--c1),var(--c2))}
+
+  /* Inputs */
+  .inp{background:rgba(var(--stroke),.05); border:1px solid rgba(var(--stroke),var(--stroke-a)); border-radius:9px; color:var(--txt); transition:border-color .18s, box-shadow .18s}
+  .inp:focus{outline:none; border-color:rgba(124,92,255,.65); box-shadow:0 0 0 3px rgba(124,92,255,.16)}
+  .inp::placeholder{color:var(--txt-faint)}
+  select.inp option{background:var(--bg2); color:var(--txt)}
+
+  .btn{border-radius:9px; border:1px solid rgba(var(--stroke),var(--stroke-a)); transition:background .18s,border-color .18s,transform .12s}
+  .btn:hover{background:rgba(var(--stroke),.08); border-color:rgba(var(--stroke),calc(var(--stroke-a)*2))}
+  .btn:active{transform:scale(.97)}
+  .btn-primary{background:linear-gradient(96deg,var(--c1),#6d5cff); border-color:transparent; color:#fff}
+  .btn-primary:hover{filter:brightness(1.1); background:linear-gradient(96deg,var(--c1),#6d5cff)}
+  :focus-visible{outline:2px solid var(--c1); outline-offset:2px}
+
+  .chip{border-radius:999px; border:1px solid rgba(var(--stroke),var(--stroke-a)); transition:all .16s}
+  .chip:hover{border-color:rgba(124,92,255,.5)}
+  .chip.on{background:rgba(124,92,255,.18); border-color:rgba(124,92,255,.55); color:var(--txt)}
+
+  /* Tables */
+  .tbl{width:100%; border-collapse:separate; border-spacing:0; font-size:13px}
+  .tbl th{position:sticky; top:0; z-index:1; text-align:left; font-weight:500; font-size:10.5px; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--txt-faint); padding:9px 12px; white-space:nowrap; cursor:pointer;
+    background:rgba(var(--panel),.9); backdrop-filter:blur(12px); border-bottom:1px solid rgba(var(--stroke),var(--stroke-a))}
+  .tbl th:hover{color:var(--txt)}
+  .tbl td{padding:9px 12px; border-bottom:1px solid rgba(var(--stroke),.05); white-space:nowrap}
+  .tbl tbody tr{transition:background .12s}
+  .tbl tbody tr:hover{background:rgba(124,92,255,.07)}
+  .num{text-align:right; font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums}
+
+  .scroll::-webkit-scrollbar{width:9px;height:9px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(var(--stroke),.16); border-radius:99px}
+  .scroll::-webkit-scrollbar-thumb:hover{background:rgba(var(--stroke),.26)}
+  .scroll::-webkit-scrollbar-track{background:transparent}
+
+  /* Fullscreen chart */
+  .fs-host{position:fixed; inset:0; z-index:80; display:none; padding:clamp(12px,3vw,40px)}
+  .fs-host.on{display:block}
+
+  dialog::backdrop{background:rgba(4,5,10,.72); backdrop-filter:blur(6px)}
+
+  .sec{display:none}
+  .sec.on{display:block}
+
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important; transition:none!important} }
+</style>
+</head>
+<body class="font-sans">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside id="sidebar" class="glass fixed left-0 top-0 bottom-0 w-[230px] z-40 flex flex-col
+       -translate-x-full lg:translate-x-0 transition-transform duration-300" style="border-radius:0;border-left:0;border-top:0;border-bottom:0">
+  <div class="px-5 pt-5 pb-4">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg grid place-items-center shrink-0"
+           style="background:linear-gradient(135deg,var(--c1),var(--c2))">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+          <path d="M3 17l5-6 4 3 5-8"/><circle cx="20" cy="5" r="1.6" fill="#fff" stroke="none"/>
+        </svg>
+      </div>
+      <div class="leading-tight">
+        <div class="text-[15px] font-semibold tracking-tight">Rateplane</div>
+        <div class="text-[10px] faint mono tracking-wider">PRICE TRANSPARENCY</div>
+      </div>
+    </div>
+  </div>
+
+  <nav id="nav" class="px-2.5 space-y-0.5 flex-1 overflow-y-auto scroll"></nav>
+
+  <div class="p-3 border-t hair space-y-2">
+    <button id="btnSource" class="btn w-full text-left px-3 py-2.5 text-xs">
+      <div class="flex items-center gap-2">
+        <span id="srcDot" class="w-1.5 h-1.5 rounded-full shrink-0" style="background:var(--c3)"></span>
+        <span class="flex-1 min-w-0">
+          <span class="block dim text-[9.5px] mono tracking-wider">DATA SOURCE</span>
+          <span id="srcName" class="block truncate font-medium">Demo dataset</span>
+        </span>
+      </div>
+    </button>
+    <div class="flex gap-2">
+      <button id="btnPalette" class="btn flex-1 px-2 py-1.5 text-[11px] dim">⌘K</button>
+      <button id="btnTheme" class="btn px-2.5 py-1.5" title="Toggle theme (D)">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      </button>
+      <button id="btnHelp" class="btn px-2.5 py-1.5 text-[11px] dim" title="Shortcuts (?)">?</button>
+    </div>
+  </div>
+</aside>
+
+<div id="scrim" class="fixed inset-0 bg-black/50 z-30 hidden lg:hidden"></div>
+
+<!-- ══════════ MAIN ══════════ -->
+<main class="lg:ml-[230px] min-h-screen flex flex-col">
+
+  <!-- Topbar -->
+  <header class="glass sticky top-0 z-20 px-4 sm:px-6 py-3" style="border-radius:0;border-left:0;border-right:0;border-top:0">
+    <div class="flex items-center gap-3">
+      <button id="btnMenu" class="btn lg:hidden px-2.5 py-2">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div class="min-w-0 flex-1">
+        <h1 id="secTitle" class="text-[17px] font-semibold tracking-tight truncate">Executive Overview</h1>
+        <p id="secSub" class="text-[11.5px] dim truncate">Portfolio-level view of every negotiated facility rate</p>
+      </div>
+      <div class="hidden md:flex items-center gap-2">
+        <div class="relative">
+          <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="globalSearch" class="inp pl-8 pr-3 py-1.5 text-[12.5px] w-52" placeholder="Search code or procedure  /">
+        </div>
+        <button id="btnExport" class="btn px-3 py-1.5 text-[12px]">Export CSV</button>
+        <button id="btnReset" class="btn px-3 py-1.5 text-[12px] dim">Reset</button>
+      </div>
+      <div id="busy" class="hidden shrink-0">
+        <svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="var(--c2)" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9"/></svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- Global filter bar -->
+  <div class="px-4 sm:px-6 pt-4">
+    <div class="glass card p-3" id="filterBar">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-[10px] mono tracking-wider faint pr-1">FILTERS</span>
+        <select id="fPayer"   class="inp px-2.5 py-1.5 text-[12px]" multiple size="1" title="Payer"></select>
+        <select id="fCodeType" class="inp px-2.5 py-1.5 text-[12px]"></select>
+        <select id="fNegType"  class="inp px-2.5 py-1.5 text-[12px]"></select>
+        <select id="fClass"    class="inp px-2.5 py-1.5 text-[12px]"></select>
+        <select id="fSource"   class="inp px-2.5 py-1.5 text-[12px] max-w-[190px]"></select>
+        <select id="fExpiry"   class="inp px-2.5 py-1.5 text-[12px]"></select>
+        <input id="fMin" type="number" class="inp px-2.5 py-1.5 text-[12px] w-24 mono" placeholder="min $">
+        <input id="fMax" type="number" class="inp px-2.5 py-1.5 text-[12px] w-24 mono" placeholder="max $">
+        <button id="btnApply" class="btn btn-primary px-3.5 py-1.5 text-[12px] font-medium">Apply</button>
+        <span id="filterSummary" class="text-[11px] faint mono ml-auto"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="sections" class="px-4 sm:px-6 py-5 flex-1"></div>
+
+  <footer class="px-6 py-5 border-t hair text-[11px] faint">
+    Aggregates cover <span class="mono">negotiated_type = 'negotiated'</span> (fixed-dollar) rows only — percentage and derived rates
+    use a different denominator and are excluded from price statistics. All computation runs in-browser via DuckDB WASM.
+  </footer>
+</main>
+
+<!-- Fullscreen chart host -->
+<div id="fsHost" class="fs-host">
+  <div class="glass card w-full h-full p-4 flex flex-col">
+    <div class="flex items-center gap-3 mb-3">
+      <h3 id="fsTitle" class="font-semibold text-sm flex-1"></h3>
+      <button id="fsPng" class="btn px-3 py-1.5 text-[12px]">PNG</button>
+      <button id="fsClose" class="btn px-3 py-1.5 text-[12px]">Close ⎋</button>
+    </div>
+    <div class="flex-1 min-h-0 relative"><canvas id="fsCanvas"></canvas></div>
+  </div>
+</div>
+
+<!-- Command palette -->
+<dialog id="palette" class="bg-transparent p-0 w-[min(620px,92vw)] mt-[12vh]">
+  <div class="glass card overflow-hidden">
+    <input id="palInput" class="w-full bg-transparent px-4 py-3.5 text-sm outline-none border-b hair" placeholder="Jump to a view, run an action…">
+    <div id="palList" class="max-h-[52vh] overflow-y-auto scroll p-1.5"></div>
+  </div>
+</dialog>
+
+<!-- Data source modal -->
+<dialog id="srcModal" class="bg-transparent p-0 w-[min(660px,94vw)] mt-[8vh]">
+  <div class="glass card p-5">
+    <h3 class="font-semibold mb-1">Connect a data source</h3>
+    <p class="text-[12px] dim mb-4">Everything runs locally in your browser — no data leaves this machine.</p>
+    <div class="space-y-2.5" id="srcOptions"></div>
+    <div class="mt-4 pt-4 border-t hair text-[11px] dim leading-relaxed">
+      <strong class="text-[11px]" style="color:var(--txt)">Recommended:</strong> export your tables to Parquet, which is version-stable across DuckDB builds —
+      <code class="mono text-[10.5px] px-1 rounded" style="background:rgba(var(--stroke),.08)">COPY negotiated_rates TO 'negotiated_rates.parquet'</code>
+      (repeat for <span class="mono">payers</span> and <span class="mono">billing_codes</span>), then load all three files here.
+    </div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button id="srcClose" class="btn px-3.5 py-2 text-[12.5px]">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- SQL inspector -->
+<dialog id="sqlModal" class="bg-transparent p-0 w-[min(820px,94vw)] mt-[8vh]">
+  <div class="glass card p-5">
+    <div class="flex items-center mb-3"><h3 class="font-semibold flex-1" id="sqlTitle">Query</h3>
+      <button id="sqlCopy" class="btn px-3 py-1.5 text-[12px]">Copy</button></div>
+    <pre id="sqlBody" class="mono text-[11.5px] leading-relaxed p-3.5 rounded-lg overflow-auto scroll max-h-[54vh] whitespace-pre-wrap"
+         style="background:rgba(var(--stroke),.06)"></pre>
+    <div class="flex justify-end mt-4"><button id="sqlClose" class="btn px-3.5 py-2 text-[12.5px]">Close</button></div>
+  </div>
+</dialog>
+
+<!-- Shortcuts -->
+<dialog id="helpModal" class="bg-transparent p-0 w-[min(440px,92vw)] mt-[14vh]">
+  <div class="glass card p-5">
+    <h3 class="font-semibold mb-3">Keyboard shortcuts</h3>
+    <div id="helpList" class="space-y-1.5 text-[12.5px]"></div>
+    <div class="flex justify-end mt-4"><button id="helpClose" class="btn px-3.5 py-2 text-[12.5px]">Close</button></div>
+  </div>
+</dialog>
+
+<div id="toast" class="fixed bottom-5 right-5 z-[90] space-y-2"></div>
+
+<script type="module">
+/* ═══════════════════════════════════════════════════════════════════════
+   RATEPLANE — analytics front-end for the CMS price-transparency DuckDB.
+
+   Layout of this module:
+     §1  Constants, formatters, tiny DOM helpers
+     §2  DuckDB layer — bootstrap, demo seed, source loaders, query cache
+     §3  Filter state → SQL predicate
+     §4  Query library (all SQL lives here, one place)
+     §5  Chart toolkit — palettes, config builders, lazy renderer
+     §6  Card/section framework + dashboard spec
+     §7  Explorer table (sort / search / paginate / virtualise / export)
+     §8  Insights engine
+     §9  Command palette, shortcuts, theme, modals
+     §10 Boot
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────── §1  BASICS ─────────────────────────── */
+
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const el = (tag, cls, html) => { const n = document.createElement(tag);
+  if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+
+const usd = (n, d = 0) => n == null || !isFinite(n) ? '—'
+  : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: d });
+const usdC = n => n == null || !isFinite(n) ? '—'
+  : Math.abs(n) >= 1e9 ? '$' + (n / 1e9).toFixed(2) + 'B'
+  : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M'
+  : Math.abs(n) >= 1e3 ? '$' + (n / 1e3).toFixed(1) + 'K' : usd(n, 0);
+const num = n => n == null || !isFinite(n) ? '—' : Math.round(n).toLocaleString('en-US');
+const numC = n => n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(2) + 'M'
+  : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+const pct = (n, d = 1) => n == null || !isFinite(n) ? '—' : (n * 100).toFixed(d) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const debounce = (fn, ms = 260) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+const sqlStr = s => "'" + String(s).replace(/'/g, "''") + "'";   // literal escaping
+
+function toast(msg, kind = 'ok') {
+  const tone = kind === 'err' ? 'var(--c5)' : kind === 'warn' ? 'var(--c4)' : 'var(--c3)';
+  const n = el('div', 'glass card px-3.5 py-2.5 text-[12.5px] fade-up flex items-center gap-2 max-w-xs');
+  n.innerHTML = `<span class="w-1.5 h-1.5 rounded-full shrink-0" style="background:${tone}"></span><span>${esc(msg)}</span>`;
+  $('#toast').appendChild(n);
+  setTimeout(() => { n.style.opacity = '0'; n.style.transition = 'opacity .4s'; setTimeout(() => n.remove(), 400); }, 3400);
+}
+let busyN = 0;
+const busy = on => { busyN = Math.max(0, busyN + (on ? 1 : -1)); $('#busy').classList.toggle('hidden', busyN === 0); };
+
+/* ───────────────────── §2  DUCKDB LAYER ───────────────────── */
+
+const DB = { db: null, conn: null, ready: false, source: 'demo', label: 'Demo dataset' };
+const cache = new Map();          // sql -> rows   (filters are baked into the SQL, so this is safe)
+const recentQueries = [];         // {sql, ms, rows, at}
+
+/** Convert an Arrow result into plain JS objects, coercing BigInt → Number. */
+function normalize(table) {
+  const out = [];
+  for (const r of table.toArray()) {
+    const o = r.toJSON ? r.toJSON() : r, c = {};
+    for (const k in o) {
+      let v = o[k];
+      if (typeof v === 'bigint') v = Number(v);
+      else if (v && typeof v === 'object' && typeof v.toArray === 'function')
+        v = Array.from(v.toArray(), x => (typeof x === 'bigint' ? Number(x) : x));
+      else if (v && typeof v === 'object' && typeof v.toJSON === 'function' && !(v instanceof Date))
+        v = v.toJSON();
+      c[k] = v;
+    }
+    out.push(c);
+  }
+  return out;
+}
+
+/** Cached query. Every read in the app funnels through here — one place to
+ *  add caching, timing, error surfacing and the recent-query log. */
+async function q(sql, { cacheable = true } = {}) {
+  if (cacheable && cache.has(sql)) return cache.get(sql);
+  busy(true);
+  const t0 = performance.now();
+  try {
+    const rows = normalize(await DB.conn.query(sql));
+    const ms = performance.now() - t0;
+    recentQueries.unshift({ sql, ms, rows: rows.length, at: new Date() });
+    if (recentQueries.length > 60) recentQueries.pop();
+    if (cacheable) cache.set(sql, rows);
+    return rows;
+  } catch (e) {
+    console.error('SQL failed:\n' + sql, e);
+    throw new Error(String(e.message || e));
+  } finally { busy(false); }
+}
+const q1 = async (sql, o) => (await q(sql, o))[0] ?? {};
+const clearCache = () => cache.clear();
+
+async function bootDuckDB() {
+  // An app can hand us a live connection instead (e.g. embedded in another tool).
+  if (window.duckdbConn) { DB.conn = window.duckdbConn; DB.ready = true; DB.source = 'external'; DB.label = 'Host connection'; return; }
+  const duckdb = await import('https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm');
+  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+  const workerUrl = URL.createObjectURL(new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' }));
+  const worker = new Worker(workerUrl);
+  DB.db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+  await DB.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(workerUrl);
+  DB.conn = await DB.db.connect();
+  DB.ready = true;
+}
+
+/** The single view every analytic reads from. Rebuilt whenever the source changes. */
+const V_RATES = `
+CREATE OR REPLACE VIEW v_rates AS
+SELECT r.rate_id, r.negotiated_rate AS rate, r.negotiated_type, r.billing_class,
+       r.expiration_date, r.source_file, r.provider_reference_ids, r.service_code,
+       p.payer_id, COALESCE(p.reporting_entity_name,'Unknown') AS payer, p.plan_name,
+       c.code_id, c.billing_code, c.billing_code_type, c.description
+FROM negotiated_rates r
+LEFT JOIN payers p USING (payer_id)
+LEFT JOIN billing_codes c USING (code_id);`;
+
+const V_STATS = `
+CREATE OR REPLACE VIEW procedure_price_stats AS
+SELECT billing_code, billing_code_type, any_value(description) AS description,
+       COUNT(*) AS n_rate_entries, COUNT(DISTINCT payer_id) AS n_payers,
+       MIN(rate) AS min_rate, MAX(rate) AS max_rate,
+       ROUND(AVG(rate),2) AS avg_rate, MEDIAN(rate) AS median_rate
+FROM v_rates WHERE negotiated_type='negotiated' AND rate IS NOT NULL
+GROUP BY 1,2;`;
+
+/* ── Demo dataset ───────────────────────────────────────────────────────
+   Synthesised in SQL so the page is fully alive on first open. Shapes match
+   schema.sql exactly, so swapping in real data changes nothing downstream.
+   Each payer gets a stable price bias, each procedure realistic variance,
+   plus a sprinkle of true outliers so anomaly detection has something to find. */
+const DEMO_SQL = `
+SELECT setseed(0.42);
+
+CREATE OR REPLACE TABLE payers AS SELECT * FROM (VALUES
+ (1,'Aetna','insurer','Choice POS II','11-1111111','EIN','group','2026-06-01','2026-06-01_aetna_in-network-rates.json.gz'),
+ (2,'Cigna','insurer','Open Access Plus','22-2222222','EIN','group','2026-06-01','2026-06-01_cigna_in-network-rates.json.gz'),
+ (3,'UnitedHealthcare','third-party administrator','Choice Plus','33-3333333','EIN','group','2026-06-01','2026-06-01_uhc_in-network-rates.json.gz'),
+ (4,'Humana','insurer','Gold PPO','44-4444444','EIN','group','2026-05-01','2026-05-01_humana_in-network-rates.json.gz'),
+ (5,'Blue Cross Blue Shield','insurer','PPO Blue','55-5555555','EIN','group','2026-06-01','2026-06-01_bcbs_in-network-rates.json.gz'),
+ (6,'Anthem','insurer','HMO Select','66-6666666','EIN','individual','2026-06-01','2026-06-01_anthem_in-network-rates.json.gz'),
+ (7,'Kaiser Permanente','insurer','Signature HMO','77-7777777','EIN','group','2026-04-01','2026-04-01_kaiser_in-network-rates.json.gz'),
+ (8,'Oscar Health','insurer','Simple PPO','88-8888888','EIN','individual','2026-06-01','2026-06-01_oscar_in-network-rates.json.gz')
+) t(payer_id,reporting_entity_name,reporting_entity_type,plan_name,plan_id,plan_id_type,plan_market_type,last_updated_on,source_file);
+
+CREATE OR REPLACE TABLE demo_codes AS SELECT * FROM (VALUES
+ ('470','MS-DRG','Major joint replacement of lower extremity w/o MCC',30000.0,'21'),
+ ('247','MS-DRG','Percutaneous cardiovascular proc w/ drug-eluting stent',24000.0,'21'),
+ ('291','MS-DRG','Heart failure and shock with MCC',19500.0,'21'),
+ ('292','MS-DRG','Heart failure and shock with CC',15200.0,'21'),
+ ('871','MS-DRG','Septicemia w/o MV >96 hours with MCC',18800.0,'21'),
+ ('329','MS-DRG','Major small and large bowel procedures with MCC',41000.0,'21'),
+ ('460','MS-DRG','Spinal fusion except cervical w/o MCC',52000.0,'21'),
+ ('483','MS-DRG','Major joint/limb reattachment of upper extremity',26000.0,'21'),
+ ('194','MS-DRG','Simple pneumonia and pleurisy with CC',11200.0,'21'),
+ ('690','MS-DRG','Kidney and urinary tract infections w/o MCC',9400.0,'21'),
+ ('807','MS-DRG','Vaginal delivery w/o sterilization w/o CC',7600.0,'21'),
+ ('765','MS-DRG','Cesarean section with CC/MCC',13900.0,'21'),
+ ('027','MS-DRG','Craniotomy and endovascular intracranial procedures',68000.0,'21'),
+ ('064','MS-DRG','Intracranial hemorrhage or cerebral infarction w/ MCC',22400.0,'21'),
+ ('853','MS-DRG','Infectious and parasitic diseases w/ OR proc w/ MCC',59000.0,'21'),
+ ('99285','CPT','Emergency department visit, high complexity',2100.0,'23'),
+ ('99284','CPT','Emergency department visit, moderate complexity',1350.0,'23'),
+ ('99283','CPT','Emergency department visit, low complexity',820.0,'23'),
+ ('45378','CPT','Colonoscopy, diagnostic',3200.0,'24'),
+ ('45380','CPT','Colonoscopy with biopsy',3850.0,'24'),
+ ('43239','CPT','Upper GI endoscopy with biopsy',2950.0,'24'),
+ ('29881','CPT','Arthroscopy, knee, with meniscectomy',6400.0,'24'),
+ ('27447','CPT','Total knee arthroplasty',31000.0,'21'),
+ ('27130','CPT','Total hip arthroplasty',29500.0,'21'),
+ ('66984','CPT','Cataract removal with lens insertion',2400.0,'24'),
+ ('47562','CPT','Laparoscopic cholecystectomy',9800.0,'24'),
+ ('19120','CPT','Excision of breast lesion',5200.0,'24'),
+ ('70553','CPT','MRI brain with and without contrast',2850.0,'22'),
+ ('74177','CPT','CT abdomen and pelvis with contrast',1950.0,'22'),
+ ('71260','CPT','CT thorax with contrast',1420.0,'22'),
+ ('72148','CPT','MRI lumbar spine without contrast',1780.0,'22'),
+ ('93000','CPT','Electrocardiogram, complete',210.0,'22'),
+ ('80053','CPT','Comprehensive metabolic panel',95.0,'22'),
+ ('85025','CPT','Complete blood count with differential',68.0,'22'),
+ ('J9299','HCPCS','Injection, nivolumab, 1 mg',3400.0,'22'),
+ ('J1745','HCPCS','Injection, infliximab, 10 mg',1250.0,'22'),
+ ('Q2039','HCPCS','Influenza virus vaccine',52.0,'22'),
+ ('A9270','HCPCS','Non-covered item or service',310.0,'22')
+) t(billing_code,billing_code_type,description,base_price,pos);
+
+CREATE OR REPLACE TABLE billing_codes AS
+SELECT row_number() OVER (ORDER BY billing_code_type, billing_code) AS code_id,
+       billing_code, billing_code_type,
+       CASE billing_code_type WHEN 'MS-DRG' THEN '40' ELSE '2026' END AS billing_code_type_version,
+       description
+FROM demo_codes;
+
+CREATE OR REPLACE TABLE demo_mult AS
+SELECT p.payer_id, c.code_id, (0.78 + p.payer_id*0.045) * (0.82 + random()*0.45) AS mult
+FROM payers p CROSS JOIN billing_codes c;
+
+CREATE OR REPLACE TABLE negotiated_rates AS
+SELECT row_number() OVER () AS rate_id, m.payer_id, m.code_id,
+  CASE WHEN random() < 0.12 THEN 'professional' ELSE 'institutional' END AS billing_class,
+  CASE WHEN random() < 0.07 THEN 'percentage' WHEN random() < 0.04 THEN 'derived' ELSE 'negotiated' END AS negotiated_type,
+  NULL::DOUBLE AS negotiated_rate,
+  [d.pos]::VARCHAR[] AS service_code, []::VARCHAR[] AS billing_code_modifier,
+  CASE WHEN random() < 0.55 THEN '9999-12-31' WHEN random() < 0.5 THEN '2026-12-31' ELSE '2027-06-30' END AS expiration_date,
+  [ (m.payer_id*100000 + (random()*60)::INT)::BIGINT ] AS provider_reference_ids,
+  p.source_file, now()::TIMESTAMP AS ingested_at, d.base_price * m.mult AS _fair
+FROM demo_mult m
+JOIN payers p USING (payer_id)
+JOIN billing_codes c USING (code_id)
+JOIN demo_codes d ON d.billing_code = c.billing_code AND d.billing_code_type = c.billing_code_type
+CROSS JOIN (SELECT unnest(generate_series(1,90)) AS rep) g;
+
+UPDATE negotiated_rates SET negotiated_rate =
+  CASE WHEN negotiated_type='percentage' THEN round(20 + random()*55, 1)
+       WHEN random() < 0.004 THEN round(_fair * (2.6 + random()*2.2), 2)
+       ELSE round(_fair * (0.80 + random()*0.44), 2) END;
+
+ALTER TABLE negotiated_rates DROP COLUMN _fair;
+DROP TABLE demo_mult;
+`;
+
+async function runScript(sql) {
+  for (const stmt of sql.split(';')) if (stmt.trim()) await DB.conn.query(stmt);
+}
+
+async function loadDemo() {
+  await runScript(DEMO_SQL);
+  await runScript(V_RATES + V_STATS);
+  DB.source = 'demo'; DB.label = 'Demo dataset';
+}
+
+/** Load user Parquet exports (version-stable across DuckDB builds). */
+async function loadParquet(files) {
+  const need = ['negotiated_rates', 'payers', 'billing_codes'];
+  const found = {};
+  for (const f of files) {
+    await DB.db.registerFileBuffer(f.name, new Uint8Array(await f.arrayBuffer()));
+    const base = f.name.replace(/\.parquet$/i, '').toLowerCase();
+    const hit = need.find(n => base.includes(n));
+    if (hit) found[hit] = f.name;
+  }
+  const missing = need.filter(n => !found[n]);
+  if (missing.length) throw new Error('Missing parquet file(s) for: ' + missing.join(', '));
+  for (const t of need)
+    await DB.conn.query(`CREATE OR REPLACE VIEW ${t} AS SELECT * FROM read_parquet('${found[t]}')`);
+  await runScript(V_RATES + V_STATS);
+  DB.source = 'parquet'; DB.label = files.length + ' Parquet file(s)';
+}
+
+/** Attach a .duckdb file directly. Requires the file's storage format to match
+ *  the DuckDB WASM build — mismatches raise a clear error rather than failing quietly. */
+async function loadDuckFile(file) {
+  await DB.db.registerFileBuffer(file.name, new Uint8Array(await file.arrayBuffer()));
+  try { await DB.conn.query(`ATTACH '${file.name}' AS src (READ_ONLY)`); }
+  catch (e) {
+    throw new Error('Could not attach this .duckdb file — most often a storage-format version '
+      + 'mismatch between your DuckDB build and DuckDB WASM. Export to Parquet instead. (' + e.message + ')');
+  }
+  for (const t of ['negotiated_rates', 'payers', 'billing_codes'])
+    await DB.conn.query(`CREATE OR REPLACE VIEW ${t} AS SELECT * FROM src.main.${t}`);
+  await runScript(V_RATES + V_STATS);
+  DB.source = 'duckdb'; DB.label = file.name;
+}
+
+/** Load CSV exports as a fallback. */
+async function loadCSV(files) {
+  const need = ['negotiated_rates', 'payers', 'billing_codes'];
+  const found = {};
+  for (const f of files) {
+    await DB.db.registerFileText(f.name, await f.text());
+    const base = f.name.replace(/\.csv$/i, '').toLowerCase();
+    const hit = need.find(n => base.includes(n));
+    if (hit) found[hit] = f.name;
+  }
+  const missing = need.filter(n => !found[n]);
+  if (missing.length) throw new Error('Missing CSV file(s) for: ' + missing.join(', '));
+  for (const t of need)
+    await DB.conn.query(`CREATE OR REPLACE VIEW ${t} AS SELECT * FROM read_csv_auto('${found[t]}')`);
+  await runScript(V_RATES + V_STATS);
+  DB.source = 'csv'; DB.label = files.length + ' CSV file(s)';
+}
+
+/* ───────────────── §3  FILTER STATE → SQL PREDICATE ───────────────── */
+
+const F = { payers: [], codeType: '', negType: 'negotiated', billingClass: '',
+            source: '', expiry: '', min: null, max: null, search: '' };
+
+/** Build the shared WHERE clause. `priced` restricts to fixed-dollar rows,
+ *  which is what every price statistic must use. */
+function where({ priced = true, alias = '' } = {}) {
+  const a = alias ? alias + '.' : '';
+  const c = [`${a}rate IS NOT NULL`];
+  if (priced) c.push(`${a}negotiated_type = 'negotiated'`);
+  else if (F.negType) c.push(`${a}negotiated_type = ${sqlStr(F.negType)}`);
+  if (F.payers.length) c.push(`${a}payer IN (${F.payers.map(sqlStr).join(',')})`);
+  if (F.codeType)      c.push(`${a}billing_code_type = ${sqlStr(F.codeType)}`);
+  if (F.billingClass)  c.push(`${a}billing_class = ${sqlStr(F.billingClass)}`);
+  if (F.source)        c.push(`${a}source_file = ${sqlStr(F.source)}`);
+  if (F.expiry)        c.push(`${a}expiration_date = ${sqlStr(F.expiry)}`);
+  if (F.min != null)   c.push(`${a}rate >= ${F.min}`);
+  if (F.max != null)   c.push(`${a}rate <= ${F.max}`);
+  if (F.search) {
+    const s = sqlStr('%' + F.search.toLowerCase() + '%');
+    c.push(`(lower(${a}billing_code) LIKE ${s} OR lower(${a}description) LIKE ${s})`);
+  }
+  return 'WHERE ' + c.join(' AND ');
+}
+const W  = () => where();                       // priced rows (all statistics)
+const WA = () => where({ priced: false });      // all rows (counts, class mix)
+
+function filterSummary() {
+  const bits = [];
+  if (F.payers.length) bits.push(F.payers.length + ' payer' + (F.payers.length > 1 ? 's' : ''));
+  if (F.codeType) bits.push(F.codeType);
+  if (F.billingClass) bits.push(F.billingClass);
+  if (F.source) bits.push('1 file');
+  if (F.expiry) bits.push('exp ' + F.expiry);
+  if (F.min != null || F.max != null) bits.push(`${F.min ?? 0}–${F.max ?? '∞'}`);
+  if (F.search) bits.push(`"${F.search}"`);
+  return bits.length ? bits.join(' · ') : 'no filters — full dataset';
+}
+
+/* ───────────────────── §4  QUERY LIBRARY ─────────────────────
+   Every SQL string the dashboard issues. Keeping them together makes the
+   data contract auditable and lets the SQL inspector show exactly what ran. */
+
+const SQL = {
+  kpi: () => `
+    SELECT count(*) AS total_rates, count(DISTINCT payer_id) AS n_payers,
+           count(DISTINCT code_id) AS n_procedures, count(DISTINCT source_file) AS n_files,
+           avg(rate) AS avg_rate, median(rate) AS median_rate,
+           min(rate) AS min_rate, max(rate) AS max_rate,
+           stddev_samp(rate) AS sd, sum(rate) AS total_spend
+    FROM v_rates ${W()}`,
+
+  kpiAll: () => `
+    SELECT count(*) AS all_rows,
+           count(DISTINCT CASE WHEN billing_class='institutional' THEN code_id END) AS n_inst,
+           count(DISTINCT CASE WHEN billing_class='institutional' THEN rate_id END) AS n_inst_rows
+    FROM v_rates ${WA()}`,
+
+  providerRefs: () => `
+    SELECT count(DISTINCT pid) AS n FROM (
+      SELECT unnest(provider_reference_ids) AS pid FROM v_rates ${W()})`,
+
+  histogram: (bins = 40) => `
+    WITH b AS (SELECT quantile_cont(rate,0.005) AS lo, quantile_cont(rate,0.99) AS hi FROM v_rates ${W()}),
+         w AS (SELECT lo, hi, (hi-lo)/${bins}.0 AS bw FROM b)
+    SELECT greatest(least(floor((rate-lo)/nullif(bw,0)), ${bins - 1}), 0) AS bin,
+           lo + (greatest(least(floor((rate-lo)/nullif(bw,0)),${bins - 1}),0)+0.5)*bw AS center,
+           count(*) AS n
+    FROM v_rates, w ${W()} GROUP BY 1, lo, hi, bw ORDER BY 1`,
+
+  logHistogram: () => `
+    SELECT floor(log10(rate)*4)/4 AS lbin, count(*) AS n
+    FROM v_rates ${W()} AND rate > 0 GROUP BY 1 ORDER BY 1`,
+
+  percentiles: () => `
+    SELECT unnest([0.01,0.05,0.10,0.25,0.50,0.75,0.90,0.95,0.99]) AS p,
+           unnest(quantile_cont(rate,[0.01,0.05,0.10,0.25,0.50,0.75,0.90,0.95,0.99])) AS v
+    FROM v_rates ${W()}`,
+
+  sample: (n = 2500) => `SELECT rate FROM v_rates ${W()} USING SAMPLE ${n} ROWS`,
+
+  boxByPayer: () => `
+    SELECT payer, min(rate) AS lo, quantile_cont(rate,0.25) AS q1, median(rate) AS med,
+           quantile_cont(rate,0.75) AS q3, max(rate) AS hi, count(*) AS n
+    FROM v_rates ${W()} GROUP BY 1 ORDER BY med DESC`,
+
+  violinByPayer: (per = 220) => `
+    SELECT payer, list(rate) AS vals FROM (
+      SELECT payer, rate, row_number() OVER (PARTITION BY payer ORDER BY random()) AS rn
+      FROM v_rates ${W()}) WHERE rn <= ${per} GROUP BY payer`,
+
+  procedures: (limit = 400) => `
+    SELECT billing_code, billing_code_type, any_value(description) AS description,
+           count(*) AS n, count(DISTINCT payer_id) AS n_payers,
+           avg(rate) AS avg_rate, median(rate) AS med_rate,
+           min(rate) AS min_rate, max(rate) AS max_rate,
+           coalesce(stddev_samp(rate),0) AS sd,
+           coalesce(stddev_samp(rate)/nullif(avg(rate),0),0) AS cv,
+           quantile_cont(rate,0.75)-quantile_cont(rate,0.25) AS iqr,
+           max(rate)-min(rate) AS spread, sum(rate) AS total_spend
+    FROM v_rates ${W()} GROUP BY 1,2 ORDER BY total_spend DESC LIMIT ${limit}`,
+
+  payerStats: () => `
+    SELECT payer, count(*) AS n, count(DISTINCT code_id) AS n_codes,
+           avg(rate) AS avg_rate, median(rate) AS med_rate,
+           min(rate) AS min_rate, max(rate) AS max_rate,
+           coalesce(stddev_samp(rate),0) AS sd,
+           coalesce(stddev_samp(rate)/nullif(avg(rate),0),0) AS cv,
+           quantile_cont(rate,0.25) AS q1, quantile_cont(rate,0.75) AS q3,
+           sum(rate) AS total_spend
+    FROM v_rates ${W()} GROUP BY 1 ORDER BY avg_rate DESC`,
+
+  payerCoverage: () => `
+    WITH tot AS (SELECT count(DISTINCT code_id) AS all_codes FROM v_rates ${W()})
+    SELECT payer, count(DISTINCT code_id) AS n_codes,
+           count(DISTINCT code_id)::DOUBLE / any_value(tot.all_codes) AS coverage
+    FROM v_rates, tot ${W()} GROUP BY 1 ORDER BY coverage DESC`,
+
+  /** Price index: each payer's average for a procedure ÷ that procedure's median. */
+  heatmap: (topN = 16) => `
+    WITH top AS (SELECT code_id FROM v_rates ${W()} GROUP BY 1 ORDER BY sum(rate) DESC LIMIT ${topN}),
+         med AS (SELECT code_id, median(rate) AS m FROM v_rates ${W()} GROUP BY 1)
+    SELECT v.billing_code, v.payer, avg(v.rate)/nullif(med.m,0) AS idx, count(*) AS n
+    FROM v_rates v JOIN top USING (code_id) JOIN med USING (code_id)
+    ${where({ alias: 'v' })} GROUP BY 1,2, med.m`,
+
+  treemap: (limit = 45) => `
+    SELECT billing_code_type, billing_code, any_value(description) AS description,
+           sum(rate) AS spend, count(*) AS n
+    FROM v_rates ${W()} GROUP BY 1,2 ORDER BY spend DESC LIMIT ${limit}`,
+
+  pareto: (limit = 25) => `
+    WITH t AS (SELECT billing_code, sum(rate) AS spend FROM v_rates ${W()} GROUP BY 1)
+    SELECT billing_code, spend,
+           sum(spend) OVER (ORDER BY spend DESC ROWS UNBOUNDED PRECEDING)/sum(spend) OVER () AS cum_pct
+    FROM t ORDER BY spend DESC LIMIT ${limit}`,
+
+  sankey: () => `
+    SELECT payer AS src, billing_code_type AS dst, count(*) AS flow
+    FROM v_rates ${W()} GROUP BY 1,2`,
+
+  sunburst: () => `
+    SELECT billing_code_type, billing_code, count(*) AS n, sum(rate) AS spend
+    FROM v_rates ${W()} GROUP BY 1,2 ORDER BY 1, spend DESC`,
+
+  codeTypeMix: () => `
+    SELECT billing_code_type AS k, count(*) AS n, sum(rate) AS spend
+    FROM v_rates ${W()} GROUP BY 1 ORDER BY n DESC`,
+
+  classMix: () => `
+    SELECT billing_class AS k, count(*) AS n FROM v_rates ${WA()} GROUP BY 1 ORDER BY n DESC`,
+
+  negTypeMix: () => `
+    SELECT negotiated_type AS k, count(*) AS n FROM v_rates
+    WHERE rate IS NOT NULL GROUP BY 1 ORDER BY n DESC`,
+
+  outliers: (z = 3, limit = 120) => `
+    WITH s AS (SELECT code_id, median(rate) AS med, stddev_samp(rate) AS sd FROM v_rates ${W()} GROUP BY 1)
+    SELECT * FROM (
+      SELECT v.billing_code, any_value(v.description) AS description, v.payer, v.rate, s.med,
+             abs(v.rate - s.med)/nullif(s.sd,0) AS z
+      FROM v_rates v JOIN s USING (code_id) ${where({ alias: 'v' })} AND s.sd > 0
+      GROUP BY v.billing_code, v.payer, v.rate, s.med, s.sd)
+    WHERE z > ${z} ORDER BY z DESC LIMIT ${limit}`,
+
+  variation: (limit = 40) => `
+    SELECT billing_code, any_value(description) AS description,
+           count(DISTINCT payer_id) AS n_payers, count(*) AS n, median(rate) AS med,
+           max(rate)-min(rate) AS spread,
+           quantile_cont(rate,0.75)-quantile_cont(rate,0.25) AS iqr,
+           coalesce(stddev_samp(rate)/nullif(avg(rate),0),0) AS cv,
+           max(rate)/nullif(min(rate),0) AS ratio
+    FROM v_rates ${W()} GROUP BY 1 HAVING count(*) > 5 ORDER BY cv DESC LIMIT ${limit}`,
+
+  /** Payer disagreement: dispersion of payer-level medians within a procedure. */
+  disagreement: (limit = 40) => `
+    WITH pm AS (SELECT code_id, billing_code, any_value(description) AS description,
+                       payer, median(rate) AS pmed
+                FROM v_rates ${W()} GROUP BY 1,2,payer)
+    SELECT billing_code, any_value(description) AS description,
+           count(*) AS n_payers, median(pmed) AS med,
+           coalesce(stddev_samp(pmed)/nullif(avg(pmed),0),0) AS disagreement,
+           max(pmed)-min(pmed) AS spread, max(pmed)/nullif(min(pmed),0) AS ratio
+    FROM pm GROUP BY billing_code HAVING count(*) >= 3
+    ORDER BY disagreement DESC LIMIT ${limit}`,
+
+  payerVsMedian: () => `
+    WITH m AS (SELECT code_id, median(rate) AS med FROM v_rates ${W()} GROUP BY 1)
+    SELECT payer, avg(v.rate/nullif(m.med,0)) - 1 AS pct_vs_median, count(*) AS n
+    FROM v_rates v JOIN m USING (code_id) ${where({ alias: 'v' })}
+    GROUP BY 1 ORDER BY pct_vs_median DESC`,
+
+  spendShare: () => `
+    WITH t AS (SELECT billing_code, sum(rate) AS spend FROM v_rates ${W()} GROUP BY 1)
+    SELECT sum(spend) FILTER (WHERE rk<=5)/nullif(sum(spend),0) AS top5,
+           sum(spend) FILTER (WHERE rk<=10)/nullif(sum(spend),0) AS top10,
+           count(*) AS n_codes
+    FROM (SELECT billing_code, spend, row_number() OVER (ORDER BY spend DESC) rk FROM t)`,
+
+  benchmark: (order, limit = 12) => `
+    SELECT billing_code, billing_code_type, description, n_rate_entries, n_payers,
+           min_rate, max_rate, avg_rate, median_rate,
+           max_rate-min_rate AS spread
+    FROM procedure_price_stats ORDER BY ${order} LIMIT ${limit}`,
+
+  facets: () => `
+    SELECT 'payer' AS f, payer AS v, count(*) AS n FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    UNION ALL SELECT 'code_type', billing_code_type, count(*) FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    UNION ALL SELECT 'neg_type', negotiated_type, count(*) FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    UNION ALL SELECT 'class', billing_class, count(*) FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    UNION ALL SELECT 'source', source_file, count(*) FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    UNION ALL SELECT 'expiry', expiration_date, count(*) FROM v_rates WHERE rate IS NOT NULL GROUP BY 2
+    ORDER BY 1, 3 DESC`,
+
+  explorer: (sort, dir, limit, offset) => `
+    SELECT rate_id, payer, plan_name, billing_code, billing_code_type, description,
+           billing_class, negotiated_type, rate, expiration_date, source_file
+    FROM v_rates ${where({ priced: false })}
+    ORDER BY ${sort} ${dir} NULLS LAST LIMIT ${limit} OFFSET ${offset}`,
+
+  explorerCount: () => `SELECT count(*) AS n FROM v_rates ${where({ priced: false })}`,
+
+  exportRows: (cap = 100000) => `
+    SELECT payer, plan_name, billing_code, billing_code_type, description,
+           billing_class, negotiated_type, rate, expiration_date, source_file
+    FROM v_rates ${where({ priced: false })} ORDER BY rate DESC LIMIT ${cap}`,
+};
+
+/* ───────────────────── §5  CHART TOOLKIT ───────────────────── */
+
+const PAL = ['#7c5cff','#22d3ee','#34d399','#fbbf24','#fb7185','#a78bfa','#38bdf8','#f472b6','#4ade80','#fb923c'];
+const palAt = i => PAL[i % PAL.length];
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function themeTokens() {
+  return { text: css('--txt-dim') || '#9aa1b8', grid: css('--grid') || 'rgba(255,255,255,.06)', strong: css('--txt') || '#e8eaf2' };
+}
+
+/** Vertical gradient fill for area/bar charts. */
+function grad(ctx, area, hex, from = 0.42, to = 0.02) {
+  if (!area) return hexA(hex, 0.25);
+  const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+  g.addColorStop(0, hexA(hex, from)); g.addColorStop(1, hexA(hex, to));
+  return g;
+}
+const hexA = (hex, a) => {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+/** Is a Chart.js controller actually registered? Guards the plugin-backed types. */
+function hasType(t) { try { Chart.registry.getController(t); return true; } catch { return false; } }
+
+Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.animation.duration = 620;
+Chart.defaults.animation.easing = 'easeOutQuart';
+
+/** Shared option scaffold — every chart starts here, then overrides. */
+function baseOpts(o = {}) {
+  const t = themeTokens();
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'nearest', intersect: false },
+    plugins: {
+      legend: { display: false, labels: { color: t.text, usePointStyle: true, boxWidth: 7, padding: 12 } },
+      tooltip: {
+        backgroundColor: 'rgba(10,12,20,.94)', borderColor: 'rgba(255,255,255,.12)', borderWidth: 1,
+        titleColor: '#fff', bodyColor: '#d6dae8', padding: 10, cornerRadius: 8,
+        titleFont: { weight: '600', size: 12 }, bodyFont: { size: 11.5 }, displayColors: false,
+      },
+      ...(o.plugins || {}),
+    },
+    scales: o.scales === null ? undefined : {
+      x: { grid: { color: t.grid, drawTicks: false }, border: { display: false },
+           ticks: { color: t.text, maxRotation: 0, autoSkipPadding: 14 }, ...(o.x || {}) },
+      y: { grid: { color: t.grid, drawTicks: false }, border: { display: false },
+           ticks: { color: t.text, padding: 6 }, ...(o.y || {}) },
+    },
+    ...(o.rest || {}),
+  };
+}
+
+/* ── Config builders ─────────────────────────────────────────────── */
+
+function cfgBar(labels, data, { color = PAL[0], horizontal = false, money = true, label = 'Value' } = {}) {
+  const t = themeTokens();
+  // The value axis is X when horizontal, Y otherwise — format only that one as money.
+  const valueTicks = money ? { ticks: { color: t.text, callback: v => usdC(v) } } : {};
+  const catTicks = horizontal ? { ticks: { color: t.text, autoSkip: false } } : {};
+  return {
+    type: 'bar',
+    data: { labels, datasets: [{
+      label, data, borderRadius: 5, borderSkipped: false, maxBarThickness: 34,
+      backgroundColor: c => grad(c.chart.ctx, c.chart.chartArea, color, .95, .45),
+      hoverBackgroundColor: color,
+    }] },
+    options: baseOpts({
+      rest: { indexAxis: horizontal ? 'y' : 'x' },
+      x: horizontal ? valueTicks : {},
+      y: horizontal ? catTicks : valueTicks,
+      plugins: { tooltip: { callbacks: {
+        label: c => { const v = c.parsed[horizontal ? 'x' : 'y']; return money ? usd(v, 0) : num(v); } } } },
+    }),
+  };
+}
+
+const cfgLine = (labels, data, { color = PAL[1], money = true, fill = true, label = 'Value', curve = .35 } = {}) => ({
+  type: 'line',
+  data: { labels, datasets: [{
+    label, data, borderColor: color, borderWidth: 2, tension: curve,
+    pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color,
+    fill, backgroundColor: c => grad(c.chart.ctx, c.chart.chartArea, color),
+  }] },
+  options: baseOpts({
+    y: money ? { ticks: { color: themeTokens().text, callback: v => usdC(v) } } : {},
+    plugins: { tooltip: { callbacks: { label: c => (money ? usd(c.parsed.y, 0) : num(c.parsed.y)) } } },
+  }),
+});
+
+const cfgDonut = (labels, data, { colors = PAL, cutout = '68%', money = false } = {}) => ({
+  type: 'doughnut',
+  data: { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => colors[i % colors.length]),
+    borderColor: 'transparent', borderWidth: 0, hoverOffset: 8, spacing: 2 }] },
+  options: baseOpts({
+    scales: null, rest: { cutout },
+    plugins: { legend: { display: true, position: 'right' },
+      tooltip: { callbacks: { label: c => `${c.label}: ${money ? usdC(c.parsed) : num(c.parsed)}` } } },
+  }),
+});
+
+const cfgScatter = (points, { color = PAL[0], xLabel = '', yLabel = '', money = true, bubble = false } = {}) => ({
+  type: bubble ? 'bubble' : 'scatter',
+  data: { datasets: [{ data: points, backgroundColor: hexA(color, .55), borderColor: color, borderWidth: 1,
+    pointRadius: bubble ? undefined : 4, hoverBackgroundColor: color }] },
+  options: baseOpts({
+    x: { title: { display: !!xLabel, text: xLabel, color: themeTokens().text },
+         ticks: { color: themeTokens().text, callback: v => (money ? usdC(v) : v) } },
+    y: { title: { display: !!yLabel, text: yLabel, color: themeTokens().text },
+         ticks: { color: themeTokens().text } },
+    plugins: { tooltip: { callbacks: { label: c => c.raw.label || `${usdC(c.parsed.x)}, ${c.parsed.y}` } } },
+  }),
+});
+
+/* ── Chart registry & lazy rendering ─────────────────────────────── */
+
+const charts = new Map();     // id -> Chart instance
+const chartSQL = new Map();   // id -> last SQL, for the inspector
+const chartSpec = new Map();  // id -> spec
+const pinned = new Set(JSON.parse(localStorage.getItem('rp_pins') || '[]'));
+
+/** Render (or re-render) a chart card by id. Handles skeleton, empty state, errors. */
+async function renderChart(id) {
+  if (!DB.ready) return;
+  const spec = chartSpec.get(id); if (!spec) return;
+  const host = document.getElementById('card-' + id); if (!host) return;
+  const body = $('.card-body', host), skel = $('.card-skel', host);
+  skel.style.display = 'block'; body.style.opacity = '.25';
+  try {
+    if (spec.needs && !hasType(spec.needs)) {
+      body.innerHTML = emptyState(`The ${spec.needs} chart plugin didn't load`,
+        'This card needs an optional Chart.js plugin from the CDN. Everything else on the page still works.');
+      return;
+    }
+    const out = await spec.build();
+    if (!out || out.empty) { body.innerHTML = emptyState('No rows match these filters', 'Widen the price range or clear a filter to bring data back.'); return; }
+    if (out.sql) chartSQL.set(id, out.sql);
+    if (out.html !== undefined) { body.innerHTML = out.html; return; }
+    body.innerHTML = '<canvas></canvas>';
+    const cv = $('canvas', body);
+    charts.get(id)?.destroy();
+    charts.set(id, new Chart(cv.getContext('2d'), out.config));
+  } catch (e) {
+    console.error('[chart ' + id + ']', e);
+    body.innerHTML = emptyState('Could not build this chart', e.message);
+  } finally { skel.style.display = 'none'; body.style.opacity = '1'; }
+}
+
+function emptyState(title, sub) {
+  return `<div class="h-full min-h-[160px] grid place-items-center text-center px-6">
+    <div><div class="w-9 h-9 mx-auto mb-2.5 rounded-lg grid place-items-center" style="background:rgba(var(--stroke),.07)">
+      <svg class="w-4 h-4 faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div>
+    <div class="text-[13px] font-medium mb-1">${esc(title)}</div>
+    <div class="text-[11.5px] faint max-w-[280px] leading-relaxed">${esc(sub || '')}</div></div></div>`;
+}
+
+/** Lazily render each card the first time it scrolls into view. */
+const io = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) {
+    const id = e.target.dataset.chart;
+    if (id && !e.target.dataset.rendered) { e.target.dataset.rendered = '1'; renderChart(id); }
+  }
+}, { rootMargin: '220px' });
+
+/** Invalidate everything after a filter/source change. */
+function invalidateAll() {
+  clearCache();
+  for (const [id, c] of charts) { c.destroy(); charts.delete(id); }
+  $$('[data-chart]').forEach(n => { delete n.dataset.rendered; io.unobserve(n); io.observe(n); });
+}
+
+/* ─────────────── §6  SECTION / CARD FRAMEWORK ─────────────── */
+
+const SECTIONS = [
+  { id: 'overview',   name: 'Overview',    sub: 'Portfolio-level view of every negotiated facility rate', icon: 'M3 12h4l3 8 4-16 3 8h4' },
+  { id: 'prices',     name: 'Price Analytics', sub: 'Distribution, shape, percentiles and outliers', icon: 'M4 19V5m0 14h16M8 16V9m4 7V6m4 10v-4' },
+  { id: 'procedures', name: 'Procedures',  sub: 'Which services drive cost and how consistent they are', icon: 'M4 6h16M4 12h10M4 18h7' },
+  { id: 'payers',     name: 'Payers',      sub: 'Head-to-head comparison across every payer', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM3 21a8 8 0 0116 0' },
+  { id: 'benchmarks', name: 'Benchmarks',  sub: 'Rankings built from procedure_price_stats', icon: 'M7 20V10m5 10V4m5 16v-7' },
+  { id: 'variation',  name: 'Variation',   sub: 'Where payers disagree most and least on price', icon: 'M3 17l6-6 4 4 8-8' },
+  { id: 'insights',   name: 'Insights',    sub: 'Automatically surfaced anomalies and findings', icon: 'M12 3a6 6 0 00-4 10.5V17h8v-3.5A6 6 0 0012 3zM10 21h4' },
+  { id: 'explorer',   name: 'Explorer',    sub: 'Query, filter and export the underlying rate rows', icon: 'M4 4h16v4H4zM4 12h16v8H4z' },
+  { id: 'sql',        name: 'SQL Console', sub: 'Run ad-hoc SQL and review what the dashboard executed', icon: 'M8 9l-4 3 4 3M16 9l4 3-4 3' },
+];
+
+/** Build one glass card shell. Charts fill `.card-body` lazily. */
+function card(id, title, subtitle, { span = 'lg:col-span-6', h = 260, actions = true } = {}) {
+  const isPin = pinned.has(id);
+  return `
+  <div class="glass card ${span} col-span-12 p-4 fade-up" id="card-${id}" data-chart="${id}">
+    <div class="card__glow"></div>
+    <div class="flex items-start gap-2 mb-3">
+      <div class="min-w-0 flex-1">
+        <h3 class="text-[13px] font-semibold tracking-tight truncate">${esc(title)}</h3>
+        ${subtitle ? `<p class="text-[11px] faint truncate mt-0.5">${esc(subtitle)}</p>` : ''}
+      </div>
+      ${actions ? `<div class="card-actions flex items-center gap-1 shrink-0">
+        <button class="btn px-1.5 py-1 text-[10px]" data-act="pin"  data-id="${id}" title="Pin">${isPin ? '★' : '☆'}</button>
+        <button class="btn px-1.5 py-1 text-[10px]" data-act="sql"  data-id="${id}" title="View SQL">SQL</button>
+        <button class="btn px-1.5 py-1 text-[10px]" data-act="png"  data-id="${id}" title="Download PNG">PNG</button>
+        <button class="btn px-1.5 py-1 text-[10px]" data-act="full" data-id="${id}" title="Fullscreen">⛶</button>
+      </div>` : ''}
+    </div>
+    <div class="relative" style="height:${h}px">
+      <div class="card-skel absolute inset-0 skel" style="display:block"></div>
+      <div class="card-body h-full overflow-hidden" style="opacity:.25"></div>
+    </div>
+  </div>`;
+}
+
+/** Register a chart builder. `build()` returns {config} | {html} | {empty} (+ optional sql). */
+function chart(id, build, needs) { chartSpec.set(id, { build, needs }); }
+
+/* ── KPI cards ───────────────────────────────────────────────────── */
+
+function kpiCard(k) {
+  return `<div class="glass card p-4 col-span-6 md:col-span-4 xl:col-span-3 fade-up relative overflow-hidden" data-kpi="${k.id}">
+    <div class="card__glow"></div>
+    <div class="text-[10px] mono tracking-wider faint">${esc(k.label)}</div>
+    <div class="text-[22px] font-semibold mt-1.5 tracking-tight" data-kpi-val>
+      <span class="skel inline-block w-20 h-6 align-middle"></span></div>
+    <div class="text-[11px] dim mt-0.5" data-kpi-sub>&nbsp;</div>
+  </div>`;
+}
+
+const KPIS = [
+  { id: 'rates',     label: 'NEGOTIATED RATES' }, { id: 'payers',   label: 'PAYERS' },
+  { id: 'procs',     label: 'PROCEDURES' },       { id: 'refs',     label: 'PROVIDER REFERENCES' },
+  { id: 'avg',       label: 'AVERAGE PRICE' },    { id: 'median',   label: 'MEDIAN PRICE' },
+  { id: 'min',       label: 'LOWEST PRICE' },     { id: 'max',      label: 'HIGHEST PRICE' },
+  { id: 'files',     label: 'SOURCE FILES' },     { id: 'inst',     label: 'INSTITUTIONAL PROCEDURES' },
+  { id: 'spend',     label: 'TOTAL NEGOTIATED VALUE' }, { id: 'disp', label: 'DISPERSION (CV)' },
+];
+
+async function paintKPIs() {
+  if (!DB.ready) return;
+  const set = (id, val, sub) => {
+    const n = document.querySelector(`[data-kpi="${id}"]`); if (!n) return;
+    $('[data-kpi-val]', n).textContent = val;
+    $('[data-kpi-sub]', n).textContent = sub || '';
+  };
+  const [k, ka] = await Promise.all([q1(SQL.kpi()), q1(SQL.kpiAll())]);
+  set('rates',  num(k.total_rates), 'fixed-dollar rows in scope');
+  set('payers', num(k.n_payers), 'distinct reporting entities');
+  set('procs',  num(k.n_procedures), 'distinct billing codes');
+  set('avg',    usdC(k.avg_rate), 'arithmetic mean');
+  set('median', usdC(k.median_rate), 'less outlier-sensitive');
+  set('min',    usdC(k.min_rate), 'floor across all payers');
+  set('max',    usdC(k.max_rate), 'ceiling across all payers');
+  set('files',  num(k.n_files), 'ingested MRF files');
+  set('inst',   num(ka.n_inst), num(ka.n_inst_rows) + ' institutional rows');
+  set('spend',  usdC(k.total_spend), 'sum of negotiated amounts');
+  set('disp',   k.avg_rate ? (k.sd / k.avg_rate).toFixed(2) : '—', 'σ ÷ mean across all rates');
+  // Provider references need an unnest — run it separately so the rest paints fast.
+  q1(SQL.providerRefs()).then(r => set('refs', numC(r.n), 'distinct NPIs / group ids'))
+    .catch(() => set('refs', '—', 'unavailable'));
+}
+
+/* ── Section builders ────────────────────────────────────────────── */
+
+function buildSections() {
+  const host = $('#sections');
+  host.innerHTML = SECTIONS.map(s =>
+    `<section class="sec" id="sec-${s.id}"><div class="grid grid-cols-12 gap-3.5" id="grid-${s.id}"></div></section>`
+  ).join('');
+
+  /* ---------- OVERVIEW ---------- */
+  $('#grid-overview').innerHTML =
+    KPIS.map(kpiCard).join('') +
+    card('ov_hist',  'Price distribution', 'Fixed-dollar negotiated rates, 1st–99th percentile', { span: 'lg:col-span-8', h: 250 }) +
+    card('ov_type',  'Mix by code system', 'Share of rate rows', { span: 'lg:col-span-4', h: 250 }) +
+    card('ov_payer', 'Average price by payer', 'Mean negotiated rate', { span: 'lg:col-span-6', h: 250 }) +
+    card('ov_top',   'Top procedures by negotiated value', 'Sum of rates', { span: 'lg:col-span-6', h: 250 }) +
+    card('ov_index', 'Payer price index vs. procedure median', 'Positive = pays above the market median', { span: 'lg:col-span-12', h: 230 });
+
+  /* ---------- PRICES ---------- */
+  $('#grid-prices').innerHTML =
+    card('pr_hist',   'Histogram', 'Linear scale, 40 bins', { span: 'lg:col-span-6', h: 250 }) +
+    card('pr_log',    'Log-scale histogram', 'log₁₀ of rate — reveals the long tail', { span: 'lg:col-span-6', h: 250 }) +
+    card('pr_dens',   'Kernel density estimate', 'Smoothed distribution from a 2,500-row sample', { span: 'lg:col-span-6', h: 250 }) +
+    card('pr_pctl',   'Percentile curve', 'P1 through P99', { span: 'lg:col-span-6', h: 250 }) +
+    card('pr_box',    'Box plot by payer', 'Quartiles, whiskers and spread', { span: 'lg:col-span-6', h: 290 }) +
+    card('pr_violin', 'Violin plot by payer', 'Full distribution shape per payer', { span: 'lg:col-span-6', h: 290 }) +
+    card('pr_cdf',    'Cumulative distribution', 'Share of rates at or below a price', { span: 'lg:col-span-6', h: 250 }) +
+    card('pr_out',    'Outlier detection', 'Rates more than 3σ from their procedure median', { span: 'lg:col-span-6', h: 250 });
+
+  /* ---------- PROCEDURES ---------- */
+  $('#grid-procedures').innerHTML =
+    card('pc_avg',   'Top procedures by average cost', '', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_med',   'Top procedures by median cost', '', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_freq',  'Most frequently negotiated', 'Rate row count', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_var',   'Highest price variability', 'Coefficient of variation', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_tree',  'Negotiated value treemap', 'Area = total negotiated value', { span: 'lg:col-span-7', h: 330 }) +
+    card('pc_sun',   'Code system breakdown', 'Inner ring = system, outer = procedure', { span: 'lg:col-span-5', h: 330 }) +
+    card('pc_bub',   'Cost vs. variability', 'x = median, y = CV, size = payer count', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_pareto','Pareto — value concentration', 'Bars = value, line = cumulative share', { span: 'lg:col-span-6', h: 300 }) +
+    card('pc_table', 'Procedure ranking table', 'Sortable — click any column', { span: 'lg:col-span-12', h: 400 });
+
+  /* ---------- PAYERS ---------- */
+  $('#grid-payers').innerHTML =
+    card('py_radar', 'Payer profile radar', 'Normalised across six dimensions', { span: 'lg:col-span-6', h: 320 }) +
+    card('py_heat',  'Price index heatmap', 'Payer average ÷ procedure median', { span: 'lg:col-span-6', h: 320 }) +
+    card('py_stack', 'Rate volume by code system', 'Stacked row counts', { span: 'lg:col-span-6', h: 280 }) +
+    card('py_scat',  'Price level vs. consistency', 'x = mean, y = CV', { span: 'lg:col-span-6', h: 280 }) +
+    card('py_cov',   'Procedure coverage', 'Share of all procedures each payer prices', { span: 'lg:col-span-6', h: 280 }) +
+    card('py_cv',    'Coefficient of variation', 'Lower = more internally consistent pricing', { span: 'lg:col-span-6', h: 280 }) +
+    card('py_sankey','Payer → code system flow', 'Width = number of negotiated rates', { span: 'lg:col-span-12', h: 330 }) +
+    card('py_table', 'Payer comparison table', 'Every metric, sortable', { span: 'lg:col-span-12', h: 340 });
+
+  /* ---------- BENCHMARKS ---------- */
+  $('#grid-benchmarks').innerHTML =
+    card('bm_exp',  'Most expensive procedures', 'By median rate', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_cheap','Least expensive procedures', 'By median rate', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_spread','Largest absolute spread', 'max − min', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_avgmed','Average vs. median', 'Gap indicates skew from high outliers', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_iqr',  'Largest interquartile range', 'P75 − P25', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_cov',  'Widest payer participation', 'Distinct payers pricing each procedure', { span: 'lg:col-span-6', h: 300 }) +
+    card('bm_table','Benchmark table', 'Straight from procedure_price_stats', { span: 'lg:col-span-12', h: 380 });
+
+  /* ---------- VARIATION ---------- */
+  $('#grid-variation').innerHTML =
+    card('vr_dis',   'Highest payer disagreement', 'Dispersion of payer medians within a procedure', { span: 'lg:col-span-6', h: 320 }) +
+    card('vr_agree', 'Lowest payer disagreement', 'Most consistently priced across payers', { span: 'lg:col-span-6', h: 320 }) +
+    card('vr_ratio', 'Max ÷ min price ratio', 'How many times more the priciest payer charges', { span: 'lg:col-span-6', h: 300 }) +
+    card('vr_iqr',   'Spread vs. median', 'x = median, y = max − min', { span: 'lg:col-span-6', h: 300 }) +
+    card('vr_table', 'Variation detail', 'Spread, IQR, CV and ratio per procedure', { span: 'lg:col-span-12', h: 380 });
+
+  /* ---------- INSIGHTS ---------- */
+  $('#grid-insights').innerHTML =
+    `<div class="col-span-12" id="insightsHost"><div class="grid grid-cols-12 gap-3.5">
+       ${Array.from({ length: 6 }, () => '<div class="glass card col-span-12 md:col-span-6 p-4"><div class="skel h-4 w-2/3 mb-2"></div><div class="skel h-3 w-full mb-1.5"></div><div class="skel h-3 w-4/5"></div></div>').join('')}
+     </div></div>`;
+
+  /* ---------- EXPLORER ---------- */
+  $('#grid-explorer').innerHTML = `
+    <div class="glass card col-span-12 p-4 fade-up">
+      <div class="flex items-center gap-2 flex-wrap mb-3">
+        <input id="expSearch" class="inp px-3 py-1.5 text-[12.5px] flex-1 min-w-[180px]" placeholder="Filter rows — code, procedure or payer">
+        <select id="expPage" class="inp px-2.5 py-1.5 text-[12px]">
+          <option value="100">100 rows</option><option value="500" selected>500 rows</option>
+          <option value="1000">1,000 rows</option><option value="5000">5,000 rows</option>
+        </select>
+        <button id="expPrev" class="btn px-3 py-1.5 text-[12px]">Prev</button>
+        <span id="expInfo" class="text-[11.5px] faint mono px-1"></span>
+        <button id="expNext" class="btn px-3 py-1.5 text-[12px]">Next</button>
+        <button id="expCsv" class="btn btn-primary px-3 py-1.5 text-[12px]">Export CSV</button>
+      </div>
+      <div id="expScroll" class="scroll overflow-auto rounded-lg" style="max-height:62vh;border:1px solid rgba(var(--stroke),var(--stroke-a))">
+        <table class="tbl"><thead id="expHead"></thead><tbody id="expBody"></tbody></table>
+      </div>
+    </div>`;
+
+  /* ---------- SQL CONSOLE ---------- */
+  $('#grid-sql').innerHTML = `
+    <div class="glass card col-span-12 lg:col-span-7 p-4 fade-up">
+      <h3 class="text-[13px] font-semibold mb-2">Run SQL</h3>
+      <textarea id="sqlInput" class="inp w-full mono text-[12px] p-3 scroll" rows="7"
+        spellcheck="false">SELECT payer, count(*) AS rates, median(rate) AS median_rate
+FROM v_rates
+WHERE negotiated_type = 'negotiated'
+GROUP BY 1 ORDER BY median_rate DESC;</textarea>
+      <div class="flex gap-2 mt-2">
+        <button id="sqlRun" class="btn btn-primary px-3.5 py-1.5 text-[12px]">Run ⌘↵</button>
+        <button id="sqlDl" class="btn px-3.5 py-1.5 text-[12px]">Download result</button>
+        <span id="sqlMeta" class="text-[11.5px] faint mono self-center ml-auto"></span>
+      </div>
+      <div id="sqlOut" class="scroll overflow-auto mt-3 rounded-lg" style="max-height:38vh"></div>
+    </div>
+    <div class="glass card col-span-12 lg:col-span-5 p-4 fade-up">
+      <h3 class="text-[13px] font-semibold mb-2">Recent queries</h3>
+      <p class="text-[11px] faint mb-2.5">Everything the dashboard has executed, newest first. Click to load.</p>
+      <div id="recentList" class="space-y-1.5 scroll overflow-auto" style="max-height:52vh"></div>
+    </div>`;
+}
+
+/* ─────────────── §6b  CHART BUILDERS ───────────────
+   Each returns {config} for Chart.js, or {html} for table-style cards.
+   `sql` is attached so the per-card SQL inspector can show what ran. */
+
+const trunc = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + '…' : s || '');
+
+function registerCharts() {
+
+  /* ---------- OVERVIEW ---------- */
+  chart('ov_hist', async () => {
+    const sql = SQL.histogram(40), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgLine(r.map(x => usdC(x.center)), r.map(x => x.n),
+      { color: PAL[0], money: false, label: 'Rates' }) };
+  });
+
+  chart('ov_type', async () => {
+    const sql = SQL.codeTypeMix(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgDonut(r.map(x => x.k), r.map(x => x.n)) };
+  });
+
+  chart('ov_payer', async () => {
+    const sql = SQL.payerStats(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgBar(r.map(x => x.payer), r.map(x => x.avg_rate), { horizontal: true, color: PAL[1] }) };
+  });
+
+  chart('ov_top', async () => {
+    const sql = SQL.procedures(12), r = (await q(sql)).slice(0, 12);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgBar(r.map(x => x.billing_code), r.map(x => x.total_spend), { color: PAL[2] }) };
+  });
+
+  chart('ov_index', async () => {
+    const sql = SQL.payerVsMedian(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const cfg = cfgBar(r.map(x => x.payer), r.map(x => x.pct_vs_median * 100), { money: false, color: PAL[3] });
+    cfg.data.datasets[0].backgroundColor = r.map(x => (x.pct_vs_median >= 0 ? hexA(PAL[4], .8) : hexA(PAL[2], .8)));
+    cfg.data.datasets[0].hoverBackgroundColor = r.map(x => (x.pct_vs_median >= 0 ? PAL[4] : PAL[2]));
+    cfg.options.scales.y.ticks.callback = v => v.toFixed(0) + '%';
+    cfg.options.plugins.tooltip.callbacks.label = c => (c.parsed.y >= 0 ? '+' : '') + c.parsed.y.toFixed(1) + '% vs median';
+    return { sql, config: cfg };
+  });
+
+  /* ---------- PRICES ---------- */
+  chart('pr_hist', async () => {
+    const sql = SQL.histogram(40), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgBar(r.map(x => usdC(x.center)), r.map(x => x.n), { money: false, color: PAL[0] }) };
+  });
+
+  chart('pr_log', async () => {
+    const sql = SQL.logHistogram(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgBar(r.map(x => '$' + numC(Math.pow(10, x.lbin))), r.map(x => x.n),
+      { money: false, color: PAL[5] }) };
+  });
+
+  chart('pr_dens', async () => {
+    const sql = SQL.sample(2500), r = await q(sql);
+    if (r.length < 12) return { empty: true };
+    const vals = r.map(x => x.rate).sort((a, b) => a - b);
+    const { xs, ys } = kde(vals, 90);
+    return { sql, config: cfgLine(xs.map(usdC), ys, { color: PAL[1], money: false, label: 'Density', curve: .4 }) };
+  });
+
+  chart('pr_pctl', async () => {
+    const sql = SQL.percentiles(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgLine(r.map(x => 'P' + Math.round(x.p * 100)), r.map(x => x.v),
+      { color: PAL[3], label: 'Rate' }) };
+  });
+
+  chart('pr_box', async () => {
+    const sql = SQL.boxByPayer(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: {
+      type: 'boxplot',
+      data: { labels: r.map(x => x.payer), datasets: [{
+        label: 'Negotiated rate',
+        data: r.map(x => ({ min: x.lo, q1: x.q1, median: x.med, q3: x.q3, max: x.hi, items: [] })),
+        backgroundColor: hexA(PAL[0], .35), borderColor: PAL[0], borderWidth: 1.4,
+        medianColor: PAL[3], itemRadius: 0, outlierRadius: 2,
+      }] },
+      options: baseOpts({ y: { ticks: { color: themeTokens().text, callback: v => usdC(v) } },
+        x: { ticks: { color: themeTokens().text, maxRotation: 45, minRotation: 30 } } }),
+    } };
+  }, 'boxplot');
+
+  chart('pr_violin', async () => {
+    const sql = SQL.violinByPayer(220), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: {
+      type: 'violin',
+      data: { labels: r.map(x => x.payer), datasets: [{
+        label: 'Rate distribution', data: r.map(x => (x.vals || []).filter(Number.isFinite)),
+        backgroundColor: hexA(PAL[2], .32), borderColor: PAL[2], borderWidth: 1.4, itemRadius: 0,
+      }] },
+      options: baseOpts({ y: { ticks: { color: themeTokens().text, callback: v => usdC(v) } },
+        x: { ticks: { color: themeTokens().text, maxRotation: 45, minRotation: 30 } } }),
+    } };
+  }, 'violin');
+
+  chart('pr_cdf', async () => {
+    const sql = SQL.sample(2500), r = await q(sql);
+    if (r.length < 12) return { empty: true };
+    const vals = r.map(x => x.rate).sort((a, b) => a - b);
+    const step = Math.max(1, Math.floor(vals.length / 120));
+    const xs = [], ys = [];
+    for (let i = 0; i < vals.length; i += step) { xs.push(usdC(vals[i])); ys.push(((i + 1) / vals.length) * 100); }
+    const cfg = cfgLine(xs, ys, { color: PAL[6], money: false, label: 'Cumulative %' });
+    cfg.options.scales.y.ticks.callback = v => v.toFixed(0) + '%';
+    cfg.options.scales.y.max = 100;
+    return { sql, config: cfg };
+  });
+
+  chart('pr_out', async () => {
+    const sql = SQL.outliers(3, 120), r = await q(sql);
+    if (!r.length) return { html: emptyState('No outliers beyond 3σ', 'Pricing is tightly clustered around each procedure median under these filters.') };
+    const pts = r.map(x => ({ x: x.rate, y: x.z, label: `${x.billing_code} · ${x.payer} · ${usd(x.rate)} · z=${x.z.toFixed(1)}` }));
+    return { sql, config: cfgScatter(pts, { color: PAL[4], xLabel: 'Negotiated rate', yLabel: 'z-score vs procedure median' }) };
+  });
+
+  /* ---------- PROCEDURES ---------- */
+  const procTop = (key, opts) => async () => {
+    const sql = SQL.procedures(400), all = await q(sql);
+    if (!all.length) return { empty: true };
+    const r = [...all].sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0)).slice(0, 12);
+    return { sql, config: cfgBar(r.map(x => x.billing_code), r.map(x => x[key]), { horizontal: true, ...opts }) };
+  };
+  chart('pc_avg',  procTop('avg_rate', { color: PAL[0] }));
+  chart('pc_med',  procTop('med_rate', { color: PAL[1] }));
+  chart('pc_freq', procTop('n', { color: PAL[2], money: false }));
+  chart('pc_var',  async () => {
+    const sql = SQL.procedures(400), all = await q(sql);
+    if (!all.length) return { empty: true };
+    const r = [...all].sort((a, b) => b.cv - a.cv).slice(0, 12);
+    const cfg = cfgBar(r.map(x => x.billing_code), r.map(x => x.cv), { horizontal: true, color: PAL[4], money: false });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(2);
+    cfg.options.plugins.tooltip.callbacks.label = c => 'CV ' + c.parsed.x.toFixed(3);
+    return { sql, config: cfg };
+  });
+
+  chart('pc_tree', async () => {
+    const sql = SQL.treemap(45), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: {
+      type: 'treemap',
+      data: { datasets: [{
+        tree: r, key: 'spend', groups: ['billing_code_type', 'billing_code'],
+        borderWidth: 1, borderColor: 'rgba(0,0,0,.35)', spacing: 1,
+        backgroundColor: c => (c.type !== 'data' ? 'transparent'
+          : hexA(palAt(['MS-DRG', 'CPT', 'HCPCS'].indexOf(c.raw?._data?.billing_code_type) + 1 || 0),
+                 0.35 + 0.5 * (c.raw.v / (r[0].spend || 1)))),
+        labels: { display: true, color: '#fff', font: { size: 10, weight: '600' },
+          formatter: c => c.raw?._data?.billing_code || '' },
+      }] },
+      options: baseOpts({ scales: null, plugins: { tooltip: { callbacks: {
+        title: () => '', label: c => `${c.raw?._data?.billing_code ?? ''} — ${usdC(c.raw.v)}` } } } }),
+    } };
+  }, 'treemap');
+
+  chart('pc_sun', async () => {
+    const sql = SQL.sunburst(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    // Concentric doughnut rings emulate a sunburst: inner = code system, outer = procedures.
+    const sys = [...new Set(r.map(x => x.billing_code_type))];
+    const inner = sys.map(s => r.filter(x => x.billing_code_type === s).reduce((a, b) => a + b.spend, 0));
+    const outerRows = sys.flatMap(s => r.filter(x => x.billing_code_type === s)
+      .sort((a, b) => b.spend - a.spend).slice(0, 8));
+    return { sql, config: {
+      type: 'doughnut',
+      data: { labels: outerRows.map(x => x.billing_code), datasets: [
+        { data: inner, labels: sys, backgroundColor: sys.map((_, i) => palAt(i)),
+          borderWidth: 0, weight: 0.85, spacing: 2 },
+        { data: outerRows.map(x => x.spend),
+          backgroundColor: outerRows.map(x => hexA(palAt(sys.indexOf(x.billing_code_type)), .72)),
+          borderWidth: 0, weight: 1, spacing: 1 },
+      ] },
+      options: baseOpts({ scales: null, rest: { cutout: '32%' },
+        plugins: { tooltip: { callbacks: {
+          label: c => (c.datasetIndex === 0
+            ? `${sys[c.dataIndex]}: ${usdC(c.parsed)}`
+            : `${outerRows[c.dataIndex].billing_code}: ${usdC(c.parsed)}`) } } } }),
+    } };
+  });
+
+  chart('pc_bub', async () => {
+    const sql = SQL.procedures(400), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const maxP = Math.max(...r.map(x => x.n_payers), 1);
+    const pts = r.slice(0, 60).map(x => ({ x: x.med_rate, y: x.cv, r: 4 + (x.n_payers / maxP) * 14,
+      label: `${x.billing_code} — ${trunc(x.description, 40)} · median ${usdC(x.med_rate)} · CV ${x.cv.toFixed(2)} · ${x.n_payers} payers` }));
+    const cfg = cfgScatter(pts, { color: PAL[5], xLabel: 'Median rate', yLabel: 'Coefficient of variation', bubble: true });
+    cfg.options.scales.y.ticks.callback = v => v.toFixed(2);
+    return { sql, config: cfg };
+  });
+
+  chart('pc_pareto', async () => {
+    const sql = SQL.pareto(25), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const t = themeTokens();
+    return { sql, config: {
+      type: 'bar',
+      data: { labels: r.map(x => x.billing_code), datasets: [
+        { type: 'bar', label: 'Negotiated value', data: r.map(x => x.spend), borderRadius: 4,
+          backgroundColor: c => grad(c.chart.ctx, c.chart.chartArea, PAL[0], .95, .4), order: 2 },
+        { type: 'line', label: 'Cumulative %', data: r.map(x => x.cum_pct * 100), yAxisID: 'y2',
+          borderColor: PAL[3], borderWidth: 2, tension: .3, pointRadius: 0, fill: false, order: 1 },
+      ] },
+      options: baseOpts({
+        plugins: { legend: { display: true } },
+        // Dual axis: bars read against y (dollars), the cumulative line against y2 (percent).
+        rest: { scales: {
+          x: { grid: { color: t.grid }, border: { display: false },
+               ticks: { color: t.text, maxRotation: 60, minRotation: 45, font: { size: 9.5 } } },
+          y: { grid: { color: t.grid }, border: { display: false },
+               ticks: { color: t.text, callback: v => usdC(v) } },
+          y2: { position: 'right', min: 0, max: 100, grid: { display: false }, border: { display: false },
+                ticks: { color: PAL[3], callback: v => v.toFixed(0) + '%' } },
+        } },
+      }),
+    } };
+  });
+
+  chart('pc_table', async () => {
+    const sql = SQL.procedures(400), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, html: sortableTable('pcTbl', r, [
+      { k: 'billing_code', t: 'Code' }, { k: 'billing_code_type', t: 'System' },
+      { k: 'description', t: 'Procedure', fmt: v => trunc(v, 46) },
+      { k: 'n', t: 'Rates', num: true, fmt: num }, { k: 'n_payers', t: 'Payers', num: true, fmt: num },
+      { k: 'min_rate', t: 'Min', num: true, fmt: usdC }, { k: 'med_rate', t: 'Median', num: true, fmt: usdC },
+      { k: 'avg_rate', t: 'Average', num: true, fmt: usdC }, { k: 'max_rate', t: 'Max', num: true, fmt: usdC },
+      { k: 'cv', t: 'CV', num: true, fmt: v => v.toFixed(2) },
+      { k: 'total_spend', t: 'Total value', num: true, fmt: usdC },
+    ]) };
+  });
+
+  /* ---------- PAYERS ---------- */
+  chart('py_radar', async () => {
+    const sql = SQL.payerStats(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const dims = [
+      { t: 'Avg price', f: x => x.avg_rate }, { t: 'Median', f: x => x.med_rate },
+      { t: 'Max', f: x => x.max_rate }, { t: 'Coverage', f: x => x.n_codes },
+      { t: 'Volume', f: x => x.n }, { t: 'Consistency', f: x => 1 / (x.cv || 1) },
+    ];
+    const norm = dims.map(d => { const vals = r.map(d.f); const mx = Math.max(...vals) || 1; return v => (v / mx) * 100; });
+    const t = themeTokens();
+    return { sql, config: {
+      type: 'radar',
+      data: { labels: dims.map(d => d.t), datasets: r.slice(0, 6).map((x, i) => ({
+        label: x.payer, data: dims.map((d, j) => norm[j](d.f(x))),
+        borderColor: palAt(i), backgroundColor: hexA(palAt(i), .13),
+        borderWidth: 1.8, pointRadius: 2, pointBackgroundColor: palAt(i),
+      })) },
+      options: baseOpts({ scales: null, plugins: { legend: { display: true, position: 'bottom' },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.r.toFixed(0)} / 100` } } },
+        rest: { scales: { r: { angleLines: { color: t.grid }, grid: { color: t.grid },
+          pointLabels: { color: t.text, font: { size: 10.5 } },
+          ticks: { display: false }, suggestedMin: 0, suggestedMax: 100 } } } }),
+    } };
+  });
+
+  chart('py_heat', async () => {
+    const sql = SQL.heatmap(16), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const codes = [...new Set(r.map(x => x.billing_code))];
+    const payers = [...new Set(r.map(x => x.payer))];
+    const t = themeTokens();
+    return { sql, config: {
+      type: 'matrix',
+      data: { datasets: [{
+        label: 'Price index',
+        data: r.map(x => ({ x: x.billing_code, y: x.payer, v: x.idx })),
+        width: c => (c.chart.chartArea?.width || 0) / codes.length - 2,
+        height: c => (c.chart.chartArea?.height || 0) / payers.length - 2,
+        backgroundColor: c => { const v = c.raw?.v ?? 1;
+          // diverging: green below median, red above
+          const d = Math.max(-1, Math.min(1, (v - 1) * 2.2));
+          return d >= 0 ? hexA(PAL[4], .18 + d * .72) : hexA(PAL[2], .18 + (-d) * .72); },
+        borderWidth: 0, borderRadius: 3,
+      }] },
+      options: baseOpts({ scales: null, rest: { scales: {
+        x: { type: 'category', labels: codes, grid: { display: false }, border: { display: false },
+             ticks: { color: t.text, maxRotation: 60, minRotation: 45, font: { size: 9.5 } } },
+        y: { type: 'category', labels: payers, offset: true, grid: { display: false }, border: { display: false },
+             ticks: { color: t.text, font: { size: 9.5 } } } } },
+        plugins: { tooltip: { callbacks: { title: () => '',
+          label: c => `${c.raw.y} · ${c.raw.x}: ${(c.raw.v * 100).toFixed(0)}% of median` } } } }),
+    } };
+  }, 'matrix');
+
+  chart('py_stack', async () => {
+    const sql = `SELECT payer, billing_code_type, count(*) AS n FROM v_rates ${W()} GROUP BY 1,2`;
+    const r = await q(sql);
+    if (!r.length) return { empty: true };
+    const payers = [...new Set(r.map(x => x.payer))], sys = [...new Set(r.map(x => x.billing_code_type))];
+    const t = themeTokens();
+    return { sql, config: {
+      type: 'bar',
+      data: { labels: payers, datasets: sys.map((s, i) => ({
+        label: s, backgroundColor: hexA(palAt(i), .85), borderRadius: 3, maxBarThickness: 32,
+        data: payers.map(p => r.find(x => x.payer === p && x.billing_code_type === s)?.n ?? 0),
+      })) },
+      options: baseOpts({ plugins: { legend: { display: true } },
+        x: { stacked: true, ticks: { color: t.text, maxRotation: 45, minRotation: 30, font: { size: 9.5 } } },
+        y: { stacked: true, ticks: { color: t.text, callback: v => numC(v) } } }),
+    } };
+  });
+
+  chart('py_scat', async () => {
+    const sql = SQL.payerStats(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const pts = r.map(x => ({ x: x.avg_rate, y: x.cv, label: `${x.payer} · mean ${usdC(x.avg_rate)} · CV ${x.cv.toFixed(2)}` }));
+    const cfg = cfgScatter(pts, { color: PAL[1], xLabel: 'Mean negotiated rate', yLabel: 'Coefficient of variation' });
+    cfg.options.scales.y.ticks.callback = v => v.toFixed(2);
+    cfg.data.datasets[0].pointRadius = 7;
+    return { sql, config: cfg };
+  });
+
+  chart('py_cov', async () => {
+    const sql = SQL.payerCoverage(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const cfg = cfgBar(r.map(x => x.payer), r.map(x => x.coverage * 100), { horizontal: true, money: false, color: PAL[2] });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(0) + '%';
+    cfg.options.plugins.tooltip.callbacks.label = c => c.parsed.x.toFixed(1) + '% of procedures priced';
+    return { sql, config: cfg };
+  });
+
+  chart('py_cv', async () => {
+    const sql = SQL.payerStats(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const s = [...r].sort((a, b) => a.cv - b.cv);
+    const cfg = cfgBar(s.map(x => x.payer), s.map(x => x.cv), { horizontal: true, money: false, color: PAL[5] });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(2);
+    cfg.options.plugins.tooltip.callbacks.label = c => 'CV ' + c.parsed.x.toFixed(3);
+    return { sql, config: cfg };
+  });
+
+  chart('py_sankey', async () => {
+    const sql = SQL.sankey(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const nodes = [...new Set(r.flatMap(x => [x.src, x.dst]))];
+    const colorOf = n => palAt(nodes.indexOf(n));
+    return { sql, config: {
+      type: 'sankey',
+      data: { datasets: [{
+        label: 'Rate flow',
+        data: r.map(x => ({ from: x.src, to: x.dst, flow: x.flow })),
+        colorFrom: c => colorOf(c.raw?.from), colorTo: c => colorOf(c.raw?.to),
+        colorMode: 'gradient', alpha: .55, borderWidth: 0,
+        labels: Object.fromEntries(nodes.map(n => [n, n])),
+        size: 'max',
+      }] },
+      options: baseOpts({ scales: null, plugins: { tooltip: { callbacks: {
+        title: () => '', label: c => `${c.raw.from} → ${c.raw.to}: ${num(c.raw.flow)} rates` } } } }),
+    } };
+  }, 'sankey');
+
+  chart('py_table', async () => {
+    const sql = SQL.payerStats(), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, html: sortableTable('pyTbl', r, [
+      { k: 'payer', t: 'Payer' },
+      { k: 'n', t: 'Rates', num: true, fmt: num }, { k: 'n_codes', t: 'Procedures', num: true, fmt: num },
+      { k: 'min_rate', t: 'Min', num: true, fmt: usdC }, { k: 'q1', t: 'P25', num: true, fmt: usdC },
+      { k: 'med_rate', t: 'Median', num: true, fmt: usdC }, { k: 'q3', t: 'P75', num: true, fmt: usdC },
+      { k: 'avg_rate', t: 'Mean', num: true, fmt: usdC }, { k: 'max_rate', t: 'Max', num: true, fmt: usdC },
+      { k: 'sd', t: 'σ', num: true, fmt: usdC }, { k: 'cv', t: 'CV', num: true, fmt: v => v.toFixed(3) },
+    ]) };
+  });
+}
+
+/** Benchmark + variation charts (second half of the registry). */
+function registerCharts2() {
+
+  /* ---------- BENCHMARKS ---------- */
+  const bm = (order, key, opts = {}) => async () => {
+    const sql = SQL.benchmark(order, 12), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, config: cfgBar(r.map(x => x.billing_code), r.map(x => x[key]), { horizontal: true, ...opts }) };
+  };
+  chart('bm_exp',   bm('median_rate DESC', 'median_rate', { color: PAL[4] }));
+  chart('bm_cheap', bm('median_rate ASC',  'median_rate', { color: PAL[2] }));
+  chart('bm_spread', bm('(max_rate-min_rate) DESC', 'spread', { color: PAL[3] }));
+  chart('bm_cov',   bm('n_payers DESC', 'n_payers', { color: PAL[1], money: false }));
+
+  chart('bm_avgmed', async () => {
+    const sql = SQL.benchmark('avg_rate DESC', 14), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const t = themeTokens();
+    return { sql, config: {
+      type: 'bar',
+      data: { labels: r.map(x => x.billing_code), datasets: [
+        { label: 'Average', data: r.map(x => x.avg_rate), backgroundColor: hexA(PAL[0], .85), borderRadius: 4 },
+        { label: 'Median',  data: r.map(x => x.median_rate), backgroundColor: hexA(PAL[3], .85), borderRadius: 4 },
+      ] },
+      options: baseOpts({ plugins: { legend: { display: true },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${usd(c.parsed.y)}` } } },
+        y: { ticks: { color: t.text, callback: v => usdC(v) } },
+        x: { ticks: { color: t.text, maxRotation: 60, minRotation: 45, font: { size: 9.5 } } } }),
+    } };
+  });
+
+  chart('bm_iqr', async () => {
+    const sql = SQL.procedures(400), all = await q(sql);
+    if (!all.length) return { empty: true };
+    const r = [...all].sort((a, b) => b.iqr - a.iqr).slice(0, 12);
+    return { sql, config: cfgBar(r.map(x => x.billing_code), r.map(x => x.iqr), { horizontal: true, color: PAL[5] }) };
+  });
+
+  chart('bm_table', async () => {
+    const sql = SQL.benchmark('median_rate DESC', 300), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, html: sortableTable('bmTbl', r, [
+      { k: 'billing_code', t: 'Code' }, { k: 'billing_code_type', t: 'System' },
+      { k: 'description', t: 'Procedure', fmt: v => trunc(v, 46) },
+      { k: 'n_rate_entries', t: 'Entries', num: true, fmt: num },
+      { k: 'n_payers', t: 'Payers', num: true, fmt: num },
+      { k: 'min_rate', t: 'Min', num: true, fmt: usdC }, { k: 'median_rate', t: 'Median', num: true, fmt: usdC },
+      { k: 'avg_rate', t: 'Average', num: true, fmt: usdC }, { k: 'max_rate', t: 'Max', num: true, fmt: usdC },
+      { k: 'spread', t: 'Spread', num: true, fmt: usdC },
+    ]) };
+  });
+
+  /* ---------- VARIATION ---------- */
+  chart('vr_dis', async () => {
+    const sql = SQL.disagreement(40), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const top = r.slice(0, 12);
+    const cfg = cfgBar(top.map(x => x.billing_code), top.map(x => x.disagreement), { horizontal: true, money: false, color: PAL[4] });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(2);
+    cfg.options.plugins.tooltip.callbacks.label = c => 'Disagreement ' + c.parsed.x.toFixed(3);
+    return { sql, config: cfg };
+  });
+
+  chart('vr_agree', async () => {
+    const sql = SQL.disagreement(400), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const low = [...r].sort((a, b) => a.disagreement - b.disagreement).slice(0, 12);
+    const cfg = cfgBar(low.map(x => x.billing_code), low.map(x => x.disagreement), { horizontal: true, money: false, color: PAL[2] });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(3);
+    cfg.options.plugins.tooltip.callbacks.label = c => 'Disagreement ' + c.parsed.x.toFixed(4);
+    return { sql, config: cfg };
+  });
+
+  chart('vr_ratio', async () => {
+    const sql = SQL.variation(400), all = await q(sql);
+    if (!all.length) return { empty: true };
+    const r = [...all].filter(x => isFinite(x.ratio)).sort((a, b) => b.ratio - a.ratio).slice(0, 12);
+    const cfg = cfgBar(r.map(x => x.billing_code), r.map(x => x.ratio), { horizontal: true, money: false, color: PAL[3] });
+    cfg.options.scales.x.ticks.callback = v => v.toFixed(1) + '×';
+    cfg.options.plugins.tooltip.callbacks.label = c => c.parsed.x.toFixed(2) + '× max ÷ min';
+    return { sql, config: cfg };
+  });
+
+  chart('vr_iqr', async () => {
+    const sql = SQL.variation(400), r = await q(sql);
+    if (!r.length) return { empty: true };
+    const pts = r.map(x => ({ x: x.med, y: x.spread,
+      label: `${x.billing_code} — median ${usdC(x.med)}, spread ${usdC(x.spread)}` }));
+    const cfg = cfgScatter(pts, { color: PAL[6], xLabel: 'Median rate', yLabel: 'Max − min spread' });
+    cfg.options.scales.y.ticks.callback = v => usdC(v);
+    return { sql, config: cfg };
+  });
+
+  chart('vr_table', async () => {
+    const sql = SQL.variation(400), r = await q(sql);
+    if (!r.length) return { empty: true };
+    return { sql, html: sortableTable('vrTbl', r, [
+      { k: 'billing_code', t: 'Code' },
+      { k: 'description', t: 'Procedure', fmt: v => trunc(v, 46) },
+      { k: 'n_payers', t: 'Payers', num: true, fmt: num }, { k: 'n', t: 'Rates', num: true, fmt: num },
+      { k: 'med', t: 'Median', num: true, fmt: usdC }, { k: 'spread', t: 'Spread', num: true, fmt: usdC },
+      { k: 'iqr', t: 'IQR', num: true, fmt: usdC },
+      { k: 'cv', t: 'CV', num: true, fmt: v => v.toFixed(3) },
+      { k: 'ratio', t: 'Max÷Min', num: true, fmt: v => (isFinite(v) ? v.toFixed(2) + '×' : '—') },
+    ]) };
+  });
+}
+
+/* ── Gaussian KDE for the density chart ─────────────────────────── */
+function kde(sorted, steps = 90) {
+  const n = sorted.length;
+  const lo = sorted[Math.floor(n * 0.005)], hi = sorted[Math.floor(n * 0.99)] || sorted[n - 1];
+  const mean = sorted.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(sorted.reduce((a, b) => a + (b - mean) ** 2, 0) / n) || 1;
+  const h = 1.06 * sd * Math.pow(n, -0.2);           // Silverman's rule of thumb
+  const xs = [], ys = [];
+  for (let i = 0; i < steps; i++) {
+    const x = lo + ((hi - lo) * i) / (steps - 1);
+    let s = 0;
+    for (let j = 0; j < n; j++) { const u = (x - sorted[j]) / h; s += Math.exp(-0.5 * u * u); }
+    xs.push(x); ys.push(s / (n * h * Math.sqrt(2 * Math.PI)));
+  }
+  return { xs, ys };
+}
+
+/* ── Reusable sortable table (used by 4 cards) ──────────────────── */
+const tableState = new Map();   // tableId -> {rows, cols, key, dir}
+
+function sortableTable(id, rows, cols) {
+  tableState.set(id, { rows, cols, key: null, dir: 'desc' });
+  return `<div class="scroll overflow-auto h-full rounded-lg" style="border:1px solid rgba(var(--stroke),var(--stroke-a))">
+    <table class="tbl" data-tbl="${id}">
+      <thead><tr>${cols.map(c => `<th data-col="${c.k}" class="${c.num ? 'num' : ''}">${esc(c.t)}</th>`).join('')}</tr></thead>
+      <tbody>${tableRows(rows, cols)}</tbody></table></div>`;
+}
+function tableRows(rows, cols) {
+  return rows.map(r => `<tr>${cols.map(c => {
+    const v = r[c.k]; const shown = c.fmt ? (v == null ? '—' : c.fmt(v)) : (v ?? '—');
+    return `<td class="${c.num ? 'num' : ''}">${esc(shown)}</td>`;
+  }).join('')}</tr>`).join('');
+}
+// Delegated sorting for every generated table.
+document.addEventListener('click', e => {
+  const th = e.target.closest('th[data-col]'); if (!th) return;
+  const tbl = th.closest('table'); const id = tbl?.dataset.tbl; const st = tableState.get(id); if (!st) return;
+  const key = th.dataset.col;
+  st.dir = st.key === key && st.dir === 'desc' ? 'asc' : 'desc';
+  st.key = key;
+  st.rows.sort((a, b) => {
+    let x = a[key], y = b[key];
+    if (typeof x === 'string') { x = x.toLowerCase(); y = String(y ?? '').toLowerCase(); }
+    if (x == null) return 1; if (y == null) return -1;
+    return st.dir === 'asc' ? (x > y ? 1 : x < y ? -1 : 0) : (x < y ? 1 : x > y ? -1 : 0);
+  });
+  $('tbody', tbl).innerHTML = tableRows(st.rows, st.cols);
+  $$('th', tbl).forEach(h => h.style.color = '');
+  th.style.color = 'var(--c1)';
+});
+
+/* ─────────────── §7  EXPLORER TABLE ───────────────
+   Server-side (DuckDB-side) paging + sorting keeps this usable on millions of
+   rows: we never pull more than one page into JS. Within a page, rows are
+   virtualised so a 5,000-row page still renders instantly. */
+
+const EXP = { sort: 'rate', dir: 'DESC', page: 0, size: 500, total: 0, rows: [], cols: [
+  { k: 'payer', t: 'Payer' }, { k: 'plan_name', t: 'Plan' },
+  { k: 'billing_code', t: 'Code' }, { k: 'billing_code_type', t: 'System' },
+  { k: 'description', t: 'Procedure' }, { k: 'billing_class', t: 'Class' },
+  { k: 'negotiated_type', t: 'Type' }, { k: 'rate', t: 'Rate', num: true },
+  { k: 'expiration_date', t: 'Expires' }, { k: 'source_file', t: 'Source file' },
+] };
+const ROW_H = 33, OVERSCAN = 8;
+
+async function loadExplorer() {
+  if (!DB.ready) return;                      // deep-link may fire before DuckDB boots
+  const head = $('#expHead'), body = $('#expBody'); if (!head) return;
+  head.innerHTML = `<tr>${EXP.cols.map(c =>
+    `<th data-exp-col="${c.k}" class="${c.num ? 'num' : ''}">${esc(c.t)}${EXP.sort === c.k ? (EXP.dir === 'DESC' ? ' ↓' : ' ↑') : ''}</th>`).join('')}</tr>`;
+  body.innerHTML = `<tr><td colspan="${EXP.cols.length}"><div class="skel h-5 my-1"></div></td></tr>`.repeat(8);
+  try {
+    const [cnt, rows] = await Promise.all([
+      q1(SQL.explorerCount()),
+      q(SQL.explorer(EXP.sort, EXP.dir, EXP.size, EXP.page * EXP.size)),
+    ]);
+    EXP.total = cnt.n ?? 0; EXP.rows = rows;
+    renderExplorerWindow(true);
+    const from = EXP.total ? EXP.page * EXP.size + 1 : 0;
+    $('#expInfo').textContent = `${num(from)}–${num(Math.min(from + rows.length - 1, EXP.total))} of ${num(EXP.total)}`;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="${EXP.cols.length}">${emptyState('Query failed', e.message)}</td></tr>`;
+  }
+}
+
+/** Virtual window: only the visible slice of the current page is in the DOM. */
+function renderExplorerWindow(reset = false) {
+  const sc = $('#expScroll'), body = $('#expBody'); if (!sc || !body) return;
+  if (reset) sc.scrollTop = 0;
+  const rows = EXP.rows;
+  if (!rows.length) { body.innerHTML = `<tr><td colspan="${EXP.cols.length}">${emptyState('No rows match', 'Loosen a filter to see data.')}</td></tr>`; return; }
+  const vh = sc.clientHeight || 500;
+  const first = Math.max(0, Math.floor(sc.scrollTop / ROW_H) - OVERSCAN);
+  const count = Math.ceil(vh / ROW_H) + OVERSCAN * 2;
+  const slice = rows.slice(first, first + count);
+  const pad = (h) => (h > 0 ? `<tr style="height:${h}px"><td colspan="${EXP.cols.length}" style="padding:0;border:0"></td></tr>` : '');
+  body.innerHTML =
+    pad(first * ROW_H) +
+    slice.map(r => `<tr style="height:${ROW_H}px">${EXP.cols.map(c => {
+      let v = r[c.k];
+      if (c.k === 'rate') v = usd(v, 2);
+      else if (c.k === 'description') v = trunc(v, 44);
+      else if (c.k === 'source_file') v = trunc(v, 32);
+      else if (c.k === 'billing_class')
+        return `<td><span class="text-[10.5px] px-1.5 py-0.5 rounded-full" style="background:${v === 'institutional' ? 'rgba(52,211,153,.16);color:#34d399' : 'rgba(124,92,255,.16);color:#a78bfa'}">${esc(v)}</span></td>`;
+      return `<td class="${c.num ? 'num' : ''}">${esc(v ?? '—')}</td>`;
+    }).join('')}</tr>`).join('') +
+    pad(Math.max(0, (rows.length - first - slice.length) * ROW_H));
+}
+
+function wireExplorer() {
+  $('#expScroll')?.addEventListener('scroll', () => renderExplorerWindow(), { passive: true });
+  $('#expHead')?.addEventListener('click', e => {
+    const th = e.target.closest('[data-exp-col]'); if (!th) return;
+    const k = th.dataset.expCol;
+    EXP.dir = EXP.sort === k && EXP.dir === 'DESC' ? 'ASC' : 'DESC';
+    EXP.sort = k; EXP.page = 0; loadExplorer();
+  });
+  $('#expPrev')?.addEventListener('click', () => { if (EXP.page > 0) { EXP.page--; loadExplorer(); } });
+  $('#expNext')?.addEventListener('click', () => {
+    if ((EXP.page + 1) * EXP.size < EXP.total) { EXP.page++; loadExplorer(); } });
+  $('#expPage')?.addEventListener('change', e => { EXP.size = +e.target.value; EXP.page = 0; loadExplorer(); });
+  $('#expSearch')?.addEventListener('input', debounce(e => {
+    F.search = e.target.value.trim(); $('#globalSearch').value = F.search;
+    clearCache(); EXP.page = 0; loadExplorer(); syncFilterUI();
+  }, 320));
+  $('#expCsv')?.addEventListener('click', exportCSV);
+}
+
+/* ── CSV export ─────────────────────────────────────────────────── */
+function toCSV(rows, cols) {
+  const esc2 = v => { const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return [cols.join(','), ...rows.map(r => cols.map(c => esc2(r[c])).join(','))].join('\n');
+}
+function download(name, text, mime = 'text/csv') {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = el('a'); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+async function exportCSV() {
+  try {
+    toast('Preparing export…');
+    const rows = await q(SQL.exportRows(100000), { cacheable: false });
+    if (!rows.length) return toast('Nothing to export under these filters', 'warn');
+    download(`rateplane_export_${Date.now()}.csv`, toCSV(rows, Object.keys(rows[0])));
+    toast(`Exported ${num(rows.length)} rows`);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+/* ─────────────── §8  INSIGHTS ENGINE ───────────────
+   Runs a handful of aggregate queries and turns them into ranked, plain-language
+   findings. Each insight carries a severity so anomalies float to the top. */
+
+async function buildInsights() {
+  if (!DB.ready) return;
+  const host = $('#insightsHost'); if (!host) return;
+  const out = [];
+  const add = (sev, title, body, metric) => out.push({ sev, title, body, metric });
+
+  try {
+    const [pv, share, varr, dis, payers, k, outl] = await Promise.all([
+      q(SQL.payerVsMedian()), q1(SQL.spendShare()), q(SQL.variation(400)),
+      q(SQL.disagreement(400)), q(SQL.payerStats()), q1(SQL.kpi()), q(SQL.outliers(3, 120)),
+    ]);
+
+    // 1 — payer positioning vs. market median
+    for (const p of pv.slice(0, 2))
+      if (p.pct_vs_median > 0.08)
+        add(p.pct_vs_median > 0.2 ? 'high' : 'med', `${p.payer} prices above the market`,
+          `Across ${num(p.n)} negotiated rates, ${p.payer} averages ${pct(p.pct_vs_median)} above the median for the same procedures. On a like-for-like basis this is the most expensive position in the dataset.`,
+          '+' + pct(p.pct_vs_median));
+    for (const p of pv.slice(-2).reverse())
+      if (p.pct_vs_median < -0.08)
+        add('low', `${p.payer} prices below the market`,
+          `${p.payer} settles ${pct(Math.abs(p.pct_vs_median))} under the procedure median across ${num(p.n)} rates — the most competitive payer position here.`,
+          pct(p.pct_vs_median));
+
+    // 2 — concentration
+    if (share.top5 != null)
+      add(share.top5 > 0.5 ? 'high' : 'info', 'Negotiated value is concentrated',
+        `The top 5 procedures account for ${pct(share.top5)} of all negotiated value, and the top 10 for ${pct(share.top10)}, across ${num(share.n_codes)} distinct billing codes. Contract negotiation effort concentrated on those few codes moves the most money.`,
+        pct(share.top5));
+
+    // 3 — variability
+    const hv = varr.filter(x => x.cv > 0.35).slice(0, 2);
+    for (const v of hv)
+      add('high', `${v.billing_code} shows unusually high price variation`,
+        `${trunc(v.description, 70)} has a coefficient of variation of ${v.cv.toFixed(2)}: a ${usdC(v.spread)} gap between its cheapest and dearest negotiated rate, against a median of just ${usdC(v.med)}. Variation this wide usually signals inconsistent contracting rather than genuine case-mix differences.`,
+        'CV ' + v.cv.toFixed(2));
+
+    // 4 — payer disagreement
+    if (dis.length) {
+      const d = dis[0];
+      add('med', `Payers disagree most on ${d.billing_code}`,
+        `Across ${d.n_payers} payers, median prices for ${trunc(d.description, 60)} differ by ${isFinite(d.ratio) ? d.ratio.toFixed(1) + '×' : '—'} between the cheapest and most expensive payer (${usdC(d.spread)} apart). This is the widest payer disagreement in the dataset.`,
+        isFinite(d.ratio) ? d.ratio.toFixed(1) + '×' : '—');
+      const a = [...dis].sort((x, y) => x.disagreement - y.disagreement)[0];
+      if (a) add('info', `${a.billing_code} is priced almost identically everywhere`,
+        `Payer medians for ${trunc(a.description, 60)} vary by only ${pct(a.disagreement, 1)} — effectively a commodity rate with little negotiating room.`,
+        pct(a.disagreement));
+    }
+
+    // 5 — skew
+    if (k.avg_rate && k.median_rate && k.avg_rate > k.median_rate * 1.3)
+      add('med', 'Average price is inflated by a high-cost tail',
+        `The mean negotiated rate (${usdC(k.avg_rate)}) sits ${pct(k.avg_rate / k.median_rate - 1)} above the median (${usdC(k.median_rate)}). Use the median for headline comparisons — the mean is being pulled up by a small number of very expensive procedures.`,
+        usdC(k.avg_rate - k.median_rate) + ' gap');
+
+    // 6 — anomalies
+    if (outl.length) {
+      const o = outl[0];
+      add('high', `Statistical anomaly on ${o.billing_code}`,
+        `${o.payer} has a rate of ${usd(o.rate)} against a procedure median of ${usd(o.med)} — ${o.z.toFixed(1)} standard deviations out. ${num(outl.length)} rate${outl.length > 1 ? 's' : ''} in total exceed 3σ and are worth validating against the source file before publishing.`,
+        o.z.toFixed(1) + 'σ');
+    }
+
+    // 7 — internal consistency
+    const worst = [...payers].sort((a, b) => b.cv - a.cv)[0];
+    if (worst && worst.cv > 1)
+      add('info', `${worst.payer} has the least consistent internal pricing`,
+        `Its coefficient of variation is ${worst.cv.toFixed(2)} across ${num(worst.n)} rates spanning ${num(worst.n_codes)} procedures — a much wider internal spread than its peers, which often reflects a mix of facility tiers under one contract.`,
+        'CV ' + worst.cv.toFixed(2));
+
+    // 8 — underpriced candidates
+    const under = varr.filter(x => x.n_payers >= 3 && x.ratio > 3).slice(0, 1);
+    for (const u of under)
+      add('med', `${u.billing_code} may be underpriced by at least one payer`,
+        `The highest negotiated rate is ${u.ratio.toFixed(1)}× the lowest for the same procedure (${usdC(u.spread)} apart). Either the low end is an outdated contract or the high end has room to come down.`,
+        u.ratio.toFixed(1) + '×');
+  } catch (e) {
+    host.innerHTML = `<div class="glass card p-5">${emptyState('Insights unavailable', e.message)}</div>`;
+    return;
+  }
+
+  if (!out.length) {
+    host.innerHTML = `<div class="glass card p-5">${emptyState('Nothing unusual to report',
+      'Under the current filters the data looks evenly distributed. Widen the filters to surface more findings.')}</div>`;
+    return;
+  }
+
+  const rank = { high: 0, med: 1, low: 2, info: 3 };
+  out.sort((a, b) => rank[a.sev] - rank[b.sev]);
+  const tone = { high: ['var(--c5)', 'Anomaly'], med: ['var(--c4)', 'Notable'],
+                 low: ['var(--c3)', 'Favourable'], info: ['var(--c2)', 'Context'] };
+  host.innerHTML = `<div class="grid grid-cols-12 gap-3.5">${out.map((i, n) => {
+    const [c, lbl] = tone[i.sev];
+    return `<div class="glass card col-span-12 md:col-span-6 p-4 fade-up" style="animation-delay:${n * 45}ms">
+      <div class="card__glow"></div>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-[9.5px] mono tracking-wider px-1.5 py-0.5 rounded" style="background:${c}22;color:${c}">${lbl.toUpperCase()}</span>
+        ${i.metric ? `<span class="text-[11px] mono ml-auto" style="color:${c}">${esc(i.metric)}</span>` : ''}
+      </div>
+      <h4 class="text-[13.5px] font-semibold mb-1.5 leading-snug">${esc(i.title)}</h4>
+      <p class="text-[12px] dim leading-relaxed">${esc(i.body)}</p>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/* ─────────────── §9  SHELL: NAV, FILTERS, PALETTE, SHORTCUTS ─────────────── */
+
+let activeSection = 'overview';
+
+function buildNav() {
+  $('#nav').innerHTML = SECTIONS.map((s, i) => `
+    <button class="nav-item w-full text-left px-3 py-2 rounded-lg text-[12.5px] dim flex items-center gap-2.5" data-sec="${s.id}">
+      <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${s.icon}"/></svg>
+      <span class="flex-1 truncate">${s.name}</span>
+      <span class="text-[9.5px] mono faint">${i + 1}</span>
+    </button>`).join('');
+  $('#nav').addEventListener('click', e => {
+    const b = e.target.closest('[data-sec]'); if (b) go(b.dataset.sec);
+  });
+}
+
+function go(id) {
+  const s = SECTIONS.find(x => x.id === id); if (!s) return;
+  activeSection = id;
+  $$('.sec').forEach(n => n.classList.toggle('on', n.id === 'sec-' + id));
+  $$('[data-sec]').forEach(n => n.classList.toggle('active', n.dataset.sec === id));
+  $('#secTitle').textContent = s.name === 'Overview' ? 'Executive Overview' : s.name;
+  $('#secSub').textContent = s.sub;
+  history.replaceState(null, '', '#' + id);
+  closeSidebar();
+  // Kick lazy loading for cards now on screen.
+  $$('#sec-' + id + ' [data-chart]').forEach(n => { if (!n.dataset.rendered) io.observe(n); });
+  if (id === 'explorer') loadExplorer();
+  if (id === 'insights' && !$('#insightsHost')?.dataset.done) {
+    $('#insightsHost').dataset.done = '1'; buildInsights();
+  }
+  if (id === 'sql') renderRecent();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+const closeSidebar = () => {
+  if (window.innerWidth < 1024) {
+    $('#sidebar').classList.add('-translate-x-full'); $('#scrim').classList.add('hidden');
+  }
+};
+
+/* ── Filter UI ──────────────────────────────────────────────────── */
+async function buildFilters() {
+  const rows = await q(SQL.facets());
+  const of = k => rows.filter(r => r.f === k).map(r => r.v).filter(v => v != null);
+  const fill = (sel, vals, allLabel) => {
+    const n = $(sel); if (!n) return;
+    n.innerHTML = (allLabel ? `<option value="">${allLabel}</option>` : '')
+      + vals.map(v => `<option value="${esc(v)}">${esc(String(v).length > 30 ? String(v).slice(0, 29) + '…' : v)}</option>`).join('');
+  };
+  const payers = of('payer');
+  $('#fPayer').innerHTML = payers.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  $('#fPayer').size = Math.min(4, payers.length);
+  fill('#fCodeType', of('code_type'), 'All code systems');
+  fill('#fNegType',  of('neg_type'),  'All rate types');
+  fill('#fClass',    of('class'),     'All billing classes');
+  fill('#fSource',   of('source'),    'All source files');
+  fill('#fExpiry',   of('expiry'),    'Any expiration');
+  $('#fNegType').value = 'negotiated';
+  syncFilterUI();
+}
+
+function readFilters() {
+  F.payers = [...$('#fPayer').selectedOptions].map(o => o.value);
+  F.codeType = $('#fCodeType').value;
+  F.negType = $('#fNegType').value;
+  F.billingClass = $('#fClass').value;
+  F.source = $('#fSource').value;
+  F.expiry = $('#fExpiry').value;
+  const mn = parseFloat($('#fMin').value), mx = parseFloat($('#fMax').value);
+  F.min = isFinite(mn) ? mn : null;
+  F.max = isFinite(mx) ? mx : null;
+  F.search = $('#globalSearch').value.trim();
+}
+const syncFilterUI = () => { $('#filterSummary').textContent = filterSummary(); };
+
+async function applyFilters() {
+  readFilters(); syncFilterUI(); invalidateAll();
+  await paintKPIs();
+  const insHost = $('#insightsHost'); if (insHost) delete insHost.dataset.done;
+  if (activeSection === 'explorer') { EXP.page = 0; loadExplorer(); }
+  if (activeSection === 'insights') { $('#insightsHost').dataset.done = '1'; buildInsights(); }
+  $$('#sec-' + activeSection + ' [data-chart]').forEach(n => renderChart(n.dataset.chart));
+  toast('Filters applied');
+}
+
+function resetFilters() {
+  ['#fCodeType', '#fClass', '#fSource', '#fExpiry'].forEach(s => $(s).value = '');
+  $('#fNegType').value = 'negotiated';
+  [...$('#fPayer').options].forEach(o => o.selected = false);
+  $('#fMin').value = ''; $('#fMax').value = ''; $('#globalSearch').value = ''; $('#expSearch') && ($('#expSearch').value = '');
+  applyFilters();
+}
+
+/* ── Card action buttons (pin / SQL / PNG / fullscreen) ─────────── */
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.dataset.id;
+  if (b.dataset.act === 'sql') {
+    $('#sqlTitle').textContent = 'SQL — ' + id;
+    $('#sqlBody').textContent = (chartSQL.get(id) || 'This card has not run yet. Scroll it into view first.').trim();
+    $('#sqlModal').showModal();
+  }
+  if (b.dataset.act === 'png') downloadPNG(id);
+  if (b.dataset.act === 'full') openFullscreen(id);
+  if (b.dataset.act === 'pin') {
+    pinned.has(id) ? pinned.delete(id) : pinned.add(id);
+    localStorage.setItem('rp_pins', JSON.stringify([...pinned]));
+    b.textContent = pinned.has(id) ? '★' : '☆';
+    const host = document.getElementById('card-' + id);
+    if (pinned.has(id)) { host.parentNode.prepend(host); toast('Pinned to top of section'); }
+    else toast('Unpinned');
+  }
+});
+
+function downloadPNG(id) {
+  const c = charts.get(id);
+  if (!c) return toast('This card has no chart to export', 'warn');
+  // Composite onto an opaque background so the PNG isn't transparent.
+  const src = c.canvas, out = el('canvas');
+  out.width = src.width; out.height = src.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#0b0d16' : '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(src, 0, 0);
+  const a = el('a'); a.href = out.toDataURL('image/png'); a.download = `${id}.png`; a.click();
+  toast('Chart downloaded');
+}
+
+let fsChart = null;
+function openFullscreen(id) {
+  const c = charts.get(id);
+  if (!c) return toast('Nothing to expand on this card', 'warn');
+  $('#fsTitle').textContent = $(`#card-${id} h3`)?.textContent || id;
+  $('#fsHost').classList.add('on');
+  fsChart?.destroy();
+  // Reuse the live data/options objects — JSON cloning would drop function-valued
+  // scriptable options (gradients, per-point colours) that these charts rely on.
+  fsChart = new Chart($('#fsCanvas').getContext('2d'), { type: c.config.type, data: c.data, options: c.options });
+  fsChart.__srcId = id;
+}
+const closeFullscreen = () => { $('#fsHost').classList.remove('on'); fsChart?.destroy(); fsChart = null; };
+
+/* ── SQL console ────────────────────────────────────────────────── */
+let lastSqlRows = [];
+async function runUserSQL() {
+  const sql = $('#sqlInput').value.trim(); if (!sql) return;
+  const out = $('#sqlOut'); out.innerHTML = '<div class="skel h-24"></div>';
+  const t0 = performance.now();
+  try {
+    const rows = await q(sql, { cacheable: false });
+    lastSqlRows = rows;
+    $('#sqlMeta').textContent = `${num(rows.length)} rows · ${(performance.now() - t0).toFixed(0)} ms`;
+    if (!rows.length) { out.innerHTML = emptyState('Query returned no rows', 'It ran successfully but matched nothing.'); return; }
+    const cols = Object.keys(rows[0]);
+    out.innerHTML = `<table class="tbl"><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.slice(0, 400).map(r => `<tr>${cols.map(c => {
+        const v = r[c];
+        return `<td class="${typeof v === 'number' ? 'num' : ''}">${esc(typeof v === 'number' ? (Number.isInteger(v) ? num(v) : v.toFixed(2)) : v ?? '—')}</td>`;
+      }).join('')}</tr>`).join('')}</tbody></table>
+      ${rows.length > 400 ? `<div class="text-[11px] faint p-2">Showing first 400 of ${num(rows.length)} rows — use “Download result” for everything.</div>` : ''}`;
+    renderRecent();
+  } catch (e) {
+    $('#sqlMeta').textContent = '';
+    out.innerHTML = `<div class="p-3 rounded-lg text-[12px] mono" style="background:rgba(251,113,133,.10);color:var(--c5)">${esc(e.message)}</div>`;
+  }
+}
+function renderRecent() {
+  const host = $('#recentList'); if (!host) return;
+  if (!recentQueries.length) { host.innerHTML = `<div class="text-[12px] faint">Nothing yet — scroll through a section and its queries will appear here.</div>`; return; }
+  host.innerHTML = recentQueries.slice(0, 24).map((r, i) => `
+    <button class="btn w-full text-left px-2.5 py-2" data-recent="${i}">
+      <div class="mono text-[10.5px] dim truncate">${esc(r.sql.replace(/\s+/g, ' ').trim().slice(0, 84))}</div>
+      <div class="text-[9.5px] faint mono mt-0.5">${r.ms.toFixed(0)} ms · ${num(r.rows)} rows</div>
+    </button>`).join('');
+  host.onclick = e => {
+    const b = e.target.closest('[data-recent]'); if (!b) return;
+    $('#sqlInput').value = recentQueries[+b.dataset.recent].sql.trim();
+    toast('Loaded into the editor');
+  };
+}
+
+/* ── Command palette ────────────────────────────────────────────── */
+function commands() {
+  const c = SECTIONS.map(s => ({ label: 'Go to ' + s.name, hint: 'Navigate', run: () => go(s.id) }));
+  c.push(
+    { label: 'Toggle dark / light theme', hint: 'D', run: toggleTheme },
+    { label: 'Apply filters', hint: 'Filters', run: applyFilters },
+    { label: 'Reset all filters', hint: 'Filters', run: resetFilters },
+    { label: 'Export filtered rows as CSV', hint: 'Data', run: exportCSV },
+    { label: 'Change data source', hint: 'Data', run: () => $('#srcModal').showModal() },
+    { label: 'Reload demo dataset', hint: 'Data', run: async () => { await loadDemo(); await refreshAll(); toast('Demo dataset reloaded'); } },
+    { label: 'Clear query cache', hint: 'Performance', run: () => { clearCache(); invalidateAll(); toast('Cache cleared'); } },
+    { label: 'Keyboard shortcuts', hint: '?', run: () => $('#helpModal').showModal() },
+  );
+  for (const [id] of chartSpec) c.push({ label: 'View SQL — ' + id, hint: 'Query', run: () => {
+    $('#sqlTitle').textContent = 'SQL — ' + id;
+    $('#sqlBody').textContent = (chartSQL.get(id) || 'Not run yet.').trim();
+    $('#sqlModal').showModal();
+  } });
+  return c;
+}
+let palItems = [], palIdx = 0;
+function openPalette() {
+  palItems = commands(); palIdx = 0;
+  $('#palInput').value = ''; paintPalette(''); $('#palette').showModal(); $('#palInput').focus();
+}
+function paintPalette(term) {
+  const t = term.toLowerCase();
+  const hits = palItems.filter(i => i.label.toLowerCase().includes(t)).slice(0, 40);
+  palIdx = Math.min(palIdx, Math.max(0, hits.length - 1));
+  $('#palList').innerHTML = hits.length ? hits.map((i, n) => `
+    <button class="w-full text-left px-3 py-2 rounded-lg text-[12.5px] flex items-center gap-2 ${n === palIdx ? 'bg-white/10' : ''}" data-pal="${n}">
+      <span class="flex-1 truncate">${esc(i.label)}</span>
+      <span class="text-[10px] mono faint">${esc(i.hint)}</span></button>`).join('')
+    : `<div class="px-3 py-6 text-center text-[12px] faint">No matching command</div>`;
+  $('#palList').dataset.hits = JSON.stringify(hits.map(h => palItems.indexOf(h)));
+}
+function runPalette(n) {
+  const idxs = JSON.parse($('#palList').dataset.hits || '[]');
+  const item = palItems[idxs[n]]; if (!item) return;
+  $('#palette').close(); item.run();
+}
+
+/* ── Theme ──────────────────────────────────────────────────────── */
+function toggleTheme() {
+  const dark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('rp_theme', dark ? 'dark' : 'light');
+  // Charts bake theme colours into their options, so rebuild the visible ones.
+  for (const [id, c] of charts) { c.destroy(); charts.delete(id); }
+  $$('#sec-' + activeSection + ' [data-chart]').forEach(n => renderChart(n.dataset.chart));
+  $$('[data-chart]').forEach(n => { if (!n.closest('#sec-' + activeSection)) delete n.dataset.rendered; });
+}
+
+/* ── Keyboard shortcuts ─────────────────────────────────────────── */
+const SHORTCUTS = [
+  ['⌘K / Ctrl K', 'Command palette'], ['1 – 9', 'Jump to section'], ['/', 'Focus search'],
+  ['D', 'Toggle theme'], ['E', 'Export CSV'], ['R', 'Reset filters'],
+  ['⌘↵', 'Run SQL (in console)'], ['Esc', 'Close overlay'], ['?', 'This help'],
+];
+function wireKeys() {
+  $('#helpList').innerHTML = SHORTCUTS.map(([k, d]) =>
+    `<div class="flex items-center gap-3"><kbd class="mono text-[11px] px-2 py-1 rounded" style="background:rgba(var(--stroke),.09)">${esc(k)}</kbd><span class="dim">${esc(d)}</span></div>`).join('');
+
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); return openPalette(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target.id === 'sqlInput') { e.preventDefault(); return runUserSQL(); }
+    if (e.key === 'Escape') { closeFullscreen(); return; }
+
+    if ($('#palette').open) {
+      const n = $$('#palList [data-pal]').length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); palIdx = Math.min(palIdx + 1, n - 1); paintPalette($('#palInput').value); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); palIdx = Math.max(palIdx - 1, 0); paintPalette($('#palInput').value); }
+      if (e.key === 'Enter')     { e.preventDefault(); runPalette(palIdx); }
+      return;
+    }
+    if (typing) return;
+
+    if (e.key === '/') { e.preventDefault(); $('#globalSearch').focus(); }
+    else if (e.key === '?') { e.preventDefault(); $('#helpModal').showModal(); }
+    else if (e.key.toLowerCase() === 'd') toggleTheme();
+    else if (e.key.toLowerCase() === 'e') exportCSV();
+    else if (e.key.toLowerCase() === 'r') resetFilters();
+    else if (/^[1-9]$/.test(e.key)) { const s = SECTIONS[+e.key - 1]; if (s) go(s.id); }
+  });
+}
+
+/* ─────────────── §10  DATA SOURCE UI + BOOT ─────────────── */
+
+function buildSourceModal() {
+  $('#srcOptions').innerHTML = `
+    <button class="btn w-full text-left px-3.5 py-3" data-src="demo">
+      <div class="text-[13px] font-medium">Demo dataset</div>
+      <div class="text-[11.5px] dim mt-0.5">~27,000 synthetic rates across 8 payers and 38 procedures, shaped like a real MRF load.</div>
+    </button>
+    <label class="btn w-full text-left px-3.5 py-3 block cursor-pointer">
+      <div class="text-[13px] font-medium">Load Parquet exports <span class="text-[10px] mono ml-1" style="color:var(--c3)">RECOMMENDED</span></div>
+      <div class="text-[11.5px] dim mt-0.5">Select negotiated_rates, payers and billing_codes .parquet files together.</div>
+      <input type="file" class="hidden" multiple accept=".parquet" data-src="parquet">
+    </label>
+    <label class="btn w-full text-left px-3.5 py-3 block cursor-pointer">
+      <div class="text-[13px] font-medium">Attach a .duckdb file</div>
+      <div class="text-[11.5px] dim mt-0.5">Works when your DuckDB storage version matches the WASM build — otherwise use Parquet.</div>
+      <input type="file" class="hidden" accept=".duckdb,.db" data-src="duckdb">
+    </label>
+    <label class="btn w-full text-left px-3.5 py-3 block cursor-pointer">
+      <div class="text-[13px] font-medium">Load CSV exports</div>
+      <div class="text-[11.5px] dim mt-0.5">Same three tables as CSV. Slower to parse, but universally portable.</div>
+      <input type="file" class="hidden" multiple accept=".csv" data-src="csv">
+    </label>`;
+
+  $('#srcOptions').addEventListener('click', async e => {
+    const b = e.target.closest('[data-src="demo"]'); if (!b) return;
+    await withSource(() => loadDemo());
+  });
+  $('#srcOptions').addEventListener('change', async e => {
+    const inp = e.target.closest('input[type=file]'); if (!inp || !inp.files.length) return;
+    const kind = inp.dataset.src, files = [...inp.files];
+    await withSource(() => kind === 'parquet' ? loadParquet(files)
+      : kind === 'csv' ? loadCSV(files) : loadDuckFile(files[0]));
+    inp.value = '';
+  });
+}
+
+async function withSource(fn) {
+  busy(true);
+  try {
+    await fn();
+    $('#srcModal').close();
+    $('#srcName').textContent = DB.label;
+    $('#srcDot').style.background = DB.source === 'demo' ? 'var(--c3)' : 'var(--c2)';
+    cache.clear();
+    await buildFilters();
+    await refreshAll();
+    toast('Loaded ' + DB.label);
+  } catch (e) {
+    toast(e.message, 'err');
+    console.error(e);
+  } finally { busy(false); }
+}
+
+/** Re-run everything visible after a source or filter change. */
+async function refreshAll() {
+  invalidateAll();
+  await paintKPIs();
+  const ins = $('#insightsHost'); if (ins) delete ins.dataset.done;
+  $$('#sec-' + activeSection + ' [data-chart]').forEach(n => { n.dataset.rendered = '1'; renderChart(n.dataset.chart); });
+  if (activeSection === 'explorer') loadExplorer();
+  if (activeSection === 'insights') { ins.dataset.done = '1'; buildInsights(); }
+}
+
+function wireShell() {
+  $('#btnMenu').onclick = () => { $('#sidebar').classList.remove('-translate-x-full'); $('#scrim').classList.remove('hidden'); };
+  $('#scrim').onclick = closeSidebar;
+  $('#btnTheme').onclick = toggleTheme;
+  $('#btnHelp').onclick = () => $('#helpModal').showModal();
+  $('#btnPalette').onclick = openPalette;
+  $('#btnSource').onclick = () => $('#srcModal').showModal();
+  $('#btnApply').onclick = applyFilters;
+  $('#btnReset').onclick = resetFilters;
+  $('#btnExport').onclick = exportCSV;
+  $('#globalSearch').addEventListener('input', debounce(() => applyFilters(), 480));
+  $$('#filterBar select, #filterBar input').forEach(n => n.addEventListener('change', syncFilterUI));
+
+  $('#srcClose').onclick = () => $('#srcModal').close();
+  $('#sqlClose').onclick = () => $('#sqlModal').close();
+  $('#helpClose').onclick = () => $('#helpModal').close();
+  $('#sqlCopy').onclick = () => { navigator.clipboard?.writeText($('#sqlBody').textContent); toast('SQL copied'); };
+  $('#fsClose').onclick = closeFullscreen;
+  $('#fsPng').onclick = () => fsChart && downloadPNG(fsChart.__srcId);
+
+  $('#palInput').addEventListener('input', e => { palIdx = 0; paintPalette(e.target.value); });
+  $('#palList').addEventListener('click', e => {
+    const b = e.target.closest('[data-pal]'); if (b) runPalette(+b.dataset.pal);
+  });
+  [$('#palette'), $('#srcModal'), $('#sqlModal'), $('#helpModal')].forEach(d =>
+    d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+
+  document.addEventListener('click', e => {
+    if (e.target.id === 'sqlRun') runUserSQL();
+    if (e.target.id === 'sqlDl') {
+      if (!lastSqlRows.length) return toast('Run a query first', 'warn');
+      download(`query_${Date.now()}.csv`, toCSV(lastSqlRows, Object.keys(lastSqlRows[0])));
+    }
+  });
+
+  window.addEventListener('resize', debounce(() => renderExplorerWindow(), 200));
+}
+
+/* ── Boot ───────────────────────────────────────────────────────── */
+(async function main() {
+  if (localStorage.getItem('rp_theme') === 'light') document.documentElement.classList.remove('dark');
+
+  buildNav(); buildSections(); registerCharts(); registerCharts2();
+  buildSourceModal(); wireShell(); wireKeys(); wireExplorer();
+
+  // Reorder pinned cards to the top of their grid.
+  for (const id of pinned) {
+    const n = document.getElementById('card-' + id);
+    if (n) n.parentNode.prepend(n);
+  }
+
+  const start = (location.hash || '#overview').slice(1);
+  go(SECTIONS.some(s => s.id === start) ? start : 'overview');
+
+  busy(true);
+  try {
+    await bootDuckDB();
+    if (DB.source !== 'external') await loadDemo();
+    else await runScript(V_RATES + V_STATS);
+    $('#srcName').textContent = DB.label;
+    await buildFilters();
+    await paintKPIs();
+    // Re-enter the active section now that the connection is live: this fires the
+    // data loads that were skipped if the page was deep-linked to e.g. #explorer.
+    go(activeSection);
+    $$('#sec-' + activeSection + ' [data-chart]').forEach(n => io.observe(n));
+    toast('Ready — ' + DB.label);
+  } catch (e) {
+    console.error(e);
+    $('#sections').insertAdjacentHTML('afterbegin', `
+      <div class="glass card p-6 mb-4">
+        <h3 class="font-semibold mb-1.5" style="color:var(--c5)">DuckDB WASM could not start</h3>
+        <p class="text-[12.5px] dim leading-relaxed mb-2">${esc(e.message)}</p>
+        <p class="text-[12px] dim leading-relaxed">This page must be served over http, not opened directly from the
+        filesystem — browsers block the WebAssembly worker on <span class="mono">file://</span> origins. From this
+        folder run <span class="mono px-1.5 py-0.5 rounded" style="background:rgba(var(--stroke),.08)">python3 -m http.server 8000</span>
+        and open <span class="mono">http://localhost:8000/analytics.html</span>.</p>
+      </div>`);
+  } finally { busy(false); }
+})();
+</script>
+</body>
+</html>
