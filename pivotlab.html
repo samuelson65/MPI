@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PivotLab — data workbench</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --ink:#131822;
+  --ink-2:#2A3240;
+  --slate:#616D7E;
+  --slate-2:#8B97A6;
+  --line:#DFE4EB;
+  --line-2:#EDF0F4;
+  --paper:#FFFFFF;
+  --wash:#F5F7FA;
+  --indigo:#4B3FD6;
+  --indigo-soft:#EEEDFC;
+  --lime:#B8E62D;
+  --signal:#FF7A2F;
+  --signal-soft:#FFF0E7;
+  --teal:#0E9C90;
+  --rose:#D9376E;
+
+  --r-sm:6px; --r-md:10px; --r-lg:16px;
+  --sh-1:0 1px 2px rgba(19,24,34,.06);
+  --sh-2:0 6px 24px -8px rgba(19,24,34,.18);
+  --sb:296px;
+
+  --f-display:'Space Grotesk',system-ui,sans-serif;
+  --f-body:'Inter',system-ui,-apple-system,sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;font-family:var(--f-body);color:var(--ink);background:var(--wash);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+.app{display:flex;min-height:100vh}
+.sidebar{
+  width:var(--sb);flex:0 0 var(--sb);background:var(--ink);color:#DCE2EC;
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.brand{padding:22px 22px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand h1{
+  font-family:var(--f-display);font-size:19px;font-weight:700;margin:0;letter-spacing:-.02em;color:#fff;
+  display:flex;align-items:center;gap:9px;
+}
+.brand .dot{width:9px;height:9px;background:var(--lime);border-radius:2px;transform:rotate(45deg)}
+.brand p{margin:6px 0 0;font-size:12px;color:#7C8798;letter-spacing:.01em}
+
+.sb-body{padding:18px;flex:1}
+.sb-sec{margin-bottom:22px}
+.sb-label{
+  font-family:var(--f-display);font-size:10.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.13em;color:#6E7A8C;margin:0 0 9px;
+}
+
+/* drop target */
+.drop{
+  border:1.5px dashed #3A4454;border-radius:var(--r-md);padding:24px 14px;text-align:center;
+  background:rgba(255,255,255,.02);transition:border-color .18s,background .18s;cursor:pointer;
+}
+.drop:hover,.drop.over{border-color:var(--lime);background:rgba(184,230,45,.07)}
+.drop .glyph{font-family:var(--f-mono);font-size:20px;color:var(--lime);line-height:1}
+.drop b{display:block;margin-top:9px;font-size:13px;color:#E7ECF3;font-weight:600}
+.drop span{display:block;margin-top:3px;font-size:11.5px;color:#6E7A8C}
+
+.filepill{
+  margin-top:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+  border-radius:var(--r-sm);padding:9px 11px;display:flex;gap:9px;align-items:flex-start;
+}
+.filepill .nm{font-size:12px;font-weight:600;color:#fff;word-break:break-all;line-height:1.35}
+.filepill .mt{font-size:11px;color:#7C8798;font-family:var(--f-mono);margin-top:2px}
+.filepill button{background:none;border:none;color:#7C8798;font-size:15px;padding:0 2px;line-height:1}
+.filepill button:hover{color:var(--signal)}
+
+.sample{
+  width:100%;margin-top:10px;background:transparent;border:1px solid rgba(255,255,255,.14);
+  color:#B9C3D0;border-radius:var(--r-sm);padding:8px;font-size:12px;font-weight:500;transition:.16s;
+}
+.sample:hover{border-color:var(--lime);color:var(--lime)}
+
+/* filters */
+.filt{border-top:1px solid rgba(255,255,255,.07);padding:11px 0}
+.filt:last-child{border-bottom:1px solid rgba(255,255,255,.07)}
+.filt-h{display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
+.filt-h .fn{font-size:12.5px;font-weight:600;color:#D5DCE6;display:flex;gap:7px;align-items:center;min-width:0}
+.filt-h .fn em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filt-h .car{color:#6E7A8C;font-size:10px;transition:transform .18s}
+.filt.open .car{transform:rotate(90deg)}
+.filt-b{display:none;padding-top:10px}
+.filt.open .filt-b{display:block}
+.chk{display:flex;align-items:center;gap:8px;padding:3.5px 0;font-size:12px;color:#B9C3D0;cursor:pointer}
+.chk input{accent-color:var(--lime);width:14px;height:14px;flex:0 0 auto}
+.chk span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chk-list{max-height:174px;overflow-y:auto;margin-top:6px;padding-right:4px}
+.mini{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#E7ECF3;
+  border-radius:5px;padding:5px 7px;font-size:11.5px;width:100%;font-family:var(--f-mono)}
+.mini::placeholder{color:#5D687A}
+.range{display:flex;gap:6px;align-items:center}
+.range span{color:#6E7A8C;font-size:11px}
+.filt-acts{display:flex;gap:8px;margin-top:8px}
+.filt-acts button{flex:1;background:none;border:1px solid rgba(255,255,255,.13);color:#8B97A6;
+  border-radius:5px;padding:4px;font-size:11px}
+.filt-acts button:hover{color:var(--lime);border-color:var(--lime)}
+
+.tag{font-family:var(--f-mono);font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;
+  letter-spacing:.04em;flex:0 0 auto}
+.t-num{background:rgba(75,63,214,.28);color:#B6AEFF}
+.t-cat{background:rgba(14,156,144,.24);color:#5BD6C9}
+.t-date{background:rgba(255,122,47,.2);color:#FFAF7E}
+.t-bool{background:rgba(217,55,110,.2);color:#F58BAE}
+
+/* ============================================================
+   MAIN
+   ============================================================ */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{
+  background:var(--paper);border-bottom:1px solid var(--line);padding:0 26px;
+  display:flex;gap:4px;align-items:flex-end;position:sticky;top:0;z-index:20;overflow-x:auto;
+}
+.tab{
+  background:none;border:none;padding:17px 15px 14px;font-family:var(--f-display);font-size:13.5px;
+  font-weight:600;color:var(--slate-2);border-bottom:2.5px solid transparent;white-space:nowrap;transition:.16s;
+}
+.tab:hover{color:var(--ink-2)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--indigo)}
+.tab .n{font-family:var(--f-mono);font-size:10px;color:var(--slate-2);margin-left:5px}
+.pane{padding:24px 26px 60px;display:none}
+.pane.on{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+.empty{max-width:440px;margin:16vh auto;text-align:center}
+.empty h2{font-family:var(--f-display);font-size:22px;margin:0 0 8px;letter-spacing:-.02em}
+.empty p{color:var(--slate);margin:0}
+
+/* summary banner */
+.banner{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;margin-bottom:18px}
+.stat{background:var(--paper);padding:14px 16px}
+.stat .k{font-family:var(--f-display);font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.11em;color:var(--slate-2)}
+.stat .v{font-family:var(--f-mono);font-size:22px;font-weight:700;margin-top:5px;letter-spacing:-.03em}
+.stat .s{font-size:11.5px;color:var(--slate);margin-top:1px}
+.stat.warn .v{color:var(--signal)}
+
+/* SIGNATURE: schema strip */
+.schema{
+  background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:13px 15px;margin-bottom:18px;
+}
+.schema-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
+.schema-h .t{font-family:var(--f-display);font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.12em;color:var(--slate-2)}
+.schema-h .h{font-size:11.5px;color:var(--slate-2)}
+.strip{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px}
+.card{
+  flex:0 0 auto;width:152px;border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 10px;
+  background:var(--paper);cursor:grab;transition:.16s;
+}
+.card:hover{border-color:var(--indigo);box-shadow:var(--sh-1);transform:translateY(-1px)}
+.card:active{cursor:grabbing}
+.card .cn{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px}
+.card .cm{display:flex;justify-content:space-between;align-items:center;margin-top:6px;
+  font-family:var(--f-mono);font-size:9.5px;color:var(--slate-2)}
+.spark{display:flex;align-items:flex-end;gap:1.5px;height:22px}
+.spark i{flex:1;background:var(--indigo);opacity:.55;border-radius:1px;min-height:2px}
+.card:hover .spark i{opacity:.9}
+.tag.s{font-size:8.5px}
+.t-num.s{background:var(--indigo-soft);color:var(--indigo)}
+.t-cat.s{background:#E1F5F3;color:var(--teal)}
+.t-date.s{background:var(--signal-soft);color:#C4551D}
+.t-bool.s{background:#FCE7EE;color:var(--rose)}
+
+/* panels */
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:18px}
+.panel-h{padding:14px 16px;border-bottom:1px solid var(--line-2);display:flex;
+  justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.panel-h h3{font-family:var(--f-display);font-size:14px;font-weight:600;margin:0;letter-spacing:-.01em}
+.panel-h p{margin:2px 0 0;font-size:12px;color:var(--slate)}
+.panel-b{padding:16px}
+.panel-b.flush{padding:0}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+
+.btn{background:var(--ink);color:#fff;border:1px solid var(--ink);border-radius:var(--r-sm);
+  padding:7px 13px;font-size:12.5px;font-weight:600;transition:.16s}
+.btn:hover{background:var(--ink-2);border-color:var(--ink-2)}
+.btn.ghost{background:var(--paper);color:var(--ink-2);border-color:var(--line)}
+.btn.ghost:hover{background:var(--wash);border-color:var(--slate-2)}
+.btn.acc{background:var(--indigo);border-color:var(--indigo)}
+.btn.acc:hover{background:#3E33BC;border-color:#3E33BC}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld label{font-family:var(--f-display);font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--slate-2)}
+select,input[type=text],input[type=number],input[type=date],input[type=search]{
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 9px;font-size:12.5px;
+  background:var(--paper);min-width:120px;transition:border-color .16s}
+select:hover,input:hover{border-color:var(--slate-2)}
+select:focus,input:focus{border-color:var(--indigo);outline:none;box-shadow:0 0 0 3px var(--indigo-soft)}
+.switch{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);cursor:pointer;user-select:none}
+.switch input{accent-color:var(--indigo);width:15px;height:15px}
+
+/* tables */
+.tw{overflow:auto;max-height:620px;border-radius:0 0 var(--r-md) var(--r-md)}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line-2);white-space:nowrap}
+thead th{
+  background:var(--wash);position:sticky;top:0;z-index:3;font-family:var(--f-display);
+  font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--ink-2);
+  border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+thead th:hover{background:#EDF0F5}
+thead tr.fr th{top:34px;background:var(--paper);padding:5px 8px;cursor:default;z-index:2}
+thead tr.fr th:hover{background:var(--paper)}
+thead tr.fr input{width:100%;min-width:80px;padding:4px 6px;font-size:11.5px;font-family:var(--f-mono)}
+tbody tr:hover td{background:#FAFBFD}
+td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+th.num{text-align:right}
+td.nul{color:var(--slate-2);font-style:italic}
+.sort::after{content:'';margin-left:5px;font-size:9px;color:var(--slate-2)}
+.sort.up::after{content:'▲';color:var(--indigo)}
+.sort.dn::after{content:'▼';color:var(--indigo)}
+.pg{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 16px;
+  border-top:1px solid var(--line-2);flex-wrap:wrap}
+.pg .info{font-size:12px;color:var(--slate);font-family:var(--f-mono)}
+.pgb{display:flex;gap:5px;align-items:center}
+.pgb button{background:var(--paper);border:1px solid var(--line);border-radius:5px;
+  padding:4px 9px;font-size:12px;font-family:var(--f-mono)}
+.pgb button:hover:not(:disabled){border-color:var(--indigo);color:var(--indigo)}
+.pgb button:disabled{opacity:.35;cursor:not-allowed}
+
+/* pivot shelves */
+.shelves{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.shelf{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--wash);
+  padding:10px;min-height:104px;transition:.16s}
+.shelf.over{border-color:var(--indigo);background:var(--indigo-soft);border-style:dashed}
+.shelf .sh{font-family:var(--f-display);font-size:10px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.11em;color:var(--slate-2);margin-bottom:8px;display:flex;justify-content:space-between}
+.shelf .hint{font-size:11.5px;color:var(--slate-2);padding:6px 2px}
+.chip{background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:5px 7px;
+  margin-bottom:6px;display:flex;align-items:center;gap:6px;font-size:12px;box-shadow:var(--sh-1)}
+.chip .cx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.chip select{min-width:0;padding:2px 4px;font-size:10.5px;border-radius:4px;font-family:var(--f-mono)}
+.chip button{background:none;border:none;color:var(--slate-2);font-size:14px;line-height:1;padding:0 2px}
+.chip button:hover{color:var(--rose)}
+.chip .ord{font-family:var(--f-mono);font-size:9px;color:var(--slate-2);background:var(--wash);
+  padding:1px 4px;border-radius:3px}
+
+/* pivot output */
+.pv thead th{background:var(--wash)}
+.pv th.corner{background:var(--ink);color:#fff;position:sticky;left:0;z-index:5}
+.pv th.rh{position:sticky;left:0;background:var(--paper);z-index:2;font-weight:500;
+  font-family:var(--f-body);cursor:default;font-size:12.5px;border-right:1px solid var(--line-2)}
+.pv th.rh:hover{background:var(--paper)}
+.pv tr.sub td,.pv tr.sub th{background:#F3F1FE!important;font-weight:600}
+.pv tr.gt td,.pv tr.gt th{background:var(--ink)!important;color:#fff;font-weight:700;
+  position:sticky;bottom:0;z-index:4}
+.pv td.gtc{background:#F3F1FE;font-weight:600}
+.pv .lvl{color:var(--slate-2);font-family:var(--f-mono);font-size:10px;margin-right:6px}
+
+/* charts */
+.chart{height:460px;width:100%}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+.sug{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:16px}
+.sug button{text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:12px 13px;transition:.16s;position:relative;overflow:hidden}
+.sug button::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--lime)}
+.sug button:hover{border-color:var(--indigo);box-shadow:var(--sh-2);transform:translateY(-2px)}
+.sug .rk{font-family:var(--f-mono);font-size:9.5px;color:var(--slate-2);letter-spacing:.06em}
+.sug .tt{font-family:var(--f-display);font-size:13px;font-weight:600;margin:4px 0 3px}
+.sug .ds{font-size:11.5px;color:var(--slate);line-height:1.45}
+
+/* insights */
+.narr{list-style:none;padding:0;margin:0}
+.narr li{display:flex;gap:12px;padding:13px 0;border-bottom:1px solid var(--line-2);font-size:13.5px;line-height:1.6}
+.narr li:last-child{border-bottom:none}
+.narr .ic{flex:0 0 26px;height:26px;border-radius:6px;display:grid;place-items:center;
+  font-family:var(--f-mono);font-size:11px;font-weight:700;background:var(--indigo-soft);color:var(--indigo)}
+.narr .ic.w{background:var(--signal-soft);color:#C4551D}
+.narr .ic.g{background:#E1F5F3;color:var(--teal)}
+.narr b{font-weight:600}
+.narr code{font-family:var(--f-mono);font-size:12px;background:var(--wash);padding:1px 5px;
+  border-radius:4px;border:1px solid var(--line-2)}
+.corr-pos{color:var(--teal);font-weight:600}
+.corr-neg{color:var(--rose);font-weight:600}
+.bar-cell{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.bar-cell .bb{height:6px;background:var(--indigo);opacity:.28;border-radius:3px;min-width:2px}
+
+/* misc */
+.note{background:var(--signal-soft);border:1px solid #FFD3B8;color:#8A3D0F;border-radius:var(--r-sm);
+  padding:11px 13px;font-size:12.5px;margin-bottom:14px;display:flex;gap:9px;align-items:flex-start}
+.note.ok{background:#E6F7F5;border-color:#B8E8E2;color:#0A6F66}
+.overlay{position:fixed;inset:0;background:rgba(19,24,34,.62);display:none;place-items:center;z-index:200;
+  backdrop-filter:blur(3px)}
+.overlay.on{display:grid}
+.load{background:var(--paper);border-radius:var(--r-lg);padding:26px 34px;text-align:center;box-shadow:var(--sh-2)}
+.bars{display:flex;gap:4px;justify-content:center;height:30px;align-items:flex-end;margin-bottom:13px}
+.bars i{width:7px;background:var(--indigo);border-radius:2px;animation:pulse 1s ease-in-out infinite}
+.bars i:nth-child(2){animation-delay:.12s;background:var(--lime)}
+.bars i:nth-child(3){animation-delay:.24s}
+.bars i:nth-child(4){animation-delay:.36s;background:var(--signal)}
+@keyframes pulse{0%,100%{height:8px}50%{height:30px}}
+.load p{margin:0;font-family:var(--f-display);font-size:13px;font-weight:600}
+.load span{font-size:12px;color:var(--slate)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.menu-btn{display:none}
+
+@media(max-width:900px){
+  .app{flex-direction:column}
+  .sidebar{width:100%;flex:none;height:auto;position:static;max-height:none}
+  .sb-body{display:none}
+  .sidebar.open .sb-body{display:block}
+  .menu-btn{display:block;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+    color:#DCE2EC;border-radius:var(--r-sm);padding:7px 12px;font-size:12.5px;font-weight:600;margin-top:12px}
+  .pane{padding:16px 14px 50px}
+  .topbar{padding:0 12px}
+  .chart{height:340px}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <h1><span class="dot"></span>PivotLab</h1>
+      <p>Upload a file. Read the shape of it.</p>
+      <button class="menu-btn" id="menuBtn">Controls</button>
+    </div>
+    <div class="sb-body">
+      <section class="sb-sec">
+        <p class="sb-label">Source</p>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a file or drop one here">
+          <div class="glyph">[ ↓ ]</div>
+          <b>Drop a file here</b>
+          <span>CSV, XLSX or XLS — or click to browse</span>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,.tsv,.txt,.xlsx,.xls" class="sr">
+        <button class="sample" id="sampleBtn">Load a sample dataset instead</button>
+        <div id="filePill"></div>
+        <div id="sheetPick"></div>
+      </section>
+
+      <section class="sb-sec" id="filterSec" style="display:none">
+        <p class="sb-label">Filters <span id="filtCount" style="color:var(--lime)"></span></p>
+        <div id="filters"></div>
+        <div class="filt-acts" style="margin-top:12px">
+          <button id="clearFilters">Reset all filters</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <nav class="topbar" role="tablist">
+      <button class="tab" role="tab" data-pane="preview" aria-selected="true">Data preview</button>
+      <button class="tab" role="tab" data-pane="pivot" aria-selected="false">Pivot studio</button>
+      <button class="tab" role="tab" data-pane="charts" aria-selected="false">Charts</button>
+      <button class="tab" role="tab" data-pane="insights" aria-selected="false">Insights</button>
+    </nav>
+
+    <section class="pane on" id="pane-preview">
+      <div class="empty" id="startEmpty">
+        <h2>No data loaded</h2>
+        <p>Drop a CSV or Excel file into the panel on the left. PivotLab reads the types, counts the gaps, and gets out of your way.</p>
+      </div>
+      <div id="previewBody" style="display:none">
+        <div id="banner" class="banner"></div>
+        <div id="schema" class="schema"></div>
+        <div id="alerts"></div>
+        <div class="panel">
+          <div class="panel-h">
+            <div><h3>Raw rows</h3><p id="prevSub"></p></div>
+            <div class="row">
+              <input type="search" id="gsearch" placeholder="Search all columns…">
+              <select id="pageSize">
+                <option>25</option><option selected>50</option><option>100</option><option>250</option>
+              </select>
+              <button class="btn ghost" id="exportRaw">Download filtered CSV</button>
+            </div>
+          </div>
+          <div class="panel-b flush"><div class="tw"><table id="prevTable"></table></div></div>
+          <div class="pg" id="prevPg"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-pivot">
+      <div class="empty"><h2>Load data first</h2><p>The pivot shelves fill up once a file is parsed.</p></div>
+    </section>
+
+    <section class="pane" id="pane-charts">
+      <div class="empty"><h2>Load data first</h2><p>Chart studio needs a dataset to draw from.</p></div>
+    </section>
+
+    <section class="pane" id="pane-insights">
+      <div class="empty"><h2>Load data first</h2><p>Automated analysis runs the moment a file lands.</p></div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="load">
+    <div class="bars"><i></i><i></i><i></i><i></i></div>
+    <p id="loadMsg">Reading file</p>
+    <span id="loadSub">This can take a moment on large files</span>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ================================================================
+   PivotLab — modular vanilla SPA
+   Modules: Util · Ingest · Schema · Filters · Preview · Pivot ·
+            Charts · Insights · App
+   ================================================================ */
+
+/* ---------------- Util ---------------- */
+const Util = (() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+  const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+  const nfInt = new Intl.NumberFormat('en-US');
+  const num = v => {
+    if (v == null || !isFinite(v)) return '—';
+    const a = Math.abs(v);
+    if (a >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+    if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (a >= 1e4) return nfInt.format(Math.round(v));
+    return nf.format(Number(v.toFixed(4)));
+  };
+  const int = v => nfInt.format(v);
+  const bytes = b => {
+    const u = ['B', 'KB', 'MB', 'GB']; let i = 0; let n = b;
+    while (n >= 1024 && i < 3) { n /= 1024; i++; }
+    return n.toFixed(n < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+  };
+  const dstr = d => d instanceof Date && !isNaN(d) ? d.toISOString().slice(0, 10) : '';
+
+  // stats
+  const asc = a => [...a].sort((x, y) => x - y);
+  const sum = a => a.reduce((s, v) => s + v, 0);
+  const mean = a => a.length ? sum(a) / a.length : NaN;
+  const quantile = (sorted, q) => {
+    if (!sorted.length) return NaN;
+    const p = (sorted.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (p - lo);
+  };
+  const median = a => quantile(asc(a), .5);
+  const std = a => { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(sum(a.map(v => (v - m) ** 2)) / (a.length - 1)); };
+  const pearson = (x, y) => {
+    const n = x.length; if (n < 3) return NaN;
+    const mx = mean(x), my = mean(y);
+    let a = 0, bx = 0, by = 0;
+    for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; a += dx * dy; bx += dx * dx; by += dy * dy; }
+    const d = Math.sqrt(bx * by); return d === 0 ? NaN : a / d;
+  };
+  const slope = (x, y) => {
+    const n = x.length; if (n < 2) return 0;
+    const mx = mean(x), my = mean(y);
+    let a = 0, b = 0;
+    for (let i = 0; i < n; i++) { a += (x[i] - mx) * (y[i] - my); b += (x[i] - mx) ** 2; }
+    return b === 0 ? 0 : a / b;
+  };
+  const download = (blob, name) => {
+    const u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(u), 1500);
+  };
+  const toCSV = aoa => aoa.map(r => r.map(c => {
+    const s = c == null ? '' : String(c);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\r\n');
+
+  const debounce = (fn, ms = 220) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const PAL = ['#4B3FD6', '#0E9C90', '#FF7A2F', '#D9376E', '#7A6CF0', '#8FBF1E', '#1F7AE0', '#B4530F', '#2FA8C4', '#9B3FD6'];
+  return { $, $$, el, esc, num, int, bytes, dstr, asc, sum, mean, median, quantile, std, pearson, slope, download, toCSV, debounce, PAL };
+})();
+const { $, $$, el, esc, num, int, bytes, dstr, PAL } = Util;
+
+/* ---------------- Global state ---------------- */
+const S = {
+  fileName: '', bytes: 0, rows: [], fields: [], warnings: [],
+  filters: {},                       // name -> {type,...}
+  preview: { page: 1, size: 50, sort: null, dir: 1, search: '', colFilters: {} },
+  pivot: { rows: [], cols: [], vals: [], subtotals: true, grand: true, result: null },
+  chart: { type: 'bar', x: '', y: '', agg: 'sum', group: '', size: '', stack: false, top: 15, sort: 'desc' },
+  charts: {}                          // echarts instances
+};
+
+/* ---------------- Loading overlay ---------------- */
+const Load = {
+  show(msg, sub) { $('#loadMsg').textContent = msg; $('#loadSub').textContent = sub || 'Working…'; $('#overlay').classList.add('on'); },
+  hide() { $('#overlay').classList.remove('on'); },
+  async run(msg, sub, fn) {
+    this.show(msg, sub);
+    await new Promise(r => setTimeout(r, 40));   // let the browser paint
+    try { return await fn(); } finally { this.hide(); }
+  }
+};
+
+/* ================================================================
+   INGEST — read + decode + parse
+   ================================================================ */
+const Ingest = (() => {
+  const DATE_RE = /^\s*(\d{4}[-/]\d{1,2}[-/]\d{1,2}([ T]\d{1,2}:\d{2}(:\d{2})?)?|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
+  const BOOL = { true: true, false: false, yes: true, no: false, y: true, n: false, t: true, f: false };
+
+  function decode(buf) {
+    // Try strict UTF-8, fall back to windows-1252 for legacy exports.
+    try { return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), enc: 'UTF-8' }; }
+    catch { return { text: new TextDecoder('windows-1252').decode(buf), enc: 'Windows-1252 (UTF-8 decode failed)' }; }
+  }
+
+  async function readFile(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    S.fileName = file.name; S.bytes = file.size; S.warnings = [];
+    if (file.size === 0) throw new Error('That file is empty (0 bytes). Pick another one.');
+
+    const buf = await file.arrayBuffer();
+    if (ext === 'xlsx' || ext === 'xls' || ext === 'xlsm') return fromExcel(buf);
+    if (['csv', 'tsv', 'txt'].includes(ext)) return fromDelimited(buf);
+    // Unknown extension: sniff the bytes for a ZIP/OLE header (Excel) else treat as text.
+    const sig = new Uint8Array(buf.slice(0, 4));
+    if (sig[0] === 0x50 && sig[1] === 0x4B) return fromExcel(buf);
+    S.warnings.push(`Unrecognised extension ".${ext}" — parsed as delimited text.`);
+    return fromDelimited(buf);
+  }
+
+  function fromDelimited(buf) {
+    const { text, enc } = decode(buf);
+    if (enc !== 'UTF-8') S.warnings.push('File was not valid UTF-8. Decoded as ' + enc + '; check accented characters.');
+    if (!text.trim()) throw new Error('The file has no readable content.');
+    const res = Papa.parse(text.replace(/^\uFEFF/, ''), {
+      header: true, skipEmptyLines: 'greedy', dynamicTyping: false, delimiter: ''
+    });
+    if (res.errors && res.errors.length) {
+      const bad = res.errors.filter(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields');
+      if (bad.length) S.warnings.push(`${bad.length} parse issue(s); the first was on row ${(bad[0].row ?? 0) + 2}: ${bad[0].message}`);
+      const ragged = res.errors.length - bad.length;
+      if (ragged) S.warnings.push(`${ragged} row(s) had a different column count than the header. Missing cells were left blank.`);
+    }
+    if (!res.data.length) throw new Error('No data rows found below the header.');
+    return { rows: res.data, headers: (res.meta.fields || []).filter(h => h != null) };
+  }
+
+  function fromExcel(buf) {
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true, dense: false });
+    if (!wb.SheetNames.length) throw new Error('The workbook has no sheets.');
+    // Choose the sheet with the most cells so a cover sheet doesn't win.
+    let best = wb.SheetNames[0], bestN = -1;
+    wb.SheetNames.forEach(n => {
+      const r = wb.Sheets[n]['!ref']; if (!r) return;
+      const d = XLSX.utils.decode_range(r);
+      const cells = (d.e.r - d.s.r + 1) * (d.e.c - d.s.c + 1);
+      if (cells > bestN) { bestN = cells; best = n; }
+    });
+    if (wb.SheetNames.length > 1) S.warnings.push(`Workbook has ${wb.SheetNames.length} sheets. Loaded the largest one: "${best}".`);
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[best], { header: 1, defval: null, blankrows: false, raw: true });
+    if (aoa.length < 2) throw new Error(`Sheet "${best}" has no data rows.`);
+    // Header row = first row with the most non-empty cells within the first 8 rows.
+    let hi = 0, hn = -1;
+    for (let i = 0; i < Math.min(8, aoa.length); i++) {
+      const c = aoa[i].filter(v => v != null && String(v).trim() !== '').length;
+      if (c > hn) { hn = c; hi = i; }
+    }
+    if (hi > 0) S.warnings.push(`Header detected on row ${hi + 1}; the ${hi} row(s) above were skipped.`);
+    const seen = {};
+    const headers = aoa[hi].map((h, i) => {
+      let n = (h == null || String(h).trim() === '') ? `Column ${i + 1}` : String(h).trim();
+      if (seen[n]) { seen[n]++; n = `${n} (${seen[n]})`; } else seen[n] = 1;
+      return n;
+    });
+    const rows = aoa.slice(hi + 1)
+      .filter(r => r.some(v => v != null && String(v).trim() !== ''))
+      .map(r => { const o = {}; headers.forEach((h, i) => o[h] = r[i] ?? null); return o; });
+    if (!rows.length) throw new Error('No populated rows under the header.');
+    return { rows, headers };
+  }
+
+  /* ---- type inference + coercion ---- */
+  const isBlank = v => v == null || v === '' || (typeof v === 'string' && (!v.trim() || ['na', 'n/a', 'null', 'none', '-', '--', 'nan'].includes(v.trim().toLowerCase())));
+
+  function parseNum(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v !== 'string') return null;
+    let s = v.trim().replace(/[\s,_]/g, '');
+    let mult = 1, neg = false;
+    if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+    if (/%$/.test(s)) { s = s.slice(0, -1); mult = 0.01; }
+    s = s.replace(/^[$€£¥₹]/, '');
+    if (s === '' || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s)) return null;
+    const n = parseFloat(s) * mult;
+    return isFinite(n) ? (neg ? -n : n) : null;
+  }
+  function parseDate(v) {
+    if (v instanceof Date) return isNaN(v) ? null : v;
+    if (typeof v !== 'string' || !DATE_RE.test(v)) return null;
+    const d = new Date(v.trim().replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/, '$1-$2-$3'));
+    return isNaN(d) ? null : d;
+  }
+  function parseBool(v) {
+    if (typeof v === 'boolean') return v;
+    if (typeof v !== 'string') return null;
+    const k = v.trim().toLowerCase();
+    return k in BOOL ? BOOL[k] : null;
+  }
+
+  function infer(rows, headers) {
+    const N = rows.length, sampleN = Math.min(N, 600);
+    const step = Math.max(1, Math.floor(N / sampleN));
+    return headers.map(h => {
+      let filled = 0, nNum = 0, nDate = 0, nBool = 0;
+      const distinct = new Set();
+      for (let i = 0; i < N; i += step) {
+        const v = rows[i][h];
+        if (isBlank(v)) continue;
+        filled++;
+        if (distinct.size < 400) distinct.add(String(v));
+        if (parseNum(v) !== null) nNum++;
+        else if (parseDate(v) !== null) nDate++;
+        if (parseBool(v) !== null) nBool++;
+      }
+      let type = 'categorical';
+      if (filled === 0) type = 'categorical';
+      else if (nBool / filled > .95 && distinct.size <= 3) type = 'boolean';
+      else if (nNum / filled > .9) type = 'numeric';
+      else if (nDate / filled > .85) type = 'datetime';
+      // An "ID-ish" numeric column with all-distinct integers is still numeric, but flag it.
+      return { name: h, type, distinctSample: distinct.size };
+    });
+  }
+
+  function coerce(rows, fields) {
+    // Mutates rows into typed values, and computes per-field stats.
+    for (const f of fields) {
+      let missing = 0, mixed = 0;
+      const vals = [];
+      for (const r of rows) {
+        const raw = r[f.name];
+        if (isBlank(raw)) { r[f.name] = null; missing++; continue; }
+        let v;
+        if (f.type === 'numeric') { v = parseNum(raw); if (v === null) { mixed++; v = null; missing++; } }
+        else if (f.type === 'datetime') { v = parseDate(raw); if (v === null) { mixed++; v = null; missing++; } }
+        else if (f.type === 'boolean') { v = parseBool(raw); if (v === null) { mixed++; v = null; missing++; } }
+        else v = String(raw).trim();
+        r[f.name] = v;
+        if (v !== null) vals.push(v);
+      }
+      f.missing = missing;
+      f.mixed = mixed;
+      f.filled = rows.length - missing;
+      if (f.type === 'numeric') {
+        const s = Util.asc(vals);
+        f.min = s[0]; f.max = s[s.length - 1];
+        f.mean = Util.mean(vals); f.median = Util.quantile(s, .5);
+        f.std = Util.std(vals);
+        f.q1 = Util.quantile(s, .25); f.q3 = Util.quantile(s, .75);
+        f.distinct = new Set(vals).size;
+        f.hist = histogram(s);
+      } else if (f.type === 'datetime') {
+        const t = vals.map(d => d.getTime()).sort((a, b) => a - b);
+        f.min = new Date(t[0]); f.max = new Date(t[t.length - 1]);
+        f.distinct = new Set(t).size;
+        f.hist = histogram(t);
+      } else {
+        const counts = new Map();
+        for (const v of vals) { const k = String(v); counts.set(k, (counts.get(k) || 0) + 1); }
+        f.counts = counts; f.distinct = counts.size;
+        f.top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 200);
+        f.hist = f.top.slice(0, 12).map(e => e[1]);
+      }
+      if (f.mixed > 0) S.warnings.push(`"${f.name}" holds ${int(f.mixed)} value(s) that don't fit its ${f.type} type — those cells were blanked.`);
+    }
+    // memory footprint (sampled, extrapolated)
+    const sn = Math.min(rows.length, 200);
+    let s = 0; for (let i = 0; i < sn; i++) s += JSON.stringify(rows[i]).length;
+    S.memory = sn ? Math.round(s / sn * rows.length * 1.9) : 0;   // ~1.9x for JS object overhead
+  }
+
+  function histogram(sorted, bins = 12) {
+    if (!sorted.length) return new Array(bins).fill(0);
+    const lo = sorted[0], hi = sorted[sorted.length - 1];
+    const out = new Array(bins).fill(0);
+    if (hi === lo) { out[Math.floor(bins / 2)] = sorted.length; return out; }
+    for (const v of sorted) out[Math.min(bins - 1, Math.floor((v - lo) / (hi - lo) * bins))]++;
+    return out;
+  }
+
+  return { readFile, infer, coerce, isBlank, parseNum };
+})();
+
+/* ================================================================
+   SCHEMA STRIP + SUMMARY BANNER
+   ================================================================ */
+const Schema = (() => {
+  const tagOf = t => ({ numeric: ['NUM', 't-num'], categorical: ['CAT', 't-cat'], datetime: ['DATE', 't-date'], boolean: ['BOOL', 't-bool'] }[t]);
+
+  function banner() {
+    const totalCells = S.rows.length * S.fields.length;
+    const missing = S.fields.reduce((a, f) => a + f.missing, 0);
+    const pct = totalCells ? (missing / totalCells * 100) : 0;
+    const kinds = {};
+    S.fields.forEach(f => kinds[f.type] = (kinds[f.type] || 0) + 1);
+    const kindStr = Object.entries(kinds).map(([k, v]) => `${v} ${k.slice(0, 3)}`).join(' · ');
+    $('#banner').innerHTML = `
+      <div class="stat"><div class="k">Rows</div><div class="v">${int(S.rows.length)}</div><div class="s">records parsed</div></div>
+      <div class="stat"><div class="k">Columns</div><div class="v">${int(S.fields.length)}</div><div class="s">${esc(kindStr)}</div></div>
+      <div class="stat ${pct > 5 ? 'warn' : ''}"><div class="k">Missing cells</div><div class="v">${int(missing)}</div><div class="s">${pct.toFixed(1)}% of ${int(totalCells)} cells</div></div>
+      <div class="stat"><div class="k">In memory</div><div class="v">${bytes(S.memory)}</div><div class="s">file on disk ${bytes(S.bytes)}</div></div>
+      <div class="stat"><div class="k">Complete rows</div><div class="v">${int(S.rows.filter(r => S.fields.every(f => r[f.name] !== null)).length)}</div><div class="s">no blanks in any column</div></div>`;
+  }
+
+  function strip() {
+    const wrap = $('#schema');
+    wrap.innerHTML = `<div class="schema-h"><span class="t">Schema</span>
+      <span class="h">Drag a column onto a pivot shelf ↓</span></div><div class="strip" id="strip"></div>`;
+    const strip = $('#strip');
+    S.fields.forEach(f => {
+      const [lab, cls] = tagOf(f.type);
+      const mx = Math.max(1, ...f.hist);
+      const spark = f.hist.map(v => `<i style="height:${Math.max(8, v / mx * 100)}%"></i>`).join('');
+      const detail = f.type === 'numeric' ? `μ ${num(f.mean)}`
+        : f.type === 'datetime' ? `${dstr(f.min)}→${dstr(f.max)}`
+          : `${int(f.distinct)} uniq`;
+      const c = el('div', 'card');
+      c.draggable = true;
+      c.dataset.field = f.name;
+      c.title = `${f.name} — ${f.type}, ${int(f.filled)} filled, ${int(f.missing)} missing`;
+      c.innerHTML = `<div class="cn">${esc(f.name)}</div>
+        <div class="spark">${spark}</div>
+        <div class="cm"><span class="tag s ${cls}">${lab}</span><span>${esc(detail)}</span></div>`;
+      c.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', f.name); e.dataTransfer.effectAllowed = 'copy'; });
+      strip.appendChild(c);
+    });
+  }
+
+  function alerts() {
+    const box = $('#alerts'); box.innerHTML = '';
+    if (!S.warnings.length) {
+      box.innerHTML = `<div class="note ok"><b>✓</b><span>Parsed cleanly — every column matched a single type.</span></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="note"><b>!</b><div><b>${S.warnings.length} thing(s) to know about this file</b>
+      <ul style="margin:6px 0 0 16px;padding:0">${S.warnings.slice(0, 6).map(w => `<li>${esc(w)}</li>`).join('')}</ul></div></div>`;
+  }
+
+  return { banner, strip, alerts, tagOf };
+})();
+
+/* ================================================================
+   FILTERS
+   ================================================================ */
+const Filters = (() => {
+  function build() {
+    $('#filterSec').style.display = '';
+    const box = $('#filters'); box.innerHTML = ''; S.filters = {};
+    S.fields.forEach(f => {
+      const [lab, cls] = Schema.tagOf(f.type);
+      const d = el('div', 'filt');
+      d.innerHTML = `<div class="filt-h"><span class="fn"><span class="tag ${cls}">${lab}</span><em>${esc(f.name)}</em></span><span class="car">▶</span></div><div class="filt-b"></div>`;
+      const body = d.querySelector('.filt-b');
+      d.querySelector('.filt-h').onclick = () => d.classList.toggle('open');
+
+      if (f.type === 'numeric' || f.type === 'datetime') {
+        const isDate = f.type === 'datetime';
+        const lo = isDate ? dstr(f.min) : f.min, hi = isDate ? dstr(f.max) : f.max;
+        S.filters[f.name] = { type: f.type, min: null, max: null };
+        body.innerHTML = `<div class="range">
+            <input class="mini fmin" type="${isDate ? 'date' : 'number'}" placeholder="${isDate ? lo : num(f.min)}" step="any">
+            <span>→</span>
+            <input class="mini fmax" type="${isDate ? 'date' : 'number'}" placeholder="${isDate ? hi : num(f.max)}" step="any">
+          </div><div class="filt-acts"><button class="fclear">Clear</button></div>`;
+        const onCh = () => {
+          const a = body.querySelector('.fmin').value, b = body.querySelector('.fmax').value;
+          S.filters[f.name].min = a === '' ? null : (isDate ? new Date(a).getTime() : parseFloat(a));
+          S.filters[f.name].max = b === '' ? null : (isDate ? new Date(b + 'T23:59:59').getTime() : parseFloat(b));
+          App.refresh();
+        };
+        body.querySelector('.fmin').onchange = onCh;
+        body.querySelector('.fmax').onchange = onCh;
+        body.querySelector('.fclear').onclick = () => { body.querySelector('.fmin').value = ''; body.querySelector('.fmax').value = ''; onCh(); };
+      } else {
+        const opts = f.type === 'boolean' ? [['true', 0], ['false', 0]] : (f.top || []).slice(0, 300);
+        S.filters[f.name] = { type: 'set', selected: null };   // null = all
+        body.innerHTML = `<input class="mini fsearch" type="search" placeholder="Find a value…">
+          <div class="chk-list"></div>
+          <div class="filt-acts"><button class="fall">All</button><button class="fnone">None</button></div>`;
+        const list = body.querySelector('.chk-list');
+        const render = (q = '') => {
+          const sel = S.filters[f.name].selected;
+          list.innerHTML = '';
+          opts.filter(([v]) => !q || v.toLowerCase().includes(q)).slice(0, 300).forEach(([v, c]) => {
+            const l = el('label', 'chk');
+            l.innerHTML = `<input type="checkbox" ${!sel || sel.has(v) ? 'checked' : ''}><span title="${esc(v)}">${esc(v)}</span>${c ? `<em style="margin-left:auto;font-style:normal;color:#5D687A;font-family:var(--f-mono);font-size:10px">${int(c)}</em>` : ''}`;
+            l.querySelector('input').onchange = e => {
+              const st = S.filters[f.name];
+              if (!st.selected) st.selected = new Set(opts.map(o => o[0]));
+              e.target.checked ? st.selected.add(v) : st.selected.delete(v);
+              App.refresh();
+            };
+            list.appendChild(l);
+          });
+          if (!list.children.length) list.innerHTML = `<div style="font-size:11.5px;color:#5D687A;padding:6px 0">Nothing matches.</div>`;
+        };
+        render();
+        body.querySelector('.fsearch').oninput = Util.debounce(e => render(e.target.value.toLowerCase()));
+        body.querySelector('.fall').onclick = () => { S.filters[f.name].selected = null; render(body.querySelector('.fsearch').value.toLowerCase()); App.refresh(); };
+        body.querySelector('.fnone').onclick = () => { S.filters[f.name].selected = new Set(); render(body.querySelector('.fsearch').value.toLowerCase()); App.refresh(); };
+      }
+      box.appendChild(d);
+    });
+    $('#clearFilters').onclick = () => { build(); App.refresh(); };
+  }
+
+  function apply(rows) {
+    const active = Object.entries(S.filters).filter(([n, f]) =>
+      f.type === 'set' ? f.selected !== null : (f.min !== null || f.max !== null));
+    $('#filtCount').textContent = active.length ? `· ${active.length} on` : '';
+    if (!active.length) return rows;
+    return rows.filter(r => active.every(([n, f]) => {
+      const v = r[n];
+      if (f.type === 'set') return v === null ? false : f.selected.has(String(v));
+      if (v === null) return false;
+      const t = f.type === 'datetime' ? v.getTime() : v;
+      return (f.min === null || t >= f.min) && (f.max === null || t <= f.max);
+    }));
+  }
+  return { build, apply };
+})();
+
+/* ================================================================
+   PREVIEW TABLE
+   ================================================================ */
+const Preview = (() => {
+  let view = [];
+
+  function compute() {
+    const p = S.preview;
+    let d = Filters.apply(S.rows);
+    if (p.search) {
+      const q = p.search.toLowerCase();
+      d = d.filter(r => S.fields.some(f => String(r[f.name] ?? '').toLowerCase().includes(q)));
+    }
+    for (const [k, q] of Object.entries(p.colFilters)) {
+      if (!q) continue;
+      const lq = q.toLowerCase();
+      d = d.filter(r => String(r[k] ?? '').toLowerCase().includes(lq));
+    }
+    if (p.sort) {
+      const f = S.fields.find(x => x.name === p.sort);
+      d = [...d].sort((a, b) => {
+        let x = a[p.sort], y = b[p.sort];
+        if (x === null && y === null) return 0;
+        if (x === null) return 1; if (y === null) return -1;
+        if (f.type === 'datetime') { x = x.getTime(); y = y.getTime(); }
+        if (f.type === 'numeric') return (x - y) * p.dir;
+        return String(x).localeCompare(String(y), undefined, { numeric: true }) * p.dir;
+      });
+    }
+    view = d;
+    return d;
+  }
+
+  function cell(v, f) {
+    if (v === null) return `<td class="nul">—</td>`;
+    if (f.type === 'numeric') return `<td class="num">${esc(num(v))}</td>`;
+    if (f.type === 'datetime') return `<td class="num">${esc(dstr(v))}</td>`;
+    if (f.type === 'boolean') return `<td>${v ? 'true' : 'false'}</td>`;
+    const s = String(v);
+    return `<td title="${esc(s)}">${esc(s.length > 60 ? s.slice(0, 58) + '…' : s)}</td>`;
+  }
+
+  function render() {
+    const p = S.preview;
+    compute();
+    const pages = Math.max(1, Math.ceil(view.length / p.size));
+    p.page = Math.min(p.page, pages);
+    const start = (p.page - 1) * p.size;
+    const slice = view.slice(start, start + p.size);
+
+    const head = S.fields.map(f => {
+      const cls = (f.type === 'numeric' || f.type === 'datetime') ? 'num' : '';
+      const sc = p.sort === f.name ? (p.dir === 1 ? 'sort up' : 'sort dn') : 'sort';
+      return `<th class="${cls} ${sc}" data-col="${esc(f.name)}" title="${esc(f.type)}">${esc(f.name)}</th>`;
+    }).join('');
+    const frow = S.fields.map(f => `<th><input type="text" data-fcol="${esc(f.name)}" placeholder="filter" value="${esc(p.colFilters[f.name] || '')}"></th>`).join('');
+    const body = slice.map(r => `<tr>${S.fields.map(f => cell(r[f.name], f)).join('')}</tr>`).join('')
+      || `<tr><td colspan="${S.fields.length}" style="text-align:center;padding:34px;color:var(--slate)">No rows match the current filters. Widen a filter or clear the search.</td></tr>`;
+
+    $('#prevTable').innerHTML = `<thead><tr>${head}</tr><tr class="fr">${frow}</tr></thead><tbody>${body}</tbody>`;
+    $('#prevSub').textContent = `${int(view.length)} of ${int(S.rows.length)} rows after filters`;
+
+    $$('#prevTable thead th[data-col]').forEach(th => th.onclick = () => {
+      const c = th.dataset.col;
+      if (p.sort === c) p.dir *= -1; else { p.sort = c; p.dir = 1; }
+      render();
+    });
+    $$('#prevTable input[data-fcol]').forEach(inp => inp.oninput = Util.debounce(e => {
+      p.colFilters[e.target.dataset.fcol] = e.target.value; p.page = 1; render();
+      const t = $(`#prevTable input[data-fcol="${CSS.escape(e.target.dataset.fcol)}"]`);
+      if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+    }, 260));
+
+    $('#prevPg').innerHTML = `<span class="info">${view.length ? int(start + 1) + '–' + int(Math.min(start + p.size, view.length)) : 0} / ${int(view.length)}</span>
+      <div class="pgb">
+        <button data-g="1" ${p.page === 1 ? 'disabled' : ''}>&laquo;</button>
+        <button data-g="${p.page - 1}" ${p.page === 1 ? 'disabled' : ''}>Prev</button>
+        <span class="info">page ${p.page} / ${pages}</span>
+        <button data-g="${p.page + 1}" ${p.page === pages ? 'disabled' : ''}>Next</button>
+        <button data-g="${pages}" ${p.page === pages ? 'disabled' : ''}>&raquo;</button>
+      </div>`;
+    $$('#prevPg button[data-g]').forEach(b => b.onclick = () => { p.page = +b.dataset.g; render(); });
+  }
+
+  function init() {
+    $('#startEmpty').style.display = 'none';
+    $('#previewBody').style.display = '';
+    $('#gsearch').oninput = Util.debounce(e => { S.preview.search = e.target.value; S.preview.page = 1; render(); }, 240);
+    $('#pageSize').onchange = e => { S.preview.size = +e.target.value; S.preview.page = 1; render(); };
+    $('#exportRaw').onclick = () => {
+      const aoa = [S.fields.map(f => f.name), ...view.map(r => S.fields.map(f => {
+        const v = r[f.name]; return v === null ? '' : f.type === 'datetime' ? dstr(v) : v;
+      }))];
+      Util.download(new Blob(['\uFEFF' + Util.toCSV(aoa)], { type: 'text/csv;charset=utf-8' }), 'filtered-rows.csv');
+    };
+  }
+  return { init, render, get view() { return view; } };
+})();
+
+/* ================================================================
+   PIVOT ENGINE + STUDIO
+   ================================================================ */
+const Pivot = (() => {
+  const AGGS = {
+    sum: { label: 'Sum', num: true }, mean: { label: 'Mean', num: true }, median: { label: 'Median', num: true },
+    min: { label: 'Min', num: true }, max: { label: 'Max', num: true },
+    count: { label: 'Count', num: false }, distinct: { label: 'Distinct count', num: false },
+    pct: { label: '% of total', num: true }
+  };
+  const SEP = '\u0001';
+  const keyOf = (r, fs) => fs.map(f => label(r[f], f)).join(SEP);
+  function label(v, fname) {
+    if (v === null || v === undefined) return '(blank)';
+    const f = S.fields.find(x => x.name === fname);
+    if (f && f.type === 'datetime') return dstr(v);
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    return String(v);
+  }
+
+  function aggregate(recs, spec, grandSum) {
+    const a = spec.agg;
+    if (a === 'count') return recs.length;
+    const vals = [];
+    for (const r of recs) { const v = r[spec.field]; if (v !== null && v !== undefined) vals.push(v); }
+    if (a === 'distinct') return new Set(vals.map(v => v instanceof Date ? v.getTime() : v)).size;
+    const nums = vals.filter(v => typeof v === 'number');
+    if (!nums.length) return null;
+    switch (a) {
+      case 'sum': return Util.sum(nums);
+      case 'mean': return Util.mean(nums);
+      case 'median': return Util.median(nums);
+      case 'min': return Math.min(...nums);
+      case 'max': return Math.max(...nums);
+      case 'pct': return grandSum ? Util.sum(nums) / grandSum * 100 : null;
+    }
+    return null;
+  }
+
+  /** Build the pivot model: leaf buckets keep record refs so subtotals
+   *  re-aggregate from raw data (correct for mean / median / distinct). */
+  function build() {
+    const cfg = S.pivot;
+    const data = Filters.apply(S.rows);
+    if (!cfg.vals.length) return null;
+    const rf = cfg.rows.map(x => x.field), cf = cfg.cols.map(x => x.field);
+    const buckets = new Map();                 // rowKey -> Map(colKey -> recs)
+    const rowKeys = new Set(), colKeys = new Set();
+    for (const r of data) {
+      const rk = rf.length ? keyOf(r, rf) : 'Total';
+      const ck = cf.length ? keyOf(r, cf) : '';
+      rowKeys.add(rk); colKeys.add(ck);
+      let m = buckets.get(rk); if (!m) buckets.set(rk, m = new Map());
+      let l = m.get(ck); if (!l) m.set(ck, l = []);
+      l.push(r);
+    }
+    const cmp = (a, b) => a.split(SEP).join(' ').localeCompare(b.split(SEP).join(' '), undefined, { numeric: true });
+    const rKeys = [...rowKeys].sort(cmp), cKeys = [...colKeys].sort(cmp);
+
+    // grand totals per value spec (used by "% of total")
+    const grandSums = cfg.vals.map(v => {
+      const nums = data.map(r => r[v.field]).filter(x => typeof x === 'number');
+      return Util.sum(nums);
+    });
+    const recsFor = (rkList, ck) => {
+      const out = [];
+      for (const rk of rkList) {
+        const m = buckets.get(rk); if (!m) continue;
+        if (ck === null) { for (const l of m.values()) out.push(...l); }
+        else { const l = m.get(ck); if (l) out.push(...l); }
+      }
+      return out;
+    };
+
+    // Ordered display rows, with subtotals injected after each group.
+    const display = [];
+    if (!rf.length) {
+      display.push({ kind: 'leaf', parts: ['Total'], keys: rKeys, depth: 0 });
+    } else {
+      const walk = (keys, depth, prefix) => {
+        const groups = new Map();
+        keys.forEach(k => {
+          const p = k.split(SEP)[depth];
+          if (!groups.has(p)) groups.set(p, []);
+          groups.get(p).push(k);
+        });
+        for (const [p, ks] of groups) {
+          const parts = [...prefix, p];
+          if (depth === rf.length - 1) display.push({ kind: 'leaf', parts, keys: ks, depth });
+          else {
+            walk(ks, depth + 1, parts);
+            if (cfg.subtotals) display.push({ kind: 'sub', parts, keys: ks, depth });
+          }
+        }
+      };
+      walk(rKeys, 0, []);
+    }
+
+    const cellsFor = (keys, ck) => {
+      const recs = recsFor(keys, ck);
+      return cfg.vals.map((v, i) => recs.length ? aggregate(recs, v, grandSums[i]) : null);
+    };
+    for (const row of display) {
+      row.cells = cKeys.map(ck => cellsFor(row.keys, ck));
+      if (cfg.grand && cKeys.length > 1) row.total = cellsFor(row.keys, null);
+    }
+    const grandRow = cfg.grand ? {
+      kind: 'grand', parts: ['Grand total'], keys: rKeys, depth: 0,
+      cells: cKeys.map(ck => cellsFor(rKeys, ck)),
+      total: cKeys.length > 1 ? cellsFor(rKeys, null) : undefined
+    } : null;
+
+    return { rf, cf, cKeys, display, grandRow, valueSpecs: cfg.vals, rowCount: data.length };
+  }
+
+  /* ---- rendering ---- */
+  function fmt(v, spec) {
+    if (v === null || v === undefined || Number.isNaN(v)) return '—';
+    if (spec.agg === 'pct') return v.toFixed(1) + '%';
+    if (spec.agg === 'count' || spec.agg === 'distinct') return int(v);
+    return num(v);
+  }
+  function vLabel(v) { return `${AGGS[v.agg].label} of ${v.field}`; }
+
+  function toAOA(P) {
+    const nv = P.valueSpecs.length;
+    const head1 = [...P.rf, ...(P.cf.length ? [] : [])];
+    const rows = [];
+    const h1 = [...P.rf];
+    const h2 = [...P.rf.map(() => '')];
+    P.cKeys.forEach(ck => {
+      const lab = ck === '' ? 'Value' : ck.split(SEP).join(' / ');
+      P.valueSpecs.forEach((v, i) => { h1.push(i === 0 ? lab : ''); h2.push(vLabel(v)); });
+    });
+    if (P.grandRow && P.cKeys.length > 1) P.valueSpecs.forEach((v, i) => { h1.push(i === 0 ? 'Grand total' : ''); h2.push(vLabel(v)); });
+    rows.push(h1); if (P.cf.length || nv > 1) rows.push(h2);
+    const emit = r => {
+      const line = [];
+      for (let i = 0; i < Math.max(1, P.rf.length); i++) line.push(r.parts[i] ?? (r.kind === 'sub' ? 'Subtotal' : ''));
+      if (r.kind === 'sub') line[r.depth] = r.parts[r.depth] + ' — subtotal';
+      r.cells.forEach(cs => cs.forEach(c => line.push(c === null ? '' : c)));
+      if (r.total) r.total.forEach(c => line.push(c === null ? '' : c));
+      rows.push(line);
+    };
+    P.display.forEach(emit);
+    if (P.grandRow) emit(P.grandRow);
+    return rows;
+  }
+
+  function render() {
+    const out = $('#pivotOut');
+    let P;
+    try { P = build(); } catch (e) { out.innerHTML = `<div class="note"><b>!</b><span>Pivot failed: ${esc(e.message)}</span></div>`; return; }
+    S.pivot.result = P;
+    $('#pvExportCsv').disabled = $('#pvExportXlsx').disabled = !P;
+    if (!P) {
+      out.innerHTML = `<div style="padding:38px;text-align:center;color:var(--slate)">
+        <b style="font-family:var(--f-display);display:block;margin-bottom:5px;color:var(--ink)">Add at least one value field</b>
+        Drag a column onto <b>Values</b> to start the table. Rows and columns are optional.</div>`;
+      return;
+    }
+    const nv = P.valueSpecs.length;
+    const colSpan = nv;
+    let h = '<thead><tr>';
+    h += `<th class="corner" rowspan="2" colspan="${Math.max(1, P.rf.length)}">${P.rf.length ? esc(P.rf.join(' / ')) : 'All rows'}</th>`;
+    P.cKeys.forEach(ck => {
+      h += `<th class="num" colspan="${colSpan}">${esc(ck === '' ? 'Value' : ck.split(SEP).join(' / '))}</th>`;
+    });
+    if (P.grandRow && P.cKeys.length > 1) h += `<th class="num" colspan="${colSpan}" style="background:var(--indigo-soft)">Grand total</th>`;
+    h += '</tr><tr>';
+    const vh = () => P.valueSpecs.map(v => `<th class="num" style="font-size:10.5px;color:var(--slate)">${esc(vLabel(v))}</th>`).join('');
+    P.cKeys.forEach(() => h += vh());
+    if (P.grandRow && P.cKeys.length > 1) h += P.valueSpecs.map(v => `<th class="num" style="font-size:10.5px;background:var(--indigo-soft)">${esc(vLabel(v))}</th>`).join('');
+    h += '</tr></thead><tbody>';
+
+    let prev = [];
+    const rowCells = (r, cls) => {
+      let s = `<tr class="${cls}">`;
+      if (!P.rf.length) s += `<th class="rh">${esc(r.parts[0])}</th>`;
+      else if (r.kind === 'sub') {
+        s += `<th class="rh" colspan="${P.rf.length}"><span class="lvl">L${r.depth + 1}</span>${esc(r.parts.join(' / '))} — subtotal</th>`;
+      } else if (r.kind === 'grand') {
+        s += `<th class="rh" colspan="${P.rf.length}" style="background:var(--ink);color:#fff">Grand total</th>`;
+      } else {
+        for (let i = 0; i < P.rf.length; i++) {
+          const same = prev[i] === r.parts[i] && prev.slice(0, i).join(SEP) === r.parts.slice(0, i).join(SEP);
+          s += `<th class="rh">${same ? '' : esc(r.parts[i])}</th>`;
+        }
+        prev = r.parts;
+      }
+      r.cells.forEach(cs => cs.forEach((c, i) => s += `<td class="num">${esc(fmt(c, P.valueSpecs[i]))}</td>`));
+      if (r.total) r.total.forEach((c, i) => s += `<td class="num gtc">${esc(fmt(c, P.valueSpecs[i]))}</td>`);
+      return s + '</tr>';
+    };
+    let body = '';
+    P.display.forEach(r => { if (r.kind === 'sub') prev = []; body += rowCells(r, r.kind === 'sub' ? 'sub' : ''); });
+    if (P.grandRow) body += rowCells(P.grandRow, 'gt');
+    out.innerHTML = `<div class="tw"><table class="pv">${h}${body}</tbody></table></div>`;
+    $('#pvMeta').textContent = `${int(P.display.filter(r => r.kind === 'leaf').length)} groups × ${int(P.cKeys.length)} column block(s) from ${int(P.rowCount)} filtered rows`;
+  }
+
+  /* ---- shelf UI ---- */
+  function shelfHTML() {
+    return `
+    <div class="panel">
+      <div class="panel-h">
+        <div><h3>Build the table</h3><p>Drag columns from the schema strip, or pick from the dropdown on each shelf.</p></div>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="pvSub" ${S.pivot.subtotals ? 'checked' : ''}>Subtotals</label>
+          <label class="switch"><input type="checkbox" id="pvGrand" ${S.pivot.grand ? 'checked' : ''}>Grand totals</label>
+          <button class="btn ghost" id="pvReset">Clear shelves</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div class="shelves">
+          ${['rows', 'cols', 'vals'].map(z => `
+          <div class="shelf" data-zone="${z}">
+            <div class="sh"><span>${{ rows: 'Rows', cols: 'Columns', vals: 'Values' }[z]}</span>
+              <span style="color:var(--slate-2);font-family:var(--f-mono);text-transform:none">${z === 'vals' ? 'metric' : 'group by'}</span></div>
+            <div class="chips" data-chips="${z}"></div>
+            <select data-add="${z}" style="width:100%;margin-top:4px;font-size:11.5px"></select>
+          </div>`).join('')}
+          <div class="shelf" style="background:var(--indigo-soft);border-color:#D9D5FA">
+            <div class="sh"><span>Filters</span></div>
+            <div class="hint">Filters live in the left sidebar and apply to every tab at once — preview, pivot, charts and insights.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-h">
+        <div><h3>Result</h3><p id="pvMeta"></p></div>
+        <div class="row">
+          <button class="btn ghost" id="pvExportCsv">Download CSV</button>
+          <button class="btn acc" id="pvExportXlsx">Download Excel</button>
+        </div>
+      </div>
+      <div class="panel-b flush" id="pivotOut"></div>
+    </div>`;
+  }
+
+  function chips() {
+    ['rows', 'cols', 'vals'].forEach(z => {
+      const host = $(`[data-chips="${z}"]`);
+      const list = S.pivot[z];
+      host.innerHTML = '';
+      if (!list.length) host.innerHTML = `<div class="hint">${z === 'vals' ? 'What to measure' : 'Nothing here yet'}</div>`;
+      list.forEach((item, i) => {
+        const c = el('div', 'chip');
+        const f = S.fields.find(x => x.name === item.field);
+        if (z === 'vals') {
+          const opts = Object.entries(AGGS)
+            .filter(([k, a]) => !a.num || (f && f.type === 'numeric'))
+            .map(([k, a]) => `<option value="${k}" ${item.agg === k ? 'selected' : ''}>${a.label}</option>`).join('');
+          c.innerHTML = `<span class="cx" title="${esc(item.field)}">${esc(item.field)}</span><select>${opts}</select><button title="Remove">×</button>`;
+          c.querySelector('select').onchange = e => { item.agg = e.target.value; render(); };
+        } else {
+          c.innerHTML = `<span class="ord">${i + 1}</span><span class="cx" title="${esc(item.field)}">${esc(item.field)}</span><button title="Remove">×</button>`;
+        }
+        c.querySelector('button').onclick = () => { list.splice(i, 1); chips(); render(); };
+        host.appendChild(c);
+      });
+      const sel = $(`[data-add="${z}"]`);
+      const pool = z === 'vals' ? S.fields : S.fields.filter(f => f.type !== 'numeric' || f.distinct <= 60);
+      sel.innerHTML = `<option value="">+ add field…</option>` + (z === 'vals' ? S.fields : pool)
+        .map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');
+      sel.onchange = e => { if (e.target.value) { add(z, e.target.value); e.target.value = ''; } };
+    });
+  }
+
+  function add(zone, field) {
+    const f = S.fields.find(x => x.name === field); if (!f) return;
+    const list = S.pivot[zone];
+    if (zone === 'vals') list.push({ field, agg: f.type === 'numeric' ? 'sum' : 'count' });
+    else { if (list.some(i => i.field === field)) return; list.push({ field }); }
+    chips(); render();
+  }
+
+  function init() {
+    const pane = $('#pane-pivot');
+    pane.innerHTML = shelfHTML();
+    // sensible starting config
+    if (!S.pivot.vals.length) {
+      const cat = S.fields.filter(f => (f.type === 'categorical' || f.type === 'boolean') && f.distinct > 1 && f.distinct <= 40)
+        .sort((a, b) => a.distinct - b.distinct)[0];
+      const numF = S.fields.filter(f => f.type === 'numeric').sort((a, b) => b.distinct - a.distinct)[0];
+      if (cat) S.pivot.rows.push({ field: cat.name });
+      S.pivot.vals.push(numF ? { field: numF.name, agg: 'sum' } : { field: S.fields[0].name, agg: 'count' });
+    }
+    chips();
+    $$('.shelf[data-zone]').forEach(sh => {
+      sh.addEventListener('dragover', e => { e.preventDefault(); sh.classList.add('over'); });
+      sh.addEventListener('dragleave', () => sh.classList.remove('over'));
+      sh.addEventListener('drop', e => {
+        e.preventDefault(); sh.classList.remove('over');
+        add(sh.dataset.zone, e.dataTransfer.getData('text/plain'));
+      });
+    });
+    $('#pvSub').onchange = e => { S.pivot.subtotals = e.target.checked; render(); };
+    $('#pvGrand').onchange = e => { S.pivot.grand = e.target.checked; render(); };
+    $('#pvReset').onclick = () => { S.pivot.rows = []; S.pivot.cols = []; S.pivot.vals = []; chips(); render(); };
+    $('#pvExportCsv').onclick = () => {
+      if (!S.pivot.result) return;
+      Util.download(new Blob(['\uFEFF' + Util.toCSV(toAOA(S.pivot.result))], { type: 'text/csv;charset=utf-8' }), 'pivot-table.csv');
+    };
+    $('#pvExportXlsx').onclick = () => {
+      if (!S.pivot.result) return;
+      const ws = XLSX.utils.aoa_to_sheet(toAOA(S.pivot.result));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Pivot');
+      XLSX.writeFile(wb, 'pivot-table.xlsx');
+    };
+    render();
+  }
+  return { init, render, chips, AGGS };
+})();
+
+/* ================================================================
+   CHART STUDIO
+   ================================================================ */
+const Charts = (() => {
+  const TYPES = { bar: 'Bar', line: 'Line', scatter: 'Scatter', bubble: 'Bubble', heatmap: 'Heatmap', box: 'Box plot', pie: 'Pie / donut' };
+  let inst = null;
+
+  const nums = () => S.fields.filter(f => f.type === 'numeric');
+  const cats = () => S.fields.filter(f => f.type === 'categorical' || f.type === 'boolean');
+  const dates = () => S.fields.filter(f => f.type === 'datetime');
+
+  function suggestions() {
+    const out = [], n = nums(), c = cats(), d = dates();
+    const lowCard = c.filter(f => f.distinct >= 2 && f.distinct <= 12).sort((a, b) => a.distinct - b.distinct);
+    const midCard = c.filter(f => f.distinct > 2 && f.distinct <= 200).sort((a, b) => b.distinct - a.distinct);
+    if (d.length && n.length) out.push({
+      title: `${n[0].name} over time`, why: `A datetime column (${d[0].name}) plus a measure — trend first.`,
+      cfg: { type: 'line', x: d[0].name, y: n[0].name, agg: 'sum', group: lowCard[0]?.name || '', stack: false }
+    });
+    if (midCard.length && n.length) out.push({
+      title: `${n[0].name} by ${midCard[0].name}`, why: `Ranking a ${int(midCard[0].distinct)}-value category shows where the mass sits.`,
+      cfg: { type: 'bar', x: midCard[0].name, y: n[0].name, agg: 'sum', group: '', top: 15, sort: 'desc' }
+    });
+    if (n.length >= 2) out.push({
+      title: `${n[0].name} vs ${n[1].name}`, why: 'Two measures — a scatter exposes relationship and outliers at once.',
+      cfg: { type: 'scatter', x: n[0].name, y: n[1].name, group: lowCard[0]?.name || '' }
+    });
+    if (lowCard.length && n.length) out.push({
+      title: `Share of ${n[0].name} by ${lowCard[0].name}`, why: `Only ${lowCard[0].distinct} categories — composition reads well as a donut.`,
+      cfg: { type: 'pie', x: lowCard[0].name, y: n[0].name, agg: 'sum' }
+    });
+    if (n.length >= 3) out.push({
+      title: 'Correlation heatmap', why: `${n.length} numeric columns — check what moves together before modelling.`,
+      cfg: { type: 'heatmap', x: '', y: '', agg: 'sum' }
+    });
+    if (lowCard.length && n.length) out.push({
+      title: `${n[0].name} distribution by ${lowCard[0].name}`, why: 'Box plots compare spread, not just averages.',
+      cfg: { type: 'box', x: lowCard[0].name, y: n[0].name }
+    });
+    if (!out.length && n.length) out.push({ title: `${n[0].name} distribution`, why: 'One numeric column — start with its shape.', cfg: { type: 'bar', x: n[0].name, y: n[0].name, agg: 'count' } });
+    return out.slice(0, 3);
+  }
+
+  function groupData() {
+    const c = S.chart;
+    let data = Filters.apply(S.rows);
+    const xf = S.fields.find(f => f.name === c.x);
+    const yf = S.fields.find(f => f.name === c.y);
+    const gf = S.fields.find(f => f.name === c.group);
+    if (!xf) return null;
+    const keyX = r => xf.type === 'datetime' ? dstr(r[c.x]) : (r[c.x] === null ? '(blank)' : String(r[c.x]));
+    const keyG = r => !gf ? '' : (r[c.group] === null ? '(blank)' : (gf.type === 'datetime' ? dstr(r[c.group]) : String(r[c.group])));
+    const m = new Map();
+    for (const r of data) {
+      const kx = keyX(r), kg = keyG(r);
+      if (!m.has(kx)) m.set(kx, new Map());
+      const g = m.get(kx);
+      if (!g.has(kg)) g.set(kg, []);
+      g.get(kg).push(r);
+    }
+    const agg = recs => {
+      if (c.agg === 'count') return recs.length;
+      if (!yf) return recs.length;
+      const v = recs.map(r => r[c.y]).filter(x => typeof x === 'number');
+      if (!v.length) return null;
+      if (c.agg === 'distinct') return new Set(recs.map(r => r[c.y])).size;
+      if (c.agg === 'mean') return Util.mean(v);
+      if (c.agg === 'median') return Util.median(v);
+      if (c.agg === 'min') return Math.min(...v);
+      if (c.agg === 'max') return Math.max(...v);
+      return Util.sum(v);
+    };
+    let xs = [...m.keys()];
+    const isTime = xf.type === 'datetime';
+    if (isTime || xf.type === 'numeric') xs.sort((a, b) => isTime ? new Date(a) - new Date(b) : parseFloat(a) - parseFloat(b));
+    else {
+      const tot = k => [...m.get(k).values()].reduce((s, recs) => s + (agg(recs) || 0), 0);
+      xs.sort((a, b) => c.sort === 'asc' ? tot(a) - tot(b) : tot(b) - tot(a));
+      if (c.top && xs.length > c.top) xs = xs.slice(0, c.top);
+      if (c.sort === 'label') xs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+    const groups = [...new Set([...m.values()].flatMap(g => [...g.keys()]))].sort();
+    const series = groups.map(gk => ({ name: gk || (yf ? yf.name : 'Count'), data: xs.map(x => { const g = m.get(x); return g && g.has(gk) ? agg(g.get(gk)) : null; }) }));
+    return { xs, series, isTime };
+  }
+
+  const base = () => ({
+    color: PAL,
+    textStyle: { fontFamily: 'Inter, sans-serif' },
+    grid: { left: 62, right: 26, top: 46, bottom: 74, containLabel: true },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 } },
+    legend: { top: 6, type: 'scroll', textStyle: { fontSize: 11, color: '#616D7E' }, icon: 'roundRect', itemWidth: 11, itemHeight: 11 },
+    toolbox: { right: 12, top: 4, feature: { dataZoom: { yAxisIndex: 'none', title: { zoom: 'Zoom', back: 'Reset zoom' } }, restore: { title: 'Restore' } }, iconStyle: { borderColor: '#8B97A6' } },
+    animationDuration: 420
+  });
+  const axisStyle = (name) => ({
+    name, nameLocation: 'middle', nameGap: 40, nameTextStyle: { fontSize: 11, color: '#616D7E', fontWeight: 600 },
+    axisLine: { lineStyle: { color: '#DFE4EB' } }, axisLabel: { color: '#616D7E', fontSize: 11 },
+    splitLine: { lineStyle: { color: '#EDF0F4' } }
+  });
+
+  function option() {
+    const c = S.chart;
+    const yf = S.fields.find(f => f.name === c.y);
+    const yName = c.agg === 'count' ? 'Row count' : `${Pivot.AGGS[c.agg]?.label || c.agg} of ${c.y}`;
+
+    if (c.type === 'heatmap') return heatOption();
+    if (c.type === 'box') return boxOption();
+    if (c.type === 'scatter' || c.type === 'bubble') return scatterOption();
+
+    const g = groupData();
+    if (!g) return null;
+    const o = base();
+    if (c.type === 'pie') {
+      const totals = g.xs.map((x, i) => ({ name: x, value: g.series.reduce((s, se) => s + (se.data[i] || 0), 0) }));
+      return Object.assign(base(), {
+        tooltip: { trigger: 'item', formatter: p => `${p.name}<br/><b>${num(p.value)}</b> (${p.percent}%)`, backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff' } },
+        legend: { type: 'scroll', orient: 'vertical', right: 8, top: 'middle', textStyle: { fontSize: 11, color: '#616D7E' } },
+        series: [{
+          type: 'pie', radius: c.stack ? ['0%', '68%'] : ['44%', '70%'], center: ['40%', '52%'],
+          data: totals.filter(d => d.value), itemStyle: { borderColor: '#fff', borderWidth: 2 },
+          label: { fontSize: 11, color: '#616D7E' }
+        }]
+      });
+    }
+    o.xAxis = Object.assign(axisStyle(c.x), { type: 'category', data: g.xs, axisLabel: { color: '#616D7E', fontSize: 11, rotate: g.xs.length > 8 && !g.isTime ? 34 : 0, hideOverlap: true } });
+    o.yAxis = Object.assign(axisStyle(yName), { type: 'value', axisLabel: { color: '#616D7E', fontSize: 11, formatter: v => num(v) } });
+    o.dataZoom = g.xs.length > 24 ? [{ type: 'inside' }, { type: 'slider', height: 16, bottom: 12, borderColor: '#DFE4EB', fillerColor: 'rgba(75,63,214,.12)' }] : undefined;
+    o.series = g.series.map(s => c.type === 'line'
+      ? { name: s.name, type: 'line', data: s.data, smooth: .25, showSymbol: g.xs.length <= 40, symbolSize: 6, lineStyle: { width: 2.2 }, connectNulls: true, areaStyle: c.stack ? { opacity: .18 } : undefined, stack: c.stack ? 'a' : undefined }
+      : { name: s.name, type: 'bar', data: s.data, stack: c.stack ? 'a' : undefined, barMaxWidth: 42, itemStyle: { borderRadius: c.stack ? 0 : [3, 3, 0, 0] } });
+    if (g.series.length === 1) o.legend = { show: false };
+    return o;
+  }
+
+  function scatterOption() {
+    const c = S.chart;
+    const data = Filters.apply(S.rows);
+    const gf = S.fields.find(f => f.name === c.group);
+    const sizeF = S.fields.find(f => f.name === c.size);
+    const pts = data.filter(r => typeof r[c.x] === 'number' && typeof r[c.y] === 'number');
+    if (!pts.length) return null;
+    let sMin = 0, sMax = 1;
+    if (sizeF) { const v = pts.map(r => r[c.size]).filter(x => typeof x === 'number'); sMin = Math.min(...v); sMax = Math.max(...v); }
+    const groups = gf ? [...new Set(pts.map(r => r[c.group] === null ? '(blank)' : String(r[c.group])))].sort().slice(0, 12) : [''];
+    const o = base();
+    o.tooltip = {
+      trigger: 'item', backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 },
+      formatter: p => `${c.x}: <b>${num(p.value[0])}</b><br/>${c.y}: <b>${num(p.value[1])}</b>${sizeF ? `<br/>${c.size}: <b>${num(p.value[2])}</b>` : ''}${gf ? `<br/>${p.seriesName}` : ''}`
+    };
+    o.xAxis = Object.assign(axisStyle(c.x), { type: 'value', scale: true, axisLabel: { formatter: v => num(v), color: '#616D7E', fontSize: 11 } });
+    o.yAxis = Object.assign(axisStyle(c.y), { type: 'value', scale: true, axisLabel: { formatter: v => num(v), color: '#616D7E', fontSize: 11 } });
+    o.dataZoom = [{ type: 'inside' }, { type: 'inside', yAxisIndex: 0 }];
+    o.series = groups.map(gk => {
+      const sub = gf ? pts.filter(r => (r[c.group] === null ? '(blank)' : String(r[c.group])) === gk) : pts;
+      return {
+        name: gk || 'Points', type: 'scatter',
+        data: sub.slice(0, 6000).map(r => [r[c.x], r[c.y], sizeF ? r[c.size] : null]),
+        symbolSize: sizeF ? (v => { const t = (v[2] - sMin) / ((sMax - sMin) || 1); return 6 + (isFinite(t) ? t : 0) * 34; }) : 8,
+        itemStyle: { opacity: .62 }
+      };
+    });
+    if (!gf) o.legend = { show: false };
+    return o;
+  }
+
+  function boxOption() {
+    const c = S.chart;
+    const data = Filters.apply(S.rows);
+    const xf = S.fields.find(f => f.name === c.x);
+    const m = new Map();
+    for (const r of data) {
+      const v = r[c.y]; if (typeof v !== 'number') continue;
+      const k = !xf ? 'All' : (r[c.x] === null ? '(blank)' : (xf.type === 'datetime' ? dstr(r[c.x]) : String(r[c.x])));
+      if (!m.has(k)) m.set(k, []); m.get(k).push(v);
+    }
+    let keys = [...m.keys()].sort((a, b) => m.get(b).length - m.get(a).length).slice(0, c.top || 15).sort();
+    if (!keys.length) return null;
+    const boxes = keys.map(k => {
+      const s = Util.asc(m.get(k));
+      return [Util.quantile(s, 0), Util.quantile(s, .25), Util.quantile(s, .5), Util.quantile(s, .75), Util.quantile(s, 1)];
+    });
+    const o = base();
+    o.tooltip = {
+      trigger: 'item', backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 },
+      formatter: p => Array.isArray(p.value) ? `<b>${p.name}</b><br/>max ${num(p.value[5])}<br/>q3 ${num(p.value[4])}<br/>median ${num(p.value[3])}<br/>q1 ${num(p.value[2])}<br/>min ${num(p.value[1])}` : p.name
+    };
+    o.xAxis = Object.assign(axisStyle(c.x || ''), { type: 'category', data: keys, axisLabel: { rotate: keys.length > 7 ? 34 : 0, color: '#616D7E', fontSize: 11, hideOverlap: true } });
+    o.yAxis = Object.assign(axisStyle(c.y), { type: 'value', scale: true, axisLabel: { formatter: v => num(v), color: '#616D7E', fontSize: 11 } });
+    o.legend = { show: false };
+    o.series = [{ type: 'boxplot', data: boxes, itemStyle: { color: 'rgba(75,63,214,.14)', borderColor: '#4B3FD6', borderWidth: 1.6 } }];
+    return o;
+  }
+
+  function heatOption() {
+    const c = S.chart;
+    // Correlation mode when no axes chosen; otherwise pivot-style heat grid.
+    if (!c.x || !c.group) {
+      const M = Insights.correlations();
+      if (!M) return null;
+      const { names, matrix } = M;
+      const cells = [];
+      names.forEach((_, i) => names.forEach((__, j) => cells.push([j, i, isFinite(matrix[i][j]) ? +matrix[i][j].toFixed(3) : '-'])));
+      return {
+        color: PAL, textStyle: { fontFamily: 'Inter, sans-serif' },
+        tooltip: { position: 'top', backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff' }, formatter: p => `${names[p.value[1]]} × ${names[p.value[0]]}<br/><b>r = ${p.value[2]}</b>` },
+        grid: { left: 12, right: 20, top: 20, bottom: 12, containLabel: true },
+        xAxis: { type: 'category', data: names, axisLabel: { rotate: 40, fontSize: 10.5, color: '#616D7E', hideOverlap: true }, splitArea: { show: true }, axisLine: { lineStyle: { color: '#DFE4EB' } } },
+        yAxis: { type: 'category', data: names, axisLabel: { fontSize: 10.5, color: '#616D7E' }, splitArea: { show: true }, axisLine: { lineStyle: { color: '#DFE4EB' } } },
+        visualMap: { min: -1, max: 1, calculable: true, orient: 'horizontal', left: 'center', bottom: -4, itemHeight: 90, textStyle: { fontSize: 10, color: '#616D7E' }, inRange: { color: ['#D9376E', '#F6F7FA', '#0E9C90'] } },
+        series: [{ type: 'heatmap', data: cells, label: { show: names.length <= 12, fontSize: 10, color: '#131822' }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+      };
+    }
+    const g = groupData();
+    if (!g) return null;
+    const cells = [];
+    g.series.forEach((s, si) => s.data.forEach((v, xi) => { if (v !== null) cells.push([xi, si, +v.toFixed(3)]); }));
+    const vals = cells.map(c2 => c2[2]);
+    return {
+      color: PAL, textStyle: { fontFamily: 'Inter, sans-serif' },
+      tooltip: { position: 'top', backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff' }, formatter: p => `${g.xs[p.value[0]]} × ${g.series[p.value[1]].name}<br/><b>${num(p.value[2])}</b>` },
+      grid: { left: 12, right: 20, top: 20, bottom: 20, containLabel: true },
+      xAxis: { type: 'category', data: g.xs, axisLabel: { rotate: g.xs.length > 8 ? 40 : 0, fontSize: 10.5, color: '#616D7E', hideOverlap: true }, axisLine: { lineStyle: { color: '#DFE4EB' } } },
+      yAxis: { type: 'category', data: g.series.map(s => s.name), axisLabel: { fontSize: 10.5, color: '#616D7E' }, axisLine: { lineStyle: { color: '#DFE4EB' } } },
+      visualMap: { min: Math.min(...vals), max: Math.max(...vals), calculable: true, orient: 'horizontal', left: 'center', bottom: -4, itemHeight: 90, textStyle: { fontSize: 10, color: '#616D7E' }, inRange: { color: ['#F0F1FB', '#8F86EC', '#4B3FD6', '#241C7A'] } },
+      series: [{ type: 'heatmap', data: cells, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+    };
+  }
+
+  function draw() {
+    const box = $('#chartBox');
+    if (!inst) inst = echarts.init(box, null, { renderer: 'canvas' });
+    let o = null, err = null;
+    try { o = option(); } catch (e) { err = e.message; }
+    if (!o) {
+      inst.clear();
+      $('#chartNote').innerHTML = `<div class="note"><b>!</b><span>${esc(err || 'Not enough matching data for this chart. Pick different axes, or widen the filters.')}</span></div>`;
+      return;
+    }
+    $('#chartNote').innerHTML = '';
+    inst.clear(); inst.setOption(o, true);
+  }
+
+  function controls() {
+    const c = S.chart;
+    const opt = (list, cur, blank) => (blank ? `<option value="">${blank}</option>` : '') +
+      list.map(f => `<option value="${esc(f.name)}" ${cur === f.name ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
+    const isXY = c.type === 'scatter' || c.type === 'bubble';
+    const isCorr = c.type === 'heatmap';
+    return `
+      <div class="fld"><label>Chart type</label><select id="cType">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${c.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="fld"><label>${isXY ? 'X (numeric)' : isCorr ? 'X (blank = correlation)' : 'X axis'}</label>
+        <select id="cX">${opt(isXY ? nums() : S.fields, c.x, isCorr ? 'Correlation of all numerics' : null)}</select></div>
+      <div class="fld"><label>${isXY ? 'Y (numeric)' : 'Measure'}</label><select id="cY">${opt(isXY || c.type === 'box' ? nums() : nums(), c.y, c.type === 'bar' || c.type === 'line' ? 'Row count' : null)}</select></div>
+      ${(isXY || c.type === 'box') ? '' : `<div class="fld"><label>Aggregation</label><select id="cAgg">
+        ${['sum', 'mean', 'median', 'count', 'distinct', 'min', 'max'].map(a => `<option value="${a}" ${c.agg === a ? 'selected' : ''}>${Pivot.AGGS[a].label}</option>`).join('')}</select></div>`}
+      ${c.type === 'box' || c.type === 'pie' ? '' : `<div class="fld"><label>Colour / series</label><select id="cG">${opt(S.fields.filter(f => f.distinct <= 60 || f.type === 'datetime'), c.group, 'None')}</select></div>`}
+      ${c.type === 'bubble' ? `<div class="fld"><label>Bubble size</label><select id="cS">${opt(nums(), c.size, 'Fixed')}</select></div>` : ''}
+      ${['bar', 'line'].includes(c.type) ? `<label class="switch"><input type="checkbox" id="cStack" ${c.stack ? 'checked' : ''}>Stack series</label>` : ''}
+      ${c.type === 'pie' ? `<label class="switch"><input type="checkbox" id="cStack" ${c.stack ? 'checked' : ''}>Solid pie</label>` : ''}
+      ${['bar', 'line', 'box', 'pie', 'heatmap'].includes(c.type) ? `<div class="fld"><label>Top N</label><input type="number" id="cTop" min="1" max="200" value="${c.top}" style="min-width:80px"></div>` : ''}
+      ${['bar', 'pie'].includes(c.type) ? `<div class="fld"><label>Order</label><select id="cSort">
+        <option value="desc" ${c.sort === 'desc' ? 'selected' : ''}>Largest first</option>
+        <option value="asc" ${c.sort === 'asc' ? 'selected' : ''}>Smallest first</option>
+        <option value="label" ${c.sort === 'label' ? 'selected' : ''}>By label</option></select></div>` : ''}`;
+  }
+
+  function bind() {
+    const set = (id, key, cast = v => v) => { const e = $(id); if (e) e.onchange = ev => { S.chart[key] = cast(ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value); if (id === '#cType') { $('#cCtl').innerHTML = controls(); bind(); } draw(); }; };
+    set('#cType', 'type'); set('#cX', 'x'); set('#cY', 'y'); set('#cAgg', 'agg');
+    set('#cG', 'group'); set('#cS', 'size'); set('#cStack', 'stack');
+    set('#cTop', 'top', v => Math.max(1, +v || 15)); set('#cSort', 'sort');
+  }
+
+  function exportImg(kind) {
+    if (!inst) return;
+    const name = `chart-${S.chart.type}`;
+    if (kind === 'png') {
+      const url = inst.getDataURL({ type: 'png', pixelRatio: 3, backgroundColor: '#fff' });
+      const a = document.createElement('a'); a.href = url; a.download = name + '.png'; a.click();
+      return;
+    }
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'position:fixed;left:-99999px;width:1100px;height:640px';
+    document.body.appendChild(tmp);
+    const svgChart = echarts.init(tmp, null, { renderer: 'svg', width: 1100, height: 640 });
+    svgChart.setOption(inst.getOption());
+    const svg = tmp.querySelector('svg').outerHTML;
+    Util.download(new Blob([svg], { type: 'image/svg+xml' }), name + '.svg');
+    svgChart.dispose(); tmp.remove();
+  }
+
+  function init() {
+    const sug = suggestions();
+    $('#pane-charts').innerHTML = `
+      <div class="panel">
+        <div class="panel-h"><div><h3>Suggested views</h3><p>Picked from the column types in this file. One click loads the setup.</p></div></div>
+        <div class="panel-b"><div class="sug">${sug.map((s, i) => `
+          <button data-sug="${i}"><div class="rk">SUGGESTION ${i + 1}</div><div class="tt">${esc(s.title)}</div><div class="ds">${esc(s.why)}</div></button>`).join('')
+        || '<div class="hint">Not enough typed columns to suggest anything.</div>'}</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">
+          <div><h3>Chart studio</h3><p>Scroll to zoom, drag to pan. Hover any point for detail.</p></div>
+          <div class="row"><button class="btn ghost" id="expPng">PNG (3×)</button><button class="btn ghost" id="expSvg">SVG</button></div>
+        </div>
+        <div class="panel-b">
+          <div class="row" id="cCtl" style="margin-bottom:14px;align-items:flex-end">${controls()}</div>
+          <div id="chartNote"></div>
+          <div class="chart" id="chartBox"></div>
+        </div>
+      </div>`;
+    $$('[data-sug]').forEach(b => b.onclick = () => {
+      Object.assign(S.chart, { group: '', size: '', stack: false, top: 15, sort: 'desc' }, sug[+b.dataset.sug].cfg);
+      $('#cCtl').innerHTML = controls(); bind(); draw();
+    });
+    bind();
+    $('#expPng').onclick = () => exportImg('png');
+    $('#expSvg').onclick = () => exportImg('svg');
+    if (!S.chart.x && sug.length) Object.assign(S.chart, sug[0].cfg);
+    $('#cCtl').innerHTML = controls(); bind();
+    inst = null;
+    draw();
+  }
+  function resize() { if (inst) inst.resize(); }
+  return { init, draw, resize, suggestions };
+})();
+
+/* ================================================================
+   AUTOMATED INSIGHTS / EDA
+   ================================================================ */
+const Insights = (() => {
+  let corrCache = null, corrInst = null;
+
+  function correlations() {
+    const data = Filters.apply(S.rows);
+    const ns = S.fields.filter(f => f.type === 'numeric' && f.distinct > 1).slice(0, 18);
+    if (ns.length < 2) return null;
+    const cols = ns.map(f => data.map(r => r[f.name]));
+    const names = ns.map(f => f.name);
+    const matrix = names.map((_, i) => names.map((__, j) => {
+      if (i === j) return 1;
+      const x = [], y = [];
+      for (let k = 0; k < data.length; k++) {
+        const a = cols[i][k], b = cols[j][k];
+        if (typeof a === 'number' && typeof b === 'number') { x.push(a); y.push(b); }
+      }
+      return Util.pearson(x, y);
+    }));
+    corrCache = { names, matrix };
+    return corrCache;
+  }
+
+  function outliers() {
+    const data = Filters.apply(S.rows);
+    return S.fields.filter(f => f.type === 'numeric' && f.distinct > 4).map(f => {
+      const v = data.map(r => r[f.name]).filter(x => typeof x === 'number');
+      if (v.length < 8) return null;
+      const s = Util.asc(v), q1 = Util.quantile(s, .25), q3 = Util.quantile(s, .75), iqr = q3 - q1;
+      const lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr;
+      const m = Util.mean(v), sd = Util.std(v);
+      const iqrOut = v.filter(x => x < lo || x > hi);
+      const zOut = sd ? v.filter(x => Math.abs((x - m) / sd) > 3) : [];
+      const extremes = Util.asc(iqrOut.map(x => Math.abs(x - m))).slice(-1)[0];
+      return {
+        name: f.name, n: v.length, q1, q3, lo, hi, mean: m, std: sd, median: Util.quantile(s, .5),
+        iqrN: iqrOut.length, zN: zOut.length, pct: iqrOut.length / v.length * 100,
+        min: s[0], max: s[s.length - 1],
+        skew: sd ? Util.mean(v.map(x => ((x - m) / sd) ** 3)) : 0,
+        worst: iqrOut.length ? (Math.abs(s[0] - m) > Math.abs(s[s.length - 1] - m) ? s[0] : s[s.length - 1]) : null
+      };
+    }).filter(Boolean);
+  }
+
+  function pareto() {
+    const data = Filters.apply(S.rows);
+    const measure = S.fields.filter(f => f.type === 'numeric' && f.min >= 0 && f.distinct > 3)
+      .sort((a, b) => b.mean - a.mean)[0];
+    const dims = S.fields.filter(f => (f.type === 'categorical' || f.type === 'boolean') && f.distinct > 2 && f.distinct < Math.max(4, data.length * .7));
+    if (!dims.length) return null;
+    const out = [];
+    for (const d of dims.slice(0, 6)) {
+      const m = new Map();
+      for (const r of data) {
+        const k = r[d.name] === null ? '(blank)' : String(r[d.name]);
+        const v = measure ? (typeof r[measure.name] === 'number' ? r[measure.name] : 0) : 1;
+        m.set(k, (m.get(k) || 0) + v);
+      }
+      const arr = [...m.entries()].sort((a, b) => b[1] - a[1]);
+      const total = arr.reduce((s, e) => s + e[1], 0);
+      if (!total) continue;
+      let cum = 0, n80 = 0;
+      for (const e of arr) { cum += e[1]; n80++; if (cum / total >= .8) break; }
+      out.push({ dim: d.name, measure: measure ? measure.name : 'row count', top: arr[0], share: arr[0][1] / total * 100, n80, k: arr.length, pct80: n80 / arr.length * 100, arr: arr.slice(0, 8), total });
+    }
+    return out.sort((a, b) => a.pct80 - b.pct80);
+  }
+
+  function trends() {
+    const data = Filters.apply(S.rows);
+    const d = S.fields.filter(f => f.type === 'datetime')[0];
+    const ns = S.fields.filter(f => f.type === 'numeric');
+    if (!d || !ns.length) return null;
+    const out = [];
+    for (const n of ns.slice(0, 6)) {
+      const m = new Map();
+      for (const r of data) {
+        if (!(r[d.name] instanceof Date) || typeof r[n.name] !== 'number') continue;
+        const k = dstr(r[d.name]).slice(0, 7);        // month buckets
+        if (!m.has(k)) m.set(k, []); m.get(k).push(r[n.name]);
+      }
+      const keys = [...m.keys()].sort();
+      if (keys.length < 3) continue;
+      const y = keys.map(k => Util.sum(m.get(k)));
+      const x = keys.map((_, i) => i);
+      const sl = Util.slope(x, y);
+      const avg = Util.mean(y);
+      out.push({ field: n.name, dim: d.name, periods: keys.length, slope: sl, pct: avg ? sl / avg * 100 : 0, first: y[0], last: y[y.length - 1], from: keys[0], to: keys[keys.length - 1] });
+    }
+    return out.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+  }
+
+  function narrative(O, C, P, T) {
+    const data = Filters.apply(S.rows);
+    const b = [];
+    b.push({ ic: '01', cls: '', html: `The working set is <b>${int(data.length)} rows</b> across <b>${S.fields.length} columns</b>${data.length !== S.rows.length ? ` (filtered down from ${int(S.rows.length)})` : ''} — ${S.fields.filter(f => f.type === 'numeric').length} numeric, ${S.fields.filter(f => f.type === 'categorical').length} categorical, ${S.fields.filter(f => f.type === 'datetime').length} datetime, ${S.fields.filter(f => f.type === 'boolean').length} boolean.` });
+
+    if (T && T.length) {
+      const t = T[0], dir = t.slope > 0 ? 'rising' : t.slope < 0 ? 'falling' : 'flat';
+      b.push({
+        ic: '02', cls: t.slope >= 0 ? 'g' : 'w',
+        html: `<b>${esc(t.field)}</b> is <b>${dir}</b> over <code>${esc(t.dim)}</code> — roughly <b>${t.pct >= 0 ? '+' : ''}${t.pct.toFixed(1)}%</b> of the average month per month across ${t.periods} months (${esc(t.from)} → ${esc(t.to)}, ${num(t.first)} → ${num(t.last)}).`
+      });
+    }
+    if (P && P.length) {
+      const p = P[0];
+      b.push({
+        ic: String(b.length + 1).padStart(2, '0'), cls: p.pct80 < 30 ? 'w' : '',
+        html: `Concentration in <code>${esc(p.dim)}</code>: <b>${p.n80} of ${int(p.k)} values (${p.pct80.toFixed(0)}%)</b> account for 80% of ${esc(p.measure)}${p.pct80 < 25 ? ' — a textbook Pareto tail' : ''}. The single largest, <b>${esc(p.top[0])}</b>, holds <b>${p.share.toFixed(1)}%</b> on its own.`
+      });
+    }
+    const heavy = O.filter(o => o.pct > 1).sort((a, b2) => b2.pct - a.pct)[0];
+    if (heavy) b.push({
+      ic: String(b.length + 1).padStart(2, '0'), cls: 'w',
+      html: `<b>${esc(heavy.name)}</b> carries <b>${int(heavy.iqrN)} outliers</b> (${heavy.pct.toFixed(1)}% of values) outside the IQR fence <code>${num(heavy.lo)} … ${num(heavy.hi)}</code>${heavy.zN ? `, ${int(heavy.zN)} of them beyond 3σ` : ''}. Its median (${num(heavy.median)}) sits ${Math.abs(heavy.mean - heavy.median) > heavy.std * .2 ? 'well' : 'close'} to the mean (${num(heavy.mean)}), so the tail is ${heavy.skew > .5 ? 'right-skewed' : heavy.skew < -.5 ? 'left-skewed' : 'roughly symmetric'}.`
+    });
+    if (C) {
+      const pairs = [];
+      C.names.forEach((n1, i) => C.names.forEach((n2, j) => { if (j > i && isFinite(C.matrix[i][j])) pairs.push([n1, n2, C.matrix[i][j]]); }));
+      pairs.sort((a, b2) => Math.abs(b2[2]) - Math.abs(a[2]));
+      const strong = pairs.filter(p => Math.abs(p[2]) >= .6).slice(0, 3);
+      if (strong.length) b.push({
+        ic: String(b.length + 1).padStart(2, '0'), cls: 'g',
+        html: `Strongest relationships: ${strong.map(p => `<b>${esc(p[0])}</b> ↔ <b>${esc(p[1])}</b> <span class="${p[2] > 0 ? 'corr-pos' : 'corr-neg'}">r = ${p[2].toFixed(2)}</span>`).join(', ')}. ${strong[0][2] > 0 ? 'They move together' : 'They move against each other'} — worth checking whether one is derived from the other before treating it as a finding.`
+      });
+      else if (pairs.length) b.push({
+        ic: String(b.length + 1).padStart(2, '0'), cls: '',
+        html: `No strong linear relationships among the numeric columns — the highest is <b>${esc(pairs[0][0])}</b> ↔ <b>${esc(pairs[0][1])}</b> at r = ${pairs[0][2].toFixed(2)}. Any signal here is likely non-linear or conditional on a category.`
+      });
+    }
+    const gappy = S.fields.filter(f => f.missing > 0).sort((a, b2) => b2.missing - a.missing).slice(0, 3);
+    if (gappy.length) b.push({
+      ic: String(b.length + 1).padStart(2, '0'), cls: gappy[0].missing / S.rows.length > .2 ? 'w' : '',
+      html: `Gaps to handle before modelling: ${gappy.map(f => `<code>${esc(f.name)}</code> ${(f.missing / S.rows.length * 100).toFixed(1)}%`).join(', ')} missing. ${gappy[0].missing / S.rows.length > .3 ? 'The worst offender is missing on most rows — consider dropping it rather than imputing.' : 'Low enough to impute or drop rows safely.'}`
+    });
+    const dup = S.fields.find(f => f.type !== 'numeric' && f.distinct === S.rows.length && S.rows.length > 10);
+    if (dup && b.length < 6) b.push({ ic: String(b.length + 1).padStart(2, '0'), cls: '', html: `<code>${esc(dup.name)}</code> is unique on every row — it's an identifier, not a variable. Keep it out of group-bys and correlations.` });
+    return b.slice(0, 6);
+  }
+
+  function render() {
+    const O = outliers(), C = correlations(), P = pareto(), T = trends();
+    const data = Filters.apply(S.rows);
+    const narr = narrative(O, C, P, T);
+
+    const kpis = S.fields.filter(f => f.type === 'numeric').slice(0, 5).map(f => {
+      const v = data.map(r => r[f.name]).filter(x => typeof x === 'number');
+      const m = Util.mean(v);
+      return `<div class="stat"><div class="k">${esc(f.name)}</div><div class="v">${esc(num(m))}</div>
+        <div class="s">median ${num(Util.median(v))} · σ ${num(Util.std(v))} · range ${num(Math.min(...v))}–${num(Math.max(...v))}</div></div>`;
+    }).join('');
+
+    const outRows = O.sort((a, b) => b.pct - a.pct).map(o => `<tr>
+      <td><b>${esc(o.name)}</b></td>
+      <td class="num">${int(o.n)}</td>
+      <td class="num">${esc(num(o.mean))}</td>
+      <td class="num">${esc(num(o.median))}</td>
+      <td class="num">${esc(num(o.std))}</td>
+      <td class="num">${esc(num(o.lo))} … ${esc(num(o.hi))}</td>
+      <td class="num" style="color:${o.pct > 2 ? 'var(--signal)' : 'inherit'};font-weight:${o.pct > 2 ? 700 : 400}">${int(o.iqrN)} <span style="color:var(--slate-2)">(${o.pct.toFixed(1)}%)</span></td>
+      <td class="num">${int(o.zN)}</td>
+      <td class="num">${esc(num(o.skew))}</td></tr>`).join('');
+
+    const paretoRows = (P || []).map(p => {
+      const mx = p.arr[0][1];
+      return `<div style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px">
+          <b style="font-family:var(--f-display)">${esc(p.dim)}</b>
+          <span style="color:var(--slate)">${p.n80}/${int(p.k)} values = 80% of ${esc(p.measure)}</span></div>
+        <table style="font-size:12px">${p.arr.map(([k, v]) => `<tr>
+          <td style="width:38%">${esc(k)}</td>
+          <td class="num" style="width:24%">${esc(num(v))}</td>
+          <td style="width:38%"><div class="bar-cell"><span style="color:var(--slate-2);font-family:var(--f-mono);font-size:10.5px">${(v / p.total * 100).toFixed(1)}%</span><div class="bb" style="width:${Math.max(2, v / mx * 100)}%"></div></div></td>
+        </tr>`).join('')}</table></div>`;
+    }).join('');
+
+    $('#pane-insights').innerHTML = `
+      <div class="panel">
+        <div class="panel-h"><div><h3>Narrative takeaways</h3><p>Recomputed against the current filters — ${int(data.length)} rows in scope.</p></div></div>
+        <div class="panel-b"><ul class="narr">${narr.map(n => `<li><span class="ic ${n.cls}">${n.ic}</span><span>${n.html}</span></li>`).join('')}</ul></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><div><h3>Executive summary</h3><p>Central tendency and spread for each numeric column.</p></div></div>
+        <div class="panel-b"><div class="banner" style="margin:0">${kpis || '<div class="stat"><div class="s">No numeric columns in this dataset.</div></div>'}</div></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel" style="margin:0">
+          <div class="panel-h"><div><h3>Correlation matrix</h3><p>Pearson r on pairwise-complete rows.</p></div></div>
+          <div class="panel-b"><div id="corrBox" style="height:${C ? Math.min(560, 190 + C.names.length * 26) : 120}px"></div></div>
+        </div>
+        <div class="panel" style="margin:0">
+          <div class="panel-h"><div><h3>Pareto contributors</h3><p>Where the mass concentrates, ranked by how skewed each dimension is.</p></div></div>
+          <div class="panel-b">${paretoRows || '<div class="hint">No suitable categorical dimension for a Pareto breakdown.</div>'}</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><div><h3>Outlier scan</h3><p>IQR fence (1.5×) and Z-score (|z| &gt; 3), side by side.</p></div></div>
+        <div class="panel-b flush"><div class="tw"><table>
+          <thead><tr><th>Column</th><th class="num">n</th><th class="num">Mean</th><th class="num">Median</th><th class="num">Std dev</th><th class="num">IQR fence</th><th class="num">IQR outliers</th><th class="num">|z|&gt;3</th><th class="num">Skew</th></tr></thead>
+          <tbody>${outRows || `<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--slate)">No numeric column has enough distinct values to scan.</td></tr>`}</tbody>
+        </table></div></div>
+      </div>`;
+
+    if (C) {
+      if (corrInst) { corrInst.dispose(); corrInst = null; }
+      corrInst = echarts.init($('#corrBox'));
+      const cells = [];
+      C.names.forEach((_, i) => C.names.forEach((__, j) => cells.push([j, i, isFinite(C.matrix[i][j]) ? +C.matrix[i][j].toFixed(3) : '-'])));
+      corrInst.setOption({
+        textStyle: { fontFamily: 'Inter, sans-serif' },
+        tooltip: { position: 'top', backgroundColor: '#131822', borderWidth: 0, textStyle: { color: '#fff' }, formatter: p => `${C.names[p.value[1]]} × ${C.names[p.value[0]]}<br/><b>r = ${p.value[2]}</b>` },
+        grid: { left: 6, right: 14, top: 12, bottom: 34, containLabel: true },
+        xAxis: { type: 'category', data: C.names, axisLabel: { rotate: 40, fontSize: 10, color: '#616D7E', hideOverlap: true }, axisLine: { lineStyle: { color: '#DFE4EB' } }, splitArea: { show: true } },
+        yAxis: { type: 'category', data: C.names, axisLabel: { fontSize: 10, color: '#616D7E' }, axisLine: { lineStyle: { color: '#DFE4EB' } }, splitArea: { show: true } },
+        visualMap: { min: -1, max: 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 80, textStyle: { fontSize: 10, color: '#616D7E' }, inRange: { color: ['#D9376E', '#F6F7FA', '#0E9C90'] } },
+        series: [{ type: 'heatmap', data: cells, label: { show: C.names.length <= 10, fontSize: 9.5, color: '#131822' }, itemStyle: { borderColor: '#fff', borderWidth: 1 } }]
+      });
+    } else {
+      $('#corrBox').innerHTML = `<div class="hint" style="padding:24px">Correlation needs at least two numeric columns with variation.</div>`;
+    }
+  }
+  function resize() { if (corrInst) corrInst.resize(); }
+  return { render, correlations, resize };
+})();
+
+/* ================================================================
+   APP — wiring
+   ================================================================ */
+const App = (() => {
+  let ready = false, active = 'preview';
+
+  function tabs() {
+    $$('.tab').forEach(t => t.onclick = () => {
+      $$('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t)));
+      $$('.pane').forEach(p => p.classList.remove('on'));
+      $('#pane-' + t.dataset.pane).classList.add('on');
+      active = t.dataset.pane;
+      if (!ready) return;
+      if (active === 'charts') { Charts.resize(); Charts.draw(); }
+      if (active === 'insights') Insights.resize();
+    });
+  }
+
+  const refresh = Util.debounce(() => {
+    if (!ready) return;
+    S.preview.page = 1;
+    Preview.render();
+    Pivot.render();
+    Charts.draw();
+    Insights.render();
+  }, 260);
+
+  async function load(file) {
+    try {
+      await Load.run('Reading ' + file.name, 'Decoding and parsing', async () => {
+        const { rows, headers } = await Ingest.readFile(file);
+        if (!headers.length) throw new Error('No columns were detected. Check the delimiter or the header row.');
+        Load.show('Inferring types', `${int(rows.length)} rows × ${headers.length} columns`);
+        await new Promise(r => setTimeout(r, 30));
+        S.rows = rows;
+        S.fields = Ingest.infer(rows, headers);
+        Ingest.coerce(rows, S.fields);
+        // reset dependent state
+        S.preview = { page: 1, size: +$('#pageSize').value || 50, sort: null, dir: 1, search: '', colFilters: {} };
+        S.pivot = { rows: [], cols: [], vals: [], subtotals: true, grand: true, result: null };
+        S.chart = { type: 'bar', x: '', y: '', agg: 'sum', group: '', size: '', stack: false, top: 15, sort: 'desc' };
+        Load.show('Building the workspace', 'Charts and insights');
+        await new Promise(r => setTimeout(r, 30));
+        ready = true;
+        Preview.init(); Schema.banner(); Schema.strip(); Schema.alerts();
+        Filters.build();
+        Preview.render(); Pivot.init(); Charts.init(); Insights.render();
+        $('#filePill').innerHTML = `<div class="filepill"><div style="flex:1;min-width:0">
+            <div class="nm">${esc(S.fileName)}</div>
+            <div class="mt">${int(rows.length)} rows · ${headers.length} cols · ${bytes(S.bytes)}</div>
+          </div><button title="Remove file" id="clearFile">×</button></div>`;
+        $('#clearFile').onclick = () => location.reload();
+      });
+    } catch (e) {
+      Load.hide();
+      $('#startEmpty').style.display = '';
+      $('#previewBody').style.display = 'none';
+      $('#startEmpty').innerHTML = `<h2>That file didn't load</h2>
+        <p style="color:var(--rose);margin-bottom:10px"><b>${esc(e.message)}</b></p>
+        <p>Check that it's a CSV or Excel file with a header row, then drop it again.</p>`;
+      console.error(e);
+    }
+  }
+
+  function sample() {
+    const regions = ['North', 'South', 'East', 'West', 'Central'];
+    const chans = ['Online', 'Retail', 'Partner', 'Direct'];
+    const cats = ['Hardware', 'Software', 'Services', 'Support', 'Training'];
+    const reps = ['A. Okafor', 'M. Duarte', 'J. Lindqvist', 'S. Haddad', 'R. Tanaka', 'L. Moreau'];
+    const rows = [];
+    for (let i = 0; i < 2600; i++) {
+      const d = new Date(2024, 0, 1 + Math.floor(Math.random() * 640));
+      const cat = cats[Math.floor(Math.random() * cats.length)];
+      const reg = regions[Math.floor(Math.random() ** 1.7 * regions.length)];
+      const base = { Hardware: 2400, Software: 900, Services: 1500, Support: 400, Training: 700 }[cat];
+      const growth = 1 + (d - new Date(2024, 0, 1)) / (640 * 864e5) * .45;
+      const units = 1 + Math.floor(Math.random() ** 2 * 22);
+      const rev = Math.round(base * growth * units * (.6 + Math.random() * .9) * (i % 211 === 0 ? 7 : 1));
+      rows.push({
+        'Order date': d, 'Region': reg, 'Channel': chans[Math.floor(Math.random() * chans.length)],
+        'Category': cat, 'Sales rep': reps[Math.floor(Math.random() * reps.length)],
+        'Units': units, 'Revenue': rev,
+        'Cost': Math.round(rev * (.42 + Math.random() * .22)),
+        'Discount %': +(Math.random() * 18).toFixed(1),
+        'Satisfaction': Math.random() < .04 ? null : +(3 + Math.random() * 2).toFixed(1),
+        'Returned': Math.random() < .07
+      });
+    }
+    const headers = Object.keys(rows[0]);
+    S.fileName = 'sample-orders.csv'; S.bytes = rows.length * 118; S.warnings = [];
+    S.rows = rows; S.fields = Ingest.infer(rows, headers); Ingest.coerce(rows, S.fields);
+    S.pivot = { rows: [], cols: [], vals: [], subtotals: true, grand: true, result: null };
+    S.chart = { type: 'bar', x: '', y: '', agg: 'sum', group: '', size: '', stack: false, top: 15, sort: 'desc' };
+    ready = true;
+    Preview.init(); Schema.banner(); Schema.strip(); Schema.alerts(); Filters.build();
+    Preview.render(); Pivot.init(); Charts.init(); Insights.render();
+    $('#filePill').innerHTML = `<div class="filepill"><div style="flex:1;min-width:0">
+      <div class="nm">sample-orders.csv</div><div class="mt">${int(rows.length)} rows · ${headers.length} cols · synthetic</div>
+      </div><button title="Remove" id="clearFile">×</button></div>`;
+    $('#clearFile').onclick = () => location.reload();
+  }
+
+  function init() {
+    tabs();
+    const drop = $('#drop'), input = $('#fileInput');
+    drop.onclick = () => input.click();
+    drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+    input.onchange = e => { if (e.target.files[0]) load(e.target.files[0]); input.value = ''; };
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+    drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => e.preventDefault());
+    $('#sampleBtn').onclick = () => Load.run('Generating sample', '2,600 synthetic orders', async () => { await new Promise(r => setTimeout(r, 120)); sample(); });
+    $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('open');
+    window.addEventListener('resize', Util.debounce(() => { Charts.resize(); Insights.resize(); }, 180));
+  }
+  return { init, refresh };
+})();
+
+App.init();
+</script>
+</body>
+</html>
