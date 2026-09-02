@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DRG Claim Review — SHAP Findings Report</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f9; --surface:#fff; --surface2:#f8fafc; --border:#e1e6ed; --border-strong:#c5cdd8;
+    --text:#111827; --text-sec:#475467; --text-muted:#8a94a6;
+    --navy:#17305c; --blue:#2563eb; --blue-light:#eef4ff;
+    --red:#b42318; --red-light:#fef3f2; --red-mid:#fda29b;
+    --green:#15803d; --green-light:#f0fdf4; --green-mid:#86efac;
+    --amber:#b54708; --amber-light:#fffaeb; --amber-mid:#fdd68a;
+    --radius:10px; --shadow:0 1px 4px rgba(16,24,40,.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+
+  .header{background:var(--navy);color:#fff;padding:16px 28px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  .header-icon{width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px}
+  .header h1{font-size:16px;font-weight:600}
+  .header p{font-size:12px;opacity:.72;margin-top:1px}
+  .header-right{margin-left:auto;font-size:12px;opacity:.75}
+
+  .layout{display:flex;height:calc(100vh - 66px);overflow:hidden}
+
+  /* Sidebar */
+  .sidebar{width:300px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .sidebar-top{padding:14px;border-bottom:1px solid var(--border)}
+  .upload-zone{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:16px 12px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2)}
+  .upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-light)}
+  .upload-zone .icon{font-size:22px;margin-bottom:5px}
+  .upload-zone p{font-size:12px;color:var(--text-sec)}
+  .upload-zone strong{color:var(--blue)}
+  #file-input{display:none}
+
+  /* Search */
+  .search-wrap{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .search-box{position:relative}
+  .search-box input{width:100%;padding:8px 30px 8px 30px;border:1px solid var(--border-strong);border-radius:8px;font-size:13px;background:#fff;font-family:inherit;color:var(--text)}
+  .search-box input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+  .search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-muted);pointer-events:none}
+  .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:15px;color:var(--text-muted);cursor:pointer;display:none;line-height:1;padding:2px 4px;border:none;background:none}
+  .search-clear.show{display:block}
+  .search-clear:hover{color:var(--text)}
+  .filter-pills{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+  .fpill{padding:3px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border-strong);background:#fff;color:var(--text-sec);transition:.15s}
+  .fpill.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .fpill.red.active{background:var(--red);border-color:var(--red)}
+  .fpill.amber.active{background:var(--amber);border-color:var(--amber)}
+  .fpill.green.active{background:var(--green);border-color:var(--green)}
+
+  .sidebar-claims{flex:1;overflow-y:auto;padding:8px}
+  .claim-list-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:8px}
+  .claim-item{padding:9px 11px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:10px;border:1px solid transparent;margin-bottom:3px;transition:.15s}
+  .claim-item:hover{background:var(--surface2)}
+  .claim-item.active{background:var(--blue-light);border-color:#bfdbfe}
+  .claim-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .dot-red{background:#ef4444}.dot-amber{background:#f59e0b}.dot-green{background:#22c55e}
+  .claim-item-text{flex:1;min-width:0}
+  .claim-item-id{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .claim-item-cat{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .claim-score{font-size:12px;font-weight:700}
+  .score-red{color:var(--red)}.score-amber{color:var(--amber)}.score-green{color:var(--green)}
+  mark{background:#fef08a;color:inherit;border-radius:2px;padding:0 1px}
+  .no-results{padding:20px 12px;text-align:center;font-size:12px;color:var(--text-muted)}
+
+  /* Main */
+  .main{flex:1;overflow-y:auto;padding:22px 26px}
+  .empty-state{max-width:520px;margin:60px auto;text-align:center}
+  .empty-state .big-icon{font-size:50px;margin-bottom:14px;opacity:.35}
+  .empty-state h2{font-size:18px;font-weight:600;color:var(--text-sec);margin-bottom:8px}
+  .empty-state p{font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:16px}
+  .format-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;text-align:left;font-size:12px;color:var(--text-sec)}
+  .format-box code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:11px;color:var(--blue);margin:1px}
+  .format-box ul{margin-top:6px;padding-left:15px}
+  .format-box li{margin-bottom:3px}
+
+  .claim-detail{max-width:920px}
+  .claim-header-bar{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:14px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow)}
+  .claim-badge{padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+  .badge-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-mid)}
+  .badge-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid)}
+  .badge-green{background:var(--green-light);color:var(--green);border:1px solid var(--green-mid)}
+  .claim-header-info{flex:1}
+  .claim-header-info h2{font-size:17px;font-weight:600;margin-bottom:3px}
+  .claim-header-info p{font-size:12px;color:var(--text-sec)}
+  .score-big{text-align:right}
+  .score-big .num{font-size:28px;font-weight:700;line-height:1}
+  .score-big .lbl{font-size:11px;color:var(--text-muted);margin-top:3px}
+
+  .tabs{display:flex;gap:4px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow)}
+  .tab{flex:1;padding:8px 4px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;color:var(--text-sec);border:none;background:none;font-family:inherit;transition:.15s}
+  .tab:hover{background:var(--surface2)}
+  .tab.active{background:var(--navy);color:#fff}
+  .panel{display:none}.panel.active{display:block}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .card-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+
+  /* Finding rows (auditor style) */
+  .finding{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .finding:last-child{border-bottom:none}
+  .finding-marker{width:4px;border-radius:3px;flex-shrink:0}
+  .fm-red{background:#ef4444}.fm-amber{background:#f59e0b}.fm-green{background:#22c55e}.fm-gray{background:#cbd5e1}
+  .finding-body{flex:1;min-width:0}
+  .finding-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+  .finding-name{font-size:13px;font-weight:600;color:var(--text)}
+  .finding-value{font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+  .finding-impact{font-size:11px;font-weight:700;margin-left:auto;white-space:nowrap}
+  .fi-red{color:var(--red)}.fi-green{color:var(--green)}.fi-gray{color:var(--text-muted)}
+  .finding-desc{font-size:12px;color:var(--text-sec);line-height:1.6;margin-bottom:3px}
+  .finding-interp{font-size:12px;line-height:1.6;padding:6px 10px;border-radius:6px;margin-top:5px}
+  .fint-red{background:var(--red-light);color:#912018}
+  .fint-green{background:var(--green-light);color:#166534}
+  .fint-amber{background:var(--amber-light);color:#93370d}
+
+  /* Value reference table */
+  .vtable{width:100%;border-collapse:collapse;font-size:12px}
+  .vtable th{text-align:left;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);font-weight:700;color:var(--text-sec);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .vtable td{padding:9px 10px;border:1px solid var(--border);vertical-align:top;color:var(--text-sec);line-height:1.55}
+  .vtable td.vname{font-weight:600;color:var(--text);white-space:nowrap}
+  .vtable td.vval{font-weight:700;color:var(--text);white-space:nowrap;font-family:monospace;font-size:12px}
+  .vtable tr:nth-child(even) td{background:var(--surface2)}
+  .flag-chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}
+  .chip-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-mid)}
+  .chip-green{background:var(--green-light);color:var(--green);border:1px solid var(--green-mid)}
+  .chip-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid)}
+  .chip-gray{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)}
+
+  /* SHAP bars */
+  .shap-section-label{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 8px}
+  .shap-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .shap-feat{font-size:12px;color:var(--text-sec);width:135px;flex-shrink:0;font-weight:500}
+  .shap-bar-wrap{flex:1;height:22px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+  .shap-bar-pos{height:100%;background:var(--red-light);border-right:3px solid #f04438;display:flex;align-items:center;padding-left:7px}
+  .shap-bar-neg{height:100%;background:var(--green-light);border-left:3px solid #12b76a;display:flex;align-items:center;justify-content:flex-end;padding-right:7px;margin-left:auto}
+  .shap-bar-label{font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden}
+  .shap-bar-pos .shap-bar-label{color:var(--red)}
+  .shap-bar-neg .shap-bar-label{color:var(--green)}
+  .shap-val{font-size:12px;font-weight:700;width:50px;text-align:right;flex-shrink:0}
+  .shap-val-pos{color:var(--red)}.shap-val-neg{color:var(--green)}
+  .zero-line{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-muted);margin:9px 0;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+  .zero-line::before,.zero-line::after{content:'';flex:1;height:1px;background:var(--border-strong)}
+
+  .verdict{border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;border:1px solid}
+  .verdict-red{background:var(--red-light);border-color:var(--red-mid)}
+  .verdict-amber{background:var(--amber-light);border-color:var(--amber-mid)}
+  .verdict-green{background:var(--green-light);border-color:var(--green-mid)}
+  .verdict-title{font-size:13px;font-weight:700;margin-bottom:5px}
+  .verdict-red .verdict-title{color:var(--red)}
+  .verdict-amber .verdict-title{color:var(--amber)}
+  .verdict-green .verdict-title{color:var(--green)}
+  .verdict-body{font-size:12px;line-height:1.65}
+  .verdict-red .verdict-body{color:#912018}
+  .verdict-amber .verdict-body{color:#93370d}
+  .verdict-green .verdict-body{color:#166534}
+
+  .action-box{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--navy);border-radius:0 var(--radius) var(--radius) 0;padding:14px 16px;font-size:12px;color:var(--text-sec);line-height:1.7;box-shadow:var(--shadow)}
+  .action-box strong{color:var(--text);display:block;margin-bottom:7px;font-size:13px}
+  .action-list{padding-left:17px}
+  .action-list li{margin-bottom:5px}
+
+  .note{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--text-sec);line-height:1.6;margin-bottom:12px}
+  .note strong{color:var(--text)}
+
+  .stats-row{display:flex;gap:10px;margin-bottom:14px}
+  .stat-card{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;text-align:center;box-shadow:var(--shadow)}
+  .stat-card .stat-val{font-size:20px;font-weight:700;line-height:1.2}
+  .stat-card .stat-lbl{font-size:11px;color:var(--text-muted);margin-top:3px}
+
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none;z-index:999}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .loading{display:none;padding:40px;text-align:center;color:var(--text-muted);font-size:13px}
+
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+
+  @media(max-width:700px){
+    .layout{flex-direction:column;height:auto}
+    .sidebar{width:100%;max-height:300px}
+    .stats-row{flex-direction:column}
+    .main{padding:16px}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">⚕</div>
+  <div>
+    <h1>DRG Claim Review — Findings Report</h1>
+    <p>Model explainability for clinical and coding auditors</p>
+  </div>
+  <div class="header-right" id="header-summary"></div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <div class="icon">📂</div>
+        <p><strong>Upload claim file</strong><br>Drag &amp; drop or click — .xlsx or .csv</p>
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])"/>
+    </div>
+
+    <div class="search-wrap" id="search-wrap" style="display:none;">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Search claim number…" oninput="applyFilters()" autocomplete="off"/>
+        <button class="search-clear" id="search-clear" onclick="clearSearch()" aria-label="Clear search">×</button>
+      </div>
+      <div class="filter-pills">
+        <button class="fpill active" data-zone="all" onclick="setZoneFilter('all',this)">All</button>
+        <button class="fpill red" data-zone="red" onclick="setZoneFilter('red',this)">High risk</button>
+        <button class="fpill amber" data-zone="amber" onclick="setZoneFilter('amber',this)">Review</button>
+        <button class="fpill green" data-zone="green" onclick="setZoneFilter('green',this)">Clean</button>
+      </div>
+    </div>
+
+    <div class="sidebar-claims">
+      <div class="claim-list-label" id="claim-count-label">No file loaded</div>
+      <div id="claim-list"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="empty-state" id="empty-state">
+      <div class="big-icon">📋</div>
+      <h2>Upload a claim file to begin review</h2>
+      <p>Each claim is presented as a findings report: the values found on the claim, what each value means clinically, why the model treated it as supportive or concerning, and what to verify in the medical record.</p>
+      <div class="format-box">
+        <strong>Expected columns</strong>
+        <ul>
+          <li>Claim identifier — <code>claim_number</code>, <code>claim_id</code>, <code>claimid</code></li>
+          <li>Model score — <code>score</code>, <code>risk_score</code>, <code>probability</code></li>
+          <li>SHAP values — <code>shap_drgcode</code>, <code>shap_losgm_ratio</code>, <code>shap_mcc_count</code> …</li>
+          <li>Claim values — <code>drgcode</code>, <code>losgm_ratio</code>, <code>providertaxid</code>, <code>discharge_status</code>, <code>mcc_count</code>, <code>cc_count</code>, <code>primary_diag</code>, <code>procedure_code</code></li>
+        </ul>
+        <p style="margin-top:8px;color:var(--text-muted)">Column names are case-insensitive. SHAP columns are detected by the <code>shap_</code> prefix.</p>
+      </div>
+    </div>
+    <div class="loading" id="loading-state">Processing file…</div>
+    <div id="detail-panel" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let allClaims=[], activeClaim=null, zoneFilter='all';
+
+/* ── Feature dictionary: label, what the field is, and how to read its value ── */
+const FEATURE_META={
+  drgcode:{label:'DRG code',field:'The Diagnosis Related Group assigned to this admission. The DRG determines the payment amount — higher-severity DRGs pay substantially more.',
+    read:v=>`DRG ${v} was billed for this stay.`},
+  providertaxid:{label:'Provider tax ID',field:'The billing facility or physician group. The model compares this provider\u2019s billing mix against peers treating similar cases.',
+    read:v=>`Billed by provider ${v}.`},
+  primary_diag:{label:'Primary diagnosis',field:'The principal ICD-10 diagnosis — the condition established after study to be chiefly responsible for the admission.',
+    read:v=>`Principal diagnosis coded as ${v}.`},
+  procedure_code:{label:'Procedure code',field:'The principal procedure performed. Certain procedures shift the claim into a higher-paying DRG.',
+    read:v=>`Principal procedure coded as ${v}.`},
+  losgm_ratio:{label:'LOS / geometric mean ratio',field:'Actual length of stay divided by the CMS geometric mean LOS for the billed DRG. 1.0 means the stay matched expectation.',
+    read:v=>{const n=parseFloat(v);if(isNaN(n))return `Ratio recorded as ${v}.`;
+      if(n>=1.5)return `Ratio ${n.toFixed(2)} — the stay ran roughly ${Math.round((n-1)*100)}% longer than the expected mean for this DRG.`;
+      if(n>=1.15)return `Ratio ${n.toFixed(2)} — the stay ran about ${Math.round((n-1)*100)}% above expected.`;
+      if(n>=0.85)return `Ratio ${n.toFixed(2)} — the stay was close to the expected mean.`;
+      return `Ratio ${n.toFixed(2)} — the stay was about ${Math.round((1-n)*100)}% shorter than expected.`}},
+  discharge_status:{label:'Discharge status',field:'Where the patient went at discharge. For a high-acuity DRG, a routine home discharge is less consistent than transfer to skilled nursing or rehab.',
+    read:v=>{const m={'01':'Discharged home / routine — no post-acute services.','02':'Transferred to another short-term acute hospital.','03':'Transferred to a skilled nursing facility.','06':'Discharged home under organised home health care.','20':'Expired.','62':'Transferred to inpatient rehabilitation.','43':'Transferred to a federal hospital.','07':'Left against medical advice.'};
+      const k=String(v).padStart(2,'0');return m[k]?`Status ${k} — ${m[k]}`:`Discharge status code ${v}.`}},
+  mcc_all:{label:'MCC present',field:'Whether any Major Complication or Comorbidity is documented. An MCC is required to bill the top tier of most DRG families.',
+    read:v=>String(v)==='1'||/^(y|yes|true)$/i.test(String(v))?'At least one MCC is documented on the claim.':'No MCC documented on the claim.'},
+  mcc_count:{label:'MCC count',field:'How many distinct Major Complications or Comorbidities are coded. Each must be supported by physician documentation.',
+    read:v=>{const n=parseInt(v);if(isNaN(n))return `Recorded as ${v}.`;
+      if(n===0)return 'No MCCs coded — the claim carries no major complication.';
+      if(n===1)return '1 MCC coded — the minimum needed for top-tier severity.';
+      if(n<=3)return `${n} MCCs coded — a moderate complication burden.`;
+      return `${n} MCCs coded — an unusually high count that should each be traceable to a physician note.`}},
+  cc_all:{label:'CC present',field:'Whether any Complication or Comorbidity (below MCC severity) is documented.',
+    read:v=>String(v)==='1'||/^(y|yes|true)$/i.test(String(v))?'At least one CC is documented.':'No CC documented.'},
+  cc_count:{label:'CC count',field:'How many Complications or Comorbidities are coded. CCs support the middle severity tier of a DRG family.',
+    read:v=>{const n=parseInt(v);if(isNaN(n))return `Recorded as ${v}.`;
+      if(n===0)return 'No CCs coded.';
+      if(n<=2)return `${n} CC${n>1?'s':''} coded — a light comorbidity burden.`;
+      if(n<=5)return `${n} CCs coded — a moderate comorbidity burden.`;
+      return `${n} CCs coded — a heavy list that warrants documentation spot-checks.`}},
+};
+
+/* ── What a positive / negative SHAP on each feature means, in audit language ── */
+const SHAP_MEANING={
+  losgm_ratio:{
+    pos:'The stay length is longer than the model expects for this DRG and severity mix. Extended stays raise cost without necessarily raising documented acuity.',
+    neg:'The stay length sits within the expected band for this DRG, which is consistent with correct DRG assignment.'},
+  providertaxid:{
+    pos:'This provider bills the current DRG more often, or at higher severity, than peers treating comparable cases. That pattern historically correlates with coding drift.',
+    neg:'This provider\u2019s billing profile for this DRG is unremarkable relative to peers.'},
+  drgcode:{
+    pos:'The DRG billed sits at the high-paying end of its family, and the rest of the claim does not fully corroborate that tier.',
+    neg:'The DRG billed is consistent with the diagnosis, procedure and severity documented elsewhere on the claim.'},
+  mcc_count:{
+    pos:'The number of major complications coded is higher than the model expects given the rest of the claim — a signal of possible over-capture.',
+    neg:'The documented major complications genuinely support the severity tier billed, which reduces overpayment concern.'},
+  mcc_all:{
+    pos:'The presence of an MCC is being used to reach the top severity tier without corroborating signals elsewhere on the claim.',
+    neg:'MCC documentation is consistent with the rest of the clinical picture.'},
+  cc_count:{
+    pos:'The comorbidity list is longer than expected for this diagnosis, which can indicate over-coding of secondary conditions.',
+    neg:'The comorbidity count is proportionate to the principal diagnosis.'},
+  cc_all:{
+    pos:'Comorbidity capture is contributing to the severity tier without other supporting evidence.',
+    neg:'Comorbidity documentation is consistent with the admission.'},
+  discharge_status:{
+    pos:'The discharge destination does not match the acuity billed. A patient billed at top severity would usually require post-acute care rather than a routine discharge.',
+    neg:'The discharge destination is clinically consistent with the severity billed.'},
+  primary_diag:{
+    pos:'The principal diagnosis does not fully account for the DRG or the procedures billed, suggesting possible sequencing or assignment issues.',
+    neg:'The principal diagnosis directly supports the DRG assigned and the procedures performed.'},
+  procedure_code:{
+    pos:'The procedure billed drives the claim into a higher-paying group than the diagnosis alone would support.',
+    neg:'The procedure billed is consistent with the diagnosis and the DRG assigned.'},
+};
+
+const CATEGORIES=[
+  {id:'drg_upcoding',name:'DRG Upcoding Risk',zone:'red',pos:['drgcode','mcc_all','mcc_count'],neg:['cc_count','primary_diag']},
+  {id:'los_outlier',name:'LOS Outlier — Acuity Not Supported',zone:'red',pos:['losgm_ratio'],neg:['mcc_count','mcc_all']},
+  {id:'provider_anomaly',name:'Provider Billing Anomaly',zone:'red',pos:['providertaxid'],neg:['primary_diag','drgcode']},
+  {id:'proc_unbundling',name:'Procedure Unbundling Risk',zone:'red',pos:['procedure_code'],neg:['drgcode']},
+  {id:'acuity_discharge',name:'Acuity–Discharge Mismatch',zone:'red',pos:['mcc_all','mcc_count'],neg:['discharge_status']},
+  {id:'comorbidity_inflate',name:'Comorbidity Inflation Risk',zone:'red',pos:['cc_all','cc_count'],neg:['primary_diag']},
+  {id:'mixed_acuity',name:'Mixed Acuity Signal',zone:'amber',pos:['mcc_all','cc_all'],neg:[]},
+  {id:'los_borderline',name:'LOS Borderline',zone:'amber',pos:['losgm_ratio','drgcode'],neg:[]},
+  {id:'drg_tension',name:'DRG–Diagnosis Tension',zone:'amber',pos:['drgcode'],neg:['primary_diag']},
+  {id:'discharge_unclear',name:'Discharge Status Unclear',zone:'amber',pos:['discharge_status'],neg:[]},
+  {id:'acuity_justified',name:'Acuity-Justified Stay',zone:'green',pos:['mcc_count','mcc_all'],neg:['losgm_ratio']},
+  {id:'drg_aligned',name:'DRG–Diagnosis Aligned',zone:'green',pos:['primary_diag'],neg:['drgcode']},
+  {id:'provider_normal',name:'Provider Pattern Normal',zone:'green',pos:[],neg:['providertaxid']},
+  {id:'low_complexity',name:'Low Complexity — Clean Claim',zone:'green',pos:[],neg:[]},
+];
+
+const CAT_SUMMARY={
+  drg_upcoding:'The severity tier billed is not fully corroborated by the coded complications. Verify that every MCC and CC on the claim is supported by physician documentation, and confirm diagnosis sequencing.',
+  los_outlier:'The length of stay exceeds expectation for this DRG without a matching increase in documented acuity. Confirm each additional day was medically necessary at an acute level of care.',
+  provider_anomaly:'The billing provider\u2019s pattern for this DRG diverges from peers. Consider a provider-level review in addition to this individual claim.',
+  proc_unbundling:'The procedure coding is driving DRG assignment. Verify the procedures were performed, documented, and not separable into a lower-paying group.',
+  acuity_discharge:'The severity billed and the discharge destination are clinically inconsistent. Confirm the acuity documentation and the discharge disposition on the face sheet.',
+  comorbidity_inflate:'The comorbidity list is larger than the principal diagnosis would suggest. Validate each secondary condition against a treating physician note.',
+  mixed_acuity:'Supporting and concerning signals are close to balanced. This claim needs a clinical reviewer rather than an automated decision.',
+  los_borderline:'The stay sits near the threshold where extended-stay review applies. A short utilisation review should settle it.',
+  drg_tension:'The DRG and the principal diagnosis are not fully aligned. A coding review should confirm the assignment is correct.',
+  discharge_unclear:'The discharge status is the only material flag. Confirm the code against the face sheet and nursing notes.',
+  acuity_justified:'The documented complications support both the length of stay and the DRG billed. Standard verification only.',
+  drg_aligned:'Diagnosis, procedure and DRG are consistent. Low risk of upcoding.',
+  provider_normal:'No unusual provider pattern. Process through the standard workflow.',
+  low_complexity:'All values sit within expected ranges. No review flags raised.',
+};
+
+const CAT_ACTIONS={
+  drg_upcoding:['Pull the medical record and confirm each MCC/CC is supported by a treating physician note','Verify principal diagnosis sequencing against coding guidelines','Re-run the DRG grouper with validated codes and compare payment'],
+  los_outlier:['Request day-by-day progress notes covering the extended stay','Confirm acute level-of-care criteria were met for each additional day','Compare this stay against similar DRG cases at the same facility'],
+  provider_anomaly:['Pull this provider\u2019s billing history for this DRG over the last 12 months','Compare severity mix against regional peers treating the same DRG','Request the itemised bill and supporting clinical record'],
+  proc_unbundling:['Verify procedure codes against the operative report','Check for services that should have been bundled into the base DRG','Confirm medical necessity documentation for each procedure'],
+  acuity_discharge:['Confirm the discharge disposition on the face sheet and nursing notes','Verify ventilator, ICU or monitoring documentation if top-tier severity was billed','Review discharge planning notes for consistency with acuity'],
+  comorbidity_inflate:['Validate each coded comorbidity against a physician note','Review any coding query forms used to capture secondary conditions','Confirm conditions were monitored, evaluated or treated during the stay'],
+  mixed_acuity:['Route to a clinical reviewer — the data alone does not resolve this','Focus review on MCC documentation and LOS justification','Consider peer-to-peer discussion with the attending physician'],
+  los_borderline:['Brief utilisation review of the days above the geometric mean','Check InterQual or MCG criteria for continued stay','Confirm no avoidable delays extended the admission'],
+  drg_tension:['Coding audit to confirm DRG assignment','Verify principal diagnosis selection and sequencing','Check whether an alternate DRG better fits the documentation'],
+  discharge_unclear:['Confirm the discharge status code against the face sheet','Check whether post-acute services were arranged but miscoded'],
+  acuity_justified:['Standard documentation verification only','Spot-check MCC/CC coding accuracy','No escalation required'],
+  drg_aligned:['Routine review — no material flags','Standard remittance verification'],
+  provider_normal:['No provider-level action required','Process per standard workflow'],
+  low_complexity:['Approve through the standard process','No additional documentation review required'],
+};
+
+/* ── File handling ── */
+function handleDrop(e){e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleFile(f)}
+function handleFile(file){
+  if(!file)return;showLoading(true);
+  const r=new FileReader();
+  r.onload=e=>{try{
+    let rows;
+    if(/\.csv$/i.test(file.name)){rows=parseCSV(new TextDecoder().decode(e.target.result))}
+    else{const wb=XLSX.read(e.target.result,{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''})}
+    processClaims(rows);
+  }catch(err){showToast('Could not read file: '+err.message);showLoading(false)}};
+  r.readAsArrayBuffer(file);
+}
+function parseCSV(t){
+  const lines=t.trim().split(/\r?\n/);
+  const hs=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).filter(l=>l.trim()).map(l=>{
+    const vs=l.split(',').map(v=>v.trim().replace(/^"|"$/g,''));const o={};
+    hs.forEach((h,i)=>o[h]=vs[i]!==undefined?vs[i]:'');return o});
+}
+function findCol(keys,cands){
+  for(const c of cands){
+    const f=keys.find(k=>k.toLowerCase().trim().replace(/[^a-z0-9]/g,'')===c.replace(/[^a-z0-9]/g,''));
+    if(f)return f}
+  return null;
+}
+function processClaims(rows){
+  if(!rows||!rows.length){showToast('No data rows found.');showLoading(false);return}
+  const hdr=Object.keys(rows[0]);
+  const claimCol=findCol(hdr,['claim_number','claim_id','claimid','claimnumber','claim_no','claimno','claim','id']);
+  const scoreCol=findCol(hdr,['score','risk_score','probability','pred_score','model_score','risk','prediction']);
+
+  const shapCols={},featCols={};
+  hdr.forEach(k=>{
+    const kl=k.toLowerCase().trim();
+    if(kl.startsWith('shap_')||kl.startsWith('shap')&&kl.includes('_')){
+      const f=kl.replace(/^shap_?/,'');
+      const m=Object.keys(FEATURE_META).find(x=>f===x||f.replace(/[^a-z0-9]/g,'')===x.replace(/[^a-z0-9]/g,'')||f.includes(x));
+      shapCols[m||f]=k;
+    }else{
+      const m=Object.keys(FEATURE_META).find(x=>kl===x||kl.replace(/[^a-z0-9]/g,'')===x.replace(/[^a-z0-9]/g,''));
+      if(m)featCols[m]=k;
+    }
+  });
+
+  allClaims=rows.map((row,i)=>{
+    const id=claimCol&&row[claimCol]!==''?String(row[claimCol]):`ROW-${String(i+1).padStart(4,'0')}`;
+    let score=scoreCol?parseFloat(row[scoreCol]):NaN;
+    const shap={};
+    Object.entries(shapCols).forEach(([f,c])=>{const v=parseFloat(row[c]);if(!isNaN(v))shap[f]=v});
+    const features={};
+    Object.entries(featCols).forEach(([f,c])=>{if(row[c]!=='')features[f]=row[c]});
+    if(isNaN(score)){
+      const s=Object.values(shap).reduce((a,b)=>a+b,0);
+      score=Math.min(Math.max(s+0.5,0),1);
+    }
+    if(score>1)score=score/100;
+    return{id,score,shap,features,raw:row};
+  });
+
+  renderSidebar();
+  document.getElementById('search-wrap').style.display='block';
+  const red=allClaims.filter(c=>categorize(c).zone==='red').length;
+  document.getElementById('header-summary').textContent=`${allClaims.length} claims · ${red} high risk`;
+  if(allClaims.length)selectClaim(allClaims[0]);
+  showLoading(false);
+  showToast(`Loaded ${allClaims.length} claim${allClaims.length!==1?'s':''}`);
+}
+
+/* ── Categorisation ── */
+function categorize(claim){
+  const{score,shap}=claim;
+  const zone=score>=0.65?'red':score>=0.35?'amber':'green';
+  const e=Object.entries(shap||{});
+  if(!e.length)return CATEGORIES.find(c=>c.zone===zone)||CATEGORIES[0];
+  const sorted=e.sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const tp=sorted.filter(([,v])=>v>0).map(([k])=>k).slice(0,3);
+  const tn=sorted.filter(([,v])=>v<0).map(([k])=>k).slice(0,3);
+  let best=null,bs=-1;
+  for(const c of CATEGORIES.filter(c=>c.zone===zone)){
+    let s=0;c.pos.forEach(f=>{if(tp.includes(f))s+=2});c.neg.forEach(f=>{if(tn.includes(f))s+=1});
+    if(s>bs){bs=s;best=c}
+  }
+  return best||CATEGORIES.find(c=>c.zone===zone)||CATEGORIES[0];
+}
+
+/* ── Search & filters ── */
+function setZoneFilter(z,btn){
+  zoneFilter=z;
+  document.querySelectorAll('.fpill').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+function clearSearch(){
+  document.getElementById('search-input').value='';
+  applyFilters();
+  document.getElementById('search-input').focus();
+}
+function applyFilters(){
+  const q=document.getElementById('search-input').value.trim();
+  document.getElementById('search-clear').classList.toggle('show',q.length>0);
+  renderSidebar(q);
+}
+function renderSidebar(query=''){
+  const list=document.getElementById('claim-list');
+  const label=document.getElementById('claim-count-label');
+  const q=query.toLowerCase();
+  const filtered=allClaims.filter(c=>{
+    const zoneOk=zoneFilter==='all'||categorize(c).zone===zoneFilter;
+    const searchOk=!q||String(c.id).toLowerCase().includes(q)||categorize(c).name.toLowerCase().includes(q);
+    return zoneOk&&searchOk;
+  });
+  label.textContent=q||zoneFilter!=='all'
+    ?`${filtered.length} of ${allClaims.length} claims`
+    :`${allClaims.length} claim${allClaims.length!==1?'s':''} loaded`;
+  if(!filtered.length){list.innerHTML=`<div class="no-results">No claims match “${escHtml(query)}”.</div>`;return}
+  list.innerHTML='';
+  filtered.forEach(c=>{
+    const cat=categorize(c),z=cat.zone;
+    const d=document.createElement('div');
+    d.className='claim-item'+(activeClaim&&activeClaim.id===c.id?' active':'');
+    d.dataset.id=c.id;
+    d.onclick=()=>selectClaim(c);
+    d.innerHTML=`<div class="dot dot-${z}"></div>
+      <div class="claim-item-text">
+        <div class="claim-item-id">${highlight(String(c.id),query)}</div>
+        <div class="claim-item-cat">${escHtml(cat.name)}</div>
+      </div>
+      <div class="claim-score score-${z}">${Math.round(c.score*100)}%</div>`;
+    list.appendChild(d);
+  });
+}
+function highlight(text,q){
+  if(!q)return escHtml(text);
+  const i=text.toLowerCase().indexOf(q.toLowerCase());
+  if(i<0)return escHtml(text);
+  return escHtml(text.slice(0,i))+'<mark>'+escHtml(text.slice(i,i+q.length))+'</mark>'+escHtml(text.slice(i+q.length));
+}
+
+function selectClaim(c){
+  activeClaim=c;
+  document.querySelectorAll('.claim-item').forEach(el=>el.classList.toggle('active',el.dataset.id===String(c.id)));
+  renderDetail(c);
+}
+
+/* ── Detail ── */
+function renderDetail(claim){
+  document.getElementById('empty-state').style.display='none';
+  document.getElementById('detail-panel').style.display='block';
+  const cat=categorize(claim),z=cat.zone;
+  const shap=claim.shap||{},features=claim.features||{};
+  const sorted=Object.entries(shap).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const pos=sorted.filter(([,v])=>v>0),neg=sorted.filter(([,v])=>v<0);
+  const maxAbs=sorted.length?Math.abs(sorted[0][1]):1;
+
+  document.getElementById('detail-panel').innerHTML=`
+  <div class="claim-detail">
+    <div class="claim-header-bar">
+      <span class="claim-badge badge-${z}">${z==='red'?'High risk':z==='amber'?'Needs review':'Clean claim'}</span>
+      <div class="claim-header-info">
+        <h2>Claim ${escHtml(String(claim.id))}</h2>
+        <p>Finding: <strong>${escHtml(cat.name)}</strong> · ${sorted.length} feature${sorted.length!==1?'s':''} evaluated</p>
+      </div>
+      <div class="score-big">
+        <div class="num score-${z}">${Math.round(claim.score*100)}%</div>
+        <div class="lbl">Model score</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab(event,'t-find')">Findings</button>
+      <button class="tab" onclick="switchTab(event,'t-vals')">Claim values</button>
+      <button class="tab" onclick="switchTab(event,'t-shap')">Influence</button>
+      <button class="tab" onclick="switchTab(event,'t-verd')">Conclusion</button>
+    </div>
+
+    <div class="panel active" id="t-find">${renderFindings(claim,cat,pos,neg,features)}</div>
+    <div class="panel" id="t-vals">${renderValues(claim,features,shap)}</div>
+    <div class="panel" id="t-shap">${renderShap(pos,neg,maxAbs)}</div>
+    <div class="panel" id="t-verd">${renderVerdict(claim,cat,pos,neg,features)}</div>
+  </div>`;
+}
+function switchTab(e,id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+/* ── Findings: value + what it means + why it mattered ── */
+function renderFindings(claim,cat,pos,neg,features){
+  const rows=[...pos,...neg].map(([f,v])=>{
+    const meta=FEATURE_META[f]||{label:f,field:'Feature supplied in the uploaded file.',read:x=>`Value: ${x}`};
+    const raw=features[f];
+    const valTxt=raw!==undefined&&raw!==''?meta.read(raw):null;
+    const mean=SHAP_MEANING[f];
+    const dir=v>0?'red':'green';
+    const interp=mean?(v>0?mean.pos:mean.neg)
+      :(v>0?'This value increased the model\u2019s concern relative to comparable claims.'
+           :'This value reduced the model\u2019s concern relative to comparable claims.');
+    return `
+    <div class="finding">
+      <div class="finding-marker fm-${dir}"></div>
+      <div class="finding-body">
+        <div class="finding-head">
+          <span class="finding-name">${escHtml(meta.label)}</span>
+          ${raw!==undefined&&raw!==''?`<span class="finding-value">${escHtml(String(raw))}</span>`:''}
+          <span class="finding-impact fi-${dir}">${v>0?'Increases concern':'Supports the claim'} · ${v>0?'+':''}${v.toFixed(3)}</span>
+        </div>
+        <div class="finding-desc">${escHtml(meta.field)}</div>
+        ${valTxt?`<div class="finding-desc"><strong>On this claim:</strong> ${escHtml(valTxt)}</div>`:''}
+        <div class="finding-interp fint-${dir}"><strong>Why it mattered:</strong> ${escHtml(interp)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const scorePct=Math.round(claim.score*100);
+  const zoneLine=cat.zone==='red'
+    ?`The model scored this claim at ${scorePct}%, placing it above the high-risk threshold. The findings below are ordered by how much each one moved the score.`
+    :cat.zone==='amber'
+    ?`The model scored this claim at ${scorePct}%, in the review band. Concerning and supporting findings are close to balanced, which is why it needs a human reviewer.`
+    :`The model scored this claim at ${scorePct}%, below the review threshold. The findings below show the values that support the billing as submitted.`;
+
+  return `
+  <div class="card">
+    <div class="card-title">Review summary</div>
+    <div class="note">${escHtml(zoneLine)}</div>
+    <div class="note"><strong>How to read this page.</strong> Each finding names a value on the claim, explains what that field represents, states what the value was for this admission, and gives the reason the model treated it as supporting or concerning. Findings marked red raised the score; findings marked green lowered it.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Findings — ordered by influence</div>
+    ${rows||'<p style="font-size:13px;color:var(--text-muted)">No SHAP columns were detected in the uploaded file.</p>'}
+  </div>`;
+}
+
+/* ── Claim values reference table ── */
+function renderValues(claim,features,shap){
+  const keys=Object.keys(FEATURE_META).filter(k=>features[k]!==undefined&&features[k]!=='');
+  const extras=Object.entries(claim.raw||{}).filter(([k])=>{
+    const kl=k.toLowerCase().replace(/[^a-z0-9]/g,'');
+    return !kl.startsWith('shap')&&!Object.keys(FEATURE_META).some(f=>f.replace(/[^a-z0-9]/g,'')===kl);
+  });
+
+  if(!keys.length&&!extras.length)
+    return `<div class="card"><div class="card-title">Claim values</div><p style="font-size:13px;color:var(--text-muted)">No claim value columns detected. Add columns such as <code>drgcode</code>, <code>losgm_ratio</code>, <code>mcc_count</code> next to your SHAP columns.</p></div>`;
+
+  const rows=keys.map(k=>{
+    const m=FEATURE_META[k],v=features[k],s=shap[k];
+    let chip='<span class="flag-chip chip-gray">Not scored</span>';
+    if(s!==undefined){
+      chip=s>0?'<span class="flag-chip chip-red">Raised score</span>'
+              :s<0?'<span class="flag-chip chip-green">Lowered score</span>'
+                  :'<span class="flag-chip chip-gray">Neutral</span>';
+    }
+    return `<tr>
+      <td class="vname">${escHtml(m.label)}</td>
+      <td class="vval">${escHtml(String(v))}</td>
+      <td>${escHtml(m.read(v))}</td>
+      <td>${chip}</td>
+    </tr>`;
+  }).join('');
+
+  const extraRows=extras.length?`
+    <div class="card">
+      <div class="card-title">Other columns in the file</div>
+      <table class="vtable"><thead><tr><th>Column</th><th>Value</th></tr></thead><tbody>
+      ${extras.map(([k,v])=>`<tr><td class="vname">${escHtml(k)}</td><td class="vval">${escHtml(String(v)||'—')}</td></tr>`).join('')}
+      </tbody></table>
+    </div>`:'';
+
+  return `
+  <div class="card">
+    <div class="card-title">Claim values and what they mean</div>
+    <div class="note">Each row shows the value submitted on the claim, a plain reading of that value, and whether it raised or lowered the model score.</div>
+    ${rows?`<table class="vtable"><thead><tr><th style="width:19%">Field</th><th style="width:12%">Value</th><th>Reading</th><th style="width:16%">Effect</th></tr></thead><tbody>${rows}</tbody></table>`:''}
+  </div>
+  ${extraRows}`;
+}
+
+/* ── Influence ── */
+function renderShap(pos,neg,maxAbs){
+  if(!pos.length&&!neg.length)
+    return `<div class="card"><p style="font-size:13px;color:var(--text-muted)">No SHAP columns detected. Add columns prefixed <code>shap_</code>, for example <code>shap_losgm_ratio</code>.</p></div>`;
+  const bar=(f,v,kind)=>{
+    const pct=Math.max(8,Math.round(Math.abs(v)/maxAbs*88));
+    const m=FEATURE_META[f]||{label:f};
+    const lbl=Math.abs(v)>=maxAbs*0.4?(kind==='pos'?'strongest driver':'strongest support'):'';
+    return `<div class="shap-row">
+      <div class="shap-feat">${escHtml(m.label)}</div>
+      <div class="shap-bar-wrap"><div class="shap-bar-${kind}" style="width:${pct}%"><span class="shap-bar-label">${lbl}</span></div></div>
+      <div class="shap-val shap-val-${kind}">${v>0?'+':''}${v.toFixed(3)}</div>
+    </div>`;
+  };
+  const ps=pos.reduce((a,[,v])=>a+v,0),ns=neg.reduce((a,[,v])=>a+v,0);
+  return `
+  <div class="card">
+    <div class="card-title">Model influence by field</div>
+    <div class="note">These figures are the model\u2019s attribution values. A positive number means the field pushed the score up; a negative number means it pushed the score down. The magnitude shows how much.</div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-val" style="color:var(--red)">+${ps.toFixed(3)}</div><div class="stat-lbl">Total raising the score</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:var(--green)">${ns.toFixed(3)}</div><div class="stat-lbl">Total lowering the score</div></div>
+      <div class="stat-card"><div class="stat-val">${(ps+ns>0?'+':'')+(ps+ns).toFixed(3)}</div><div class="stat-lbl">Net effect</div></div>
+    </div>
+    ${pos.length?`<div class="shap-section-label">Fields that raised the score</div>${pos.map(([f,v])=>bar(f,v,'pos')).join('')}`:''}
+    ${pos.length&&neg.length?'<div class="zero-line">no effect</div>':''}
+    ${neg.length?`<div class="shap-section-label">Fields that lowered the score</div>${neg.map(([f,v])=>bar(f,v,'neg')).join('')}`:''}
+  </div>`;
+}
+
+/* ── Conclusion ── */
+function renderVerdict(claim,cat,pos,neg,features){
+  const z=cat.zone;
+  const tp=pos[0],tn=neg[0];
+  const tpm=tp?(FEATURE_META[tp[0]]||{label:tp[0]}):null;
+  const tnm=tn?(FEATURE_META[tn[0]]||{label:tn[0]}):null;
+
+  let basis='';
+  if(tpm&&tnm){
+    const pv=features[tp[0]],nv=features[tn[0]];
+    basis=`<div class="verdict verdict-${z==='green'?'green':'amber'}">
+      <div class="verdict-title">Basis for the finding</div>
+      <div class="verdict-body">The determining factor is <strong>${escHtml(tpm.label)}</strong>${pv?` (${escHtml(String(pv))})`:''}, which raised the score by ${tp[1].toFixed(3)}. The strongest counterweight is <strong>${escHtml(tnm.label)}</strong>${nv?` (${escHtml(String(nv))})`:''}, which lowered it by ${Math.abs(tn[1]).toFixed(3)}. ${z==='red'?'The concern was not offset.':z==='amber'?'Neither side clearly prevails, which is why this needs a reviewer.':'The supporting evidence prevails.'}</div>
+    </div>`;
+  }
+
+  const caveat=z==='red'?`
+    <div class="verdict verdict-amber">
+      <div class="verdict-title">Scope of this finding</div>
+      <div class="verdict-body">This is a review flag, not a payment determination. The model observes statistical patterns across claims; it does not read the medical record. Clinical documentation may fully justify what is billed. Pull the record before taking action.</div>
+    </div>`:'';
+
+  return `
+    <div class="verdict verdict-${z}">
+      <div class="verdict-title">${escHtml(cat.name)}</div>
+      <div class="verdict-body">${escHtml(CAT_SUMMARY[cat.id]||'Review per standard audit procedure.')}</div>
+    </div>
+    ${basis}
+    ${caveat}
+    <div class="action-box">
+      <strong>Recommended verification steps</strong>
+      <ul class="action-list">${(CAT_ACTIONS[cat.id]||['Review per standard audit procedure']).map(a=>`<li>${escHtml(a)}</li>`).join('')}</ul>
+    </div>`;
+}
+
+/* ── Utils ── */
+function showLoading(on){
+  document.getElementById('loading-state').style.display=on?'block':'none';
+  document.getElementById('empty-state').style.display=on?'none':(allClaims.length?'none':'block');
+}
+function showToast(m){
+  const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+</script>
+</body>
+</html>
