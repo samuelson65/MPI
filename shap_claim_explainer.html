@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DRG Claim Explainability — SHAP Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface2: #f9fafb;
+    --border: #e2e5ea;
+    --border-strong: #c8cdd6;
+    --text: #0f1117;
+    --text-sec: #4a5568;
+    --text-muted: #8a94a6;
+    --blue-dark: #1a2e5a;
+    --blue: #2563eb;
+    --blue-light: #eff4ff;
+    --red: #b91c1c;
+    --red-light: #fef2f2;
+    --red-mid: #fca5a5;
+    --green: #15803d;
+    --green-light: #f0fdf4;
+    --green-mid: #86efac;
+    --amber: #b45309;
+    --amber-light: #fffbeb;
+    --radius: 10px;
+    --shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--blue-dark);
+    color: #fff;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header-icon {
+    width: 36px; height: 36px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .header h1 { font-size: 16px; font-weight: 600; }
+  .header p { font-size: 12px; opacity: 0.7; margin-top: 1px; }
+
+  /* ── Layout ── */
+  .layout { display: flex; height: calc(100vh - 61px); overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 280px;
+    min-width: 240px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-top { padding: 16px; border-bottom: 1px solid var(--border); }
+  .upload-zone {
+    border: 2px dashed var(--border-strong);
+    border-radius: var(--radius);
+    padding: 20px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface2);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: var(--blue-light); }
+  .upload-zone .icon { font-size: 24px; margin-bottom: 6px; }
+  .upload-zone p { font-size: 12px; color: var(--text-sec); }
+  .upload-zone strong { color: var(--blue); }
+  #file-input { display: none; }
+
+  .sidebar-claims { flex: 1; overflow-y: auto; padding: 8px; }
+  .claim-list-label {
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 8px 8px 4px;
+  }
+  .claim-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+    margin-bottom: 3px;
+  }
+  .claim-item:hover { background: var(--surface2); }
+  .claim-item.active { background: var(--blue-light); border-color: #bfdbfe; }
+  .claim-item .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-red { background: #ef4444; }
+  .dot-amber { background: #f59e0b; }
+  .dot-green { background: #22c55e; }
+  .claim-item-text { flex: 1; min-width: 0; }
+  .claim-item-id { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .claim-item-cat { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .claim-score { font-size: 12px; font-weight: 600; }
+  .score-red { color: var(--red); }
+  .score-amber { color: var(--amber); }
+  .score-green { color: var(--green); }
+
+  /* ── Main panel ── */
+  .main { flex: 1; overflow-y: auto; background: var(--bg); padding: 24px; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    max-width: 480px; margin: 80px auto; text-align: center;
+  }
+  .empty-state .big-icon { font-size: 56px; margin-bottom: 16px; opacity: 0.4; }
+  .empty-state h2 { font-size: 18px; font-weight: 600; color: var(--text-sec); margin-bottom: 8px; }
+  .empty-state p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 16px; }
+  .format-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 12px;
+    color: var(--text-sec);
+  }
+  .format-box code {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--blue);
+    margin: 1px 2px;
+  }
+  .format-box ul { margin-top: 6px; padding-left: 14px; }
+  .format-box li { margin-bottom: 3px; }
+
+  /* ── Claim detail ── */
+  .claim-detail { max-width: 900px; }
+  .claim-header-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    box-shadow: var(--shadow);
+  }
+  .claim-badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-red { background: var(--red-light); color: var(--red); border: 1px solid var(--red-mid); }
+  .badge-amber { background: var(--amber-light); color: var(--amber); border: 1px solid #fcd34d; }
+  .badge-green { background: var(--green-light); color: var(--green); border: 1px solid var(--green-mid); }
+  .claim-header-info { flex: 1; }
+  .claim-header-info h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .claim-header-info p { font-size: 12px; color: var(--text-sec); }
+  .score-big { text-align: right; }
+  .score-big .num { font-size: 28px; font-weight: 700; }
+  .score-big .lbl { font-size: 11px; color: var(--text-muted); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; box-shadow: var(--shadow); }
+  .tab {
+    flex: 1; padding: 8px 4px; border-radius: 7px; font-size: 12px; font-weight: 500;
+    cursor: pointer; text-align: center; color: var(--text-sec);
+    transition: background 0.15s, color 0.15s; border: none; background: none;
+  }
+  .tab.active { background: var(--blue-dark); color: #fff; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .card-title {
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 12px;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .var-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .var-cell .var-name { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+  .var-cell .var-val { font-size: 14px; font-weight: 600; color: var(--text); }
+
+  /* ── Story steps ── */
+  .step { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--blue-dark); color: #fff;
+    font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .step-body { font-size: 13px; color: var(--text-sec); line-height: 1.65; }
+  .step-body strong { color: var(--text); }
+
+  /* ── SHAP bars ── */
+  .shap-section-label {
+    font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 14px 0 8px;
+  }
+  .shap-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .shap-feat { font-size: 12px; color: var(--text-sec); width: 130px; flex-shrink: 0; }
+  .shap-bar-wrap { flex: 1; height: 22px; background: var(--surface2); border-radius: 4px; position: relative; overflow: hidden; border: 1px solid var(--border); }
+  .shap-bar-pos { height: 100%; border-radius: 3px; background: var(--red-light); border-right: 2px solid #f87171; display: flex; align-items: center; padding-left: 6px; }
+  .shap-bar-neg { height: 100%; border-radius: 3px; background: var(--green-light); border-left: 2px solid #4ade80; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; margin-left: auto; }
+  .shap-bar-label { font-size: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; }
+  .shap-bar-pos .shap-bar-label { color: var(--red); }
+  .shap-bar-neg .shap-bar-label { color: var(--green); }
+  .shap-val { font-size: 12px; font-weight: 600; width: 46px; text-align: right; flex-shrink: 0; }
+  .shap-val-pos { color: var(--red); }
+  .shap-val-neg { color: var(--green); }
+  .zero-line {
+    position: relative; text-align: center;
+    font-size: 11px; color: var(--text-muted);
+    margin: 8px 0;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .zero-line::before, .zero-line::after {
+    content: ''; flex: 1; height: 1px; background: var(--border-strong);
+  }
+
+  /* ── Verdict ── */
+  .verdict {
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border: 1px solid;
+  }
+  .verdict-red { background: var(--red-light); border-color: #fca5a5; }
+  .verdict-amber { background: var(--amber-light); border-color: #fcd34d; }
+  .verdict-green { background: var(--green-light); border-color: #86efac; }
+  .verdict-title { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .verdict-red .verdict-title { color: var(--red); }
+  .verdict-amber .verdict-title { color: var(--amber); }
+  .verdict-green .verdict-title { color: var(--green); }
+  .verdict-body { font-size: 12px; line-height: 1.65; }
+  .verdict-red .verdict-body { color: #991b1b; }
+  .verdict-amber .verdict-body { color: #92400e; }
+  .verdict-green .verdict-body { color: #166534; }
+
+  /* ── Action box ── */
+  .action-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue-dark);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: var(--text-sec);
+    line-height: 1.7;
+  }
+  .action-box strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 13px; }
+  .action-list { padding-left: 16px; }
+  .action-list li { margin-bottom: 4px; }
+
+  /* ── Narrative callout ── */
+  .callout {
+    background: var(--blue-light);
+    border-left: 3px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #1e3a8a;
+    line-height: 1.65;
+    margin-bottom: 12px;
+  }
+
+  /* ── Stats row ── */
+  .stats-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .stat-card {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px; text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .stat-card .stat-val { font-size: 20px; font-weight: 700; }
+  .stat-card .stat-lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #1a2e5a; color: #fff;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── Loading ── */
+  .loading {
+    display: none; padding: 40px; text-align: center; color: var(--text-muted); font-size: 13px;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+  @media (max-width: 640px) {
+    .layout { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; height: 220px; }
+    .grid2 { grid-template-columns: 1fr; }
+    .stats-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">⚕</div>
+  <div>
+    <h1>DRG Claim Explainability</h1>
+    <p>SHAP-based overpayment analysis — upload your Excel to begin</p>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <div class="icon">📂</div>
+        <p><strong>Upload Excel file</strong><br>Drag & drop or click to browse<br>.xlsx or .csv</p>
+      </div>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])"/>
+    </div>
+    <div class="sidebar-claims">
+      <div class="claim-list-label" id="claim-count-label">No file loaded</div>
+      <div id="claim-list"></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main" id="main-panel">
+    <div class="empty-state" id="empty-state">
+      <div class="big-icon">🔬</div>
+      <h2>Upload a claim SHAP file to begin</h2>
+      <p>This tool reads your Excel file, identifies SHAP values per feature, and generates a plain-language explanation for each claim — covering what drove the score, which category it falls into, and what an auditor should check.</p>
+      <div class="format-box">
+        <strong>Expected column format:</strong>
+        <ul>
+          <li>One column for <code>claim_number</code> (or <code>claim_id</code>, <code>claimid</code>)</li>
+          <li>One column for <code>score</code> (or <code>risk_score</code>, <code>probability</code>)</li>
+          <li>SHAP columns named like <code>shap_drgcode</code>, <code>shap_los</code>, <code>shap_provider</code> etc.</li>
+          <li>Optional feature value columns: <code>drgcode</code>, <code>losgm_ratio</code>, <code>providertaxid</code>, <code>discharge_status</code>, <code>mcc_count</code>, <code>cc_count</code>, <code>primary_diag</code>, <code>procedure_code</code></li>
+        </ul>
+        <p style="margin-top:8px; color: var(--text-muted);">Column names are case-insensitive. SHAP columns are auto-detected by the <code>shap_</code> prefix or matched to known feature names.</p>
+      </div>
+    </div>
+    <div class="loading" id="loading-state">⏳ Processing your file...</div>
+    <div id="detail-panel" style="display:none;"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allClaims = [];
+let activeClaim = null;
+
+// ── Feature knowledge base ─────────────────────────────────────────────────
+const FEATURE_META = {
+  drgcode:          { label: 'DRG code',          direction: 'pos_bad', desc: 'Diagnosis-related group billed' },
+  providertaxid:    { label: 'Provider tax ID',   direction: 'pos_bad', desc: 'Billing provider identifier' },
+  primary_diag:     { label: 'Primary diagnosis', direction: 'neutral', desc: 'Primary ICD-10 diagnosis code' },
+  procedure_code:   { label: 'Procedure code',    direction: 'neutral', desc: 'Procedure performed (ICD/CPT)' },
+  losgm_ratio:      { label: 'LOS/GM ratio',      direction: 'pos_bad', desc: 'Length of stay vs geometric mean' },
+  discharge_status: { label: 'Discharge status',  direction: 'neutral', desc: 'How patient was discharged' },
+  mcc_all:          { label: 'MCC present',       direction: 'neg_good', desc: 'Any major complication present' },
+  mcc_count:        { label: 'MCC count',         direction: 'neg_good', desc: 'Number of major complications' },
+  cc_all:           { label: 'CC present',        direction: 'neg_good', desc: 'Any complication present' },
+  cc_count:         { label: 'CC count',          direction: 'neg_good', desc: 'Number of complications' },
+};
+
+// ── Category logic ─────────────────────────────────────────────────────────
+const CATEGORIES = [
+  { id: 'drg_upcoding',       name: 'DRG Upcoding Risk',            zone: 'red',   posFeats: ['drgcode','mcc_all','mcc_count'], negFeats: ['cc_count','primary_diag'] },
+  { id: 'los_outlier',        name: 'LOS Outlier – Low Acuity',     zone: 'red',   posFeats: ['losgm_ratio'], negFeats: ['mcc_count','mcc_all'] },
+  { id: 'provider_anomaly',   name: 'Provider Billing Anomaly',     zone: 'red',   posFeats: ['providertaxid'], negFeats: ['primary_diag','drgcode'] },
+  { id: 'proc_unbundling',    name: 'Procedure Unbundling Risk',    zone: 'red',   posFeats: ['procedure_code'], negFeats: ['drgcode'] },
+  { id: 'acuity_discharge',   name: 'Acuity-Discharge Mismatch',   zone: 'red',   posFeats: ['mcc_all','mcc_count'], negFeats: ['discharge_status'] },
+  { id: 'comorbidity_inflate',name: 'Comorbidity Inflation Risk',   zone: 'red',   posFeats: ['cc_all','cc_count'], negFeats: ['primary_diag'] },
+  { id: 'mixed_acuity',       name: 'Mixed Acuity Signal',          zone: 'amber', posFeats: ['mcc_all','cc_all'], negFeats: [] },
+  { id: 'los_borderline',     name: 'LOS Borderline',               zone: 'amber', posFeats: ['losgm_ratio','drgcode'], negFeats: [] },
+  { id: 'drg_tension',        name: 'DRG-Diagnosis Tension',        zone: 'amber', posFeats: ['drgcode'], negFeats: ['primary_diag'] },
+  { id: 'discharge_unclear',  name: 'Discharge Status Unclear',     zone: 'amber', posFeats: ['discharge_status'], negFeats: [] },
+  { id: 'acuity_justified',   name: 'Acuity-Justified LOS',         zone: 'green', posFeats: ['mcc_count','mcc_all'], negFeats: ['losgm_ratio'] },
+  { id: 'drg_aligned',        name: 'DRG-Diagnosis Aligned',        zone: 'green', posFeats: ['primary_diag'], negFeats: ['drgcode'] },
+  { id: 'provider_normal',    name: 'Provider Pattern Normal',      zone: 'green', posFeats: [], negFeats: ['providertaxid'] },
+  { id: 'low_complexity',     name: 'Low Complexity Clean Claim',   zone: 'green', posFeats: [], negFeats: [] },
+];
+
+// ── File handling ──────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+}
+
+function handleFile(file) {
+  if (!file) return;
+  showLoading(true);
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      let rows;
+      if (file.name.endsWith('.csv')) {
+        const text = new TextDecoder().decode(e.target.result);
+        rows = parseCSV(text);
+      } else {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      }
+      processClaims(rows);
+    } catch(err) {
+      showToast('Error reading file: ' + err.message);
+      showLoading(false);
+    }
+  };
+  if (file.name.endsWith('.csv')) {
+    reader.readAsArrayBuffer(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/"/g,''));
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = vals[i] || '');
+    return obj;
+  });
+}
+
+// ── Process rows into claims ───────────────────────────────────────────────
+function processClaims(rows) {
+  if (!rows || !rows.length) { showToast('No data rows found.'); showLoading(false); return; }
+
+  const keys = Object.keys(rows[0]).map(k => k.toLowerCase().trim());
+
+  // Detect claim ID column
+  const claimCol = findCol(Object.keys(rows[0]), ['claim_number','claim_id','claimid','claimnumber','claim_no','claimno','id','claim']);
+  // Detect score column
+  const scoreCol = findCol(Object.keys(rows[0]), ['score','risk_score','probability','pred_score','model_score','risk']);
+
+  // Detect SHAP columns (prefixed shap_ OR matching known feature names)
+  const shapCols = {};
+  const featureCols = {};
+  Object.keys(rows[0]).forEach(k => {
+    const kl = k.toLowerCase().trim();
+    if (kl.startsWith('shap_')) {
+      const feat = kl.replace('shap_','');
+      shapCols[feat] = k;
+    } else {
+      // Try to match to known features
+      const matched = Object.keys(FEATURE_META).find(f => kl === f || kl === f.replace('_','') || kl.includes(f));
+      if (matched) {
+        featureCols[matched] = k;
+        // Also try to detect SHAP by feature presence if no shap_ prefix was given
+      }
+    }
+  });
+
+  // If no shap_ prefix, try to detect SHAP columns by known feature names with numeric values
+  if (Object.keys(shapCols).length === 0) {
+    Object.keys(rows[0]).forEach(k => {
+      const kl = k.toLowerCase().trim().replace(/[^a-z0-9_]/g,'');
+      const matched = Object.keys(FEATURE_META).find(f => kl === f || kl === f.replace('_',''));
+      if (matched) shapCols[matched] = k;
+    });
+  }
+
+  allClaims = rows.map((row, idx) => {
+    const claimId = claimCol ? row[claimCol] : `CLM-${String(idx+1).padStart(4,'0')}`;
+    const score = scoreCol ? parseFloat(row[scoreCol]) || 0 : null;
+
+    // Extract SHAP values
+    const shap = {};
+    Object.entries(shapCols).forEach(([feat, col]) => {
+      const v = parseFloat(row[col]);
+      if (!isNaN(v)) shap[feat] = v;
+    });
+
+    // Extract feature values
+    const features = {};
+    Object.entries(featureCols).forEach(([feat, col]) => {
+      features[feat] = row[col];
+    });
+    // Also grab raw values for known columns
+    Object.keys(FEATURE_META).forEach(f => {
+      if (!features[f]) {
+        const found = findCol(Object.keys(row), [f, f.replace('_','')]);
+        if (found) features[f] = row[found];
+      }
+    });
+
+    // Infer score from SHAP sum if not provided
+    const shapSum = Object.values(shap).reduce((a,b) => a+b, 0);
+    const finalScore = score !== null ? score : Math.min(Math.max((shapSum + 0.5), 0), 1);
+
+    return { id: String(claimId), score: finalScore, shap, features, raw: row };
+  });
+
+  renderSidebar();
+  if (allClaims.length > 0) selectClaim(allClaims[0]);
+  showLoading(false);
+  showToast(`Loaded ${allClaims.length} claim${allClaims.length>1?'s':''} successfully`);
+}
+
+function findCol(keys, candidates) {
+  for (const c of candidates) {
+    const found = keys.find(k => k.toLowerCase().trim() === c.toLowerCase() || k.toLowerCase().trim().replace(/[^a-z0-9]/g,'') === c.replace(/[^a-z0-9]/g,''));
+    if (found) return found;
+  }
+  return null;
+}
+
+// ── Categorize a claim ─────────────────────────────────────────────────────
+function categorizeClaim(claim) {
+  const { score, shap } = claim;
+  if (!shap || Object.keys(shap).length === 0) {
+    if (score >= 0.7) return CATEGORIES.find(c => c.id === 'provider_anomaly');
+    if (score >= 0.4) return CATEGORIES.find(c => c.id === 'mixed_acuity');
+    return CATEGORIES.find(c => c.id === 'low_complexity');
+  }
+
+  const sorted = Object.entries(shap).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const topPos = sorted.filter(([,v]) => v > 0).map(([k]) => k);
+  const topNeg = sorted.filter(([,v]) => v < 0).map(([k]) => k);
+
+  // Score-based zone
+  const zone = score >= 0.65 ? 'red' : score >= 0.35 ? 'amber' : 'green';
+
+  // Match category by dominant features + zone
+  let best = null, bestScore = -1;
+  for (const cat of CATEGORIES.filter(c => c.zone === zone)) {
+    let s = 0;
+    cat.posFeats.forEach(f => { if (topPos.slice(0,3).includes(f)) s += 2; });
+    cat.negFeats.forEach(f => { if (topNeg.slice(0,3).includes(f)) s += 1; });
+    if (s > bestScore) { best = cat; bestScore = s; }
+  }
+  if (!best) best = CATEGORIES.find(c => c.zone === zone) || CATEGORIES[0];
+  return best;
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('claim-list');
+  const label = document.getElementById('claim-count-label');
+  label.textContent = `${allClaims.length} claim${allClaims.length!==1?'s':''} loaded`;
+  list.innerHTML = '';
+  allClaims.forEach(claim => {
+    const cat = categorizeClaim(claim);
+    const zone = cat.zone;
+    const item = document.createElement('div');
+    item.className = 'claim-item';
+    item.dataset.id = claim.id;
+    item.onclick = () => selectClaim(claim);
+    const scorePct = claim.score !== null ? Math.round(claim.score * 100) : '—';
+    item.innerHTML = `
+      <div class="dot dot-${zone}"></div>
+      <div class="claim-item-text">
+        <div class="claim-item-id">${escHtml(String(claim.id))}</div>
+        <div class="claim-item-cat">${cat.name}</div>
+      </div>
+      <div class="claim-score score-${zone}">${claim.score!==null ? scorePct+'%' : '—'}</div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function selectClaim(claim) {
+  activeClaim = claim;
+  document.querySelectorAll('.claim-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === String(claim.id));
+  });
+  renderDetail(claim);
+}
+
+// ── Detail panel ───────────────────────────────────────────────────────────
+function renderDetail(claim) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('detail-panel').style.display = 'block';
+  const cat = categorizeClaim(claim);
+  const zone = cat.zone;
+  const score = claim.score;
+  const scorePct = score !== null ? Math.round(score * 100) : '—';
+
+  const shap = claim.shap || {};
+  const features = claim.features || {};
+  const sorted = Object.entries(shap).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const posShap = sorted.filter(([,v]) => v > 0);
+  const negShap = sorted.filter(([,v]) => v < 0);
+  const maxAbs = sorted.length ? Math.abs(sorted[0][1]) : 1;
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="claim-detail">
+
+      <!-- Header bar -->
+      <div class="claim-header-bar">
+        <div>
+          <span class="claim-badge badge-${zone}">${zone==='red'?'🔴 High Risk':zone==='amber'?'🟡 Needs Review':'🟢 Clean Claim'}</span>
+        </div>
+        <div class="claim-header-info">
+          <h2>Claim #${escHtml(String(claim.id))}</h2>
+          <p>Category: <strong>${cat.name}</strong> &nbsp;·&nbsp; ${Object.keys(shap).length} SHAP features detected</p>
+        </div>
+        <div class="score-big">
+          <div class="num score-${zone}">${scorePct}${score!==null?'%':''}</div>
+          <div class="lbl">Risk score</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab(event,'tab-story')">📖 Story</button>
+        <button class="tab" onclick="switchTab(event,'tab-values')">📋 Values</button>
+        <button class="tab" onclick="switchTab(event,'tab-shap')">📊 SHAP</button>
+        <button class="tab" onclick="switchTab(event,'tab-verdict')">⚖️ Verdict</button>
+      </div>
+
+      <!-- Story tab -->
+      <div class="panel active" id="tab-story">
+        ${renderStory(claim, cat, posShap, negShap, features)}
+      </div>
+
+      <!-- Values tab -->
+      <div class="panel" id="tab-values">
+        ${renderValues(claim, features)}
+      </div>
+
+      <!-- SHAP tab -->
+      <div class="panel" id="tab-shap">
+        ${renderShap(posShap, negShap, maxAbs)}
+      </div>
+
+      <!-- Verdict tab -->
+      <div class="panel" id="tab-verdict">
+        ${renderVerdict(claim, cat, posShap, negShap)}
+      </div>
+
+    </div>
+  `;
+}
+
+function switchTab(e, tabId) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// ── Story panel ────────────────────────────────────────────────────────────
+function renderStory(claim, cat, posShap, negShap, features) {
+  const topPosFeature = posShap[0] ? posShap[0][0] : null;
+  const topNegFeature = negShap[0] ? negShap[0][0] : null;
+  const topPosMeta = topPosFeature ? (FEATURE_META[topPosFeature] || { label: topPosFeature, desc: '' }) : null;
+  const topNegMeta = topNegFeature ? (FEATURE_META[topNegFeature] || { label: topNegFeature, desc: '' }) : null;
+  const zone = cat.zone;
+  const scorePct = claim.score !== null ? Math.round(claim.score * 100) : '?';
+
+  const zoneDesc = zone === 'red'
+    ? 'The model has flagged this claim as high risk. Multiple variables are pushing the score toward overpayment.'
+    : zone === 'amber'
+    ? 'The model sees competing signals on this claim. Some features suggest a concern, while others partially justify the billing.'
+    : 'The model sees this claim as well-supported. The key variables are aligned and consistent with legitimate billing.';
+
+  const steps = [];
+  steps.push(`<div class="step"><div class="step-num">1</div><div class="step-body">The model scored this claim at <strong>${scorePct}%</strong> risk. ${zoneDesc}</div></div>`);
+
+  if (topPosMeta) {
+    const val = features[topPosFeature] ? ` (value: <strong>${escHtml(String(features[topPosFeature]))}</strong>)` : '';
+    steps.push(`<div class="step"><div class="step-num">2</div><div class="step-body">The strongest signal pushing the score <span style="color:var(--red);font-weight:600;">toward overpayment</span> is <strong>${topPosMeta.label}</strong>${val}. ${getFeatureNarrative(topPosFeature, posShap[0][1], features)}</div></div>`);
+  }
+
+  if (topNegMeta) {
+    const val = features[topNegFeature] ? ` (value: <strong>${escHtml(String(features[topNegFeature]))}</strong>)` : '';
+    steps.push(`<div class="step"><div class="step-num">3</div><div class="step-body">On the other side, <strong>${topNegMeta.label}</strong>${val} is pulling the score <span style="color:var(--green);font-weight:600;">away from overpayment</span>. ${getFeatureNarrative(topNegFeature, negShap[0][1], features)}</div></div>`);
+  }
+
+  if (posShap.length > 1 && negShap.length > 1) {
+    steps.push(`<div class="step"><div class="step-num">4</div><div class="step-body">In total, <strong>${posShap.length} feature${posShap.length>1?'s':''}</strong> are pushing toward overpayment and <strong>${negShap.length} feature${negShap.length>1?'s':''}</strong> are reducing the concern. ${zone==='red'?'The red signals outweigh the green ones.':zone==='amber'?'Neither side dominates — hence the ambiguous rating.':'The green signals outweigh the red ones.'}</div></div>`);
+  }
+
+  steps.push(`<div class="step"><div class="step-num">${steps.length+1}</div><div class="step-body">This places the claim in the <strong>${cat.name}</strong> category. ${getCategoryNarrative(cat)}</div></div>`);
+
+  return `
+    <div class="card">
+      <div class="card-title">Plain-language explanation</div>
+      <div class="callout">Think of SHAP values like a tug-of-war. Each feature either pulls the score toward risk (red) or away from it (green). The side that pulls harder determines the category.</div>
+      ${steps.join('')}
+    </div>
+  `;
+}
+
+function getFeatureNarrative(feat, val, features) {
+  const narratives = {
+    losgm_ratio: val > 0
+      ? 'The length of stay is longer than the expected geometric mean for this DRG — a common signal of either genuine complexity or padded stay.'
+      : 'The length of stay is within or below the expected range for this DRG, which supports the billing.',
+    providertaxid: val > 0
+      ? 'This provider has a billing pattern that stands out compared to peers billing similar DRGs — a flag for potential systematic upcoding.'
+      : 'This provider\'s billing history is unremarkable — no unusual pattern detected for this DRG combination.',
+    drgcode: val > 0
+      ? 'The DRG assigned is at the high end of the severity tier, yet other features may not fully justify it.'
+      : 'The DRG code appears consistent with the clinical picture presented by other features in the claim.',
+    mcc_count: val > 0
+      ? 'Multiple major complications are documented, which adds clinical justification to the complexity billed.'
+      : 'The number of major complications is lower than expected for the DRG tier — this reduces score pressure.',
+    mcc_all: val > 0
+      ? 'At least one major complication is documented — this is clinically relevant context.'
+      : 'The absence of major complications reduces the model\'s concern about this claim.',
+    cc_count: val > 0
+      ? 'Multiple comorbidities are listed, which may support the severity claimed.'
+      : 'The comorbidity count is modest, which tempers the claim\'s complexity profile.',
+    cc_all: val > 0
+      ? 'At least one comorbidity is present and documented.'
+      : 'The lack of documented comorbidities is noteworthy for the DRG billed.',
+    discharge_status: val > 0
+      ? 'The discharge destination is unusual given the acuity level claimed — e.g. going home when a skilled nursing facility would be expected.'
+      : 'The discharge disposition is appropriate and consistent with the clinical picture.',
+    primary_diag: val > 0
+      ? 'The primary diagnosis is contributing to the elevated score — it may not fully align with the procedures or DRG billed.'
+      : 'The primary diagnosis supports and is consistent with the DRG and procedures billed.',
+    procedure_code: val > 0
+      ? 'The procedure billed is driving up the complexity score relative to what the diagnosis and DRG would typically expect.'
+      : 'The procedure code is consistent with the diagnosis and within expected norms for this DRG.',
+  };
+  return narratives[feat] || `This feature (SHAP: ${val > 0 ? '+' : ''}${val.toFixed(3)}) is ${val > 0 ? 'increasing' : 'decreasing'} the risk score.`;
+}
+
+function getCategoryNarrative(cat) {
+  const narratives = {
+    drg_upcoding: 'An auditor should verify whether the MCC/CC documentation in the medical record actually supports the DRG tier billed.',
+    los_outlier: 'Clinical records should be reviewed to confirm whether the extended stay was medically necessary for this diagnosis and DRG.',
+    provider_anomaly: 'A provider-level audit is warranted to understand whether this billing pattern reflects a systematic practice.',
+    proc_unbundling: 'The procedure codes should be reviewed against the DRG to check for improper unbundling or upcoding.',
+    acuity_discharge: 'The combination of claimed high acuity and the actual discharge destination is clinically inconsistent — records should be pulled.',
+    comorbidity_inflate: 'The number of comorbidities listed should be validated against clinical documentation.',
+    mixed_acuity: 'The competing signals mean this needs a clinical reviewer — neither approval nor denial is clear from the data alone.',
+    los_borderline: 'The LOS is close to the threshold — a brief clinical review should determine whether extended stay was justified.',
+    drg_tension: 'The DRG and diagnosis are not fully aligned — a coding review should check for correct assignment.',
+    discharge_unclear: 'The discharge status alone is flagged — cross-reference with admission diagnosis and LOS.',
+    acuity_justified: 'The complexity indicators support the LOS and DRG — this claim appears well-documented.',
+    drg_aligned: 'The diagnosis and DRG are consistent — low risk of upcoding.',
+    provider_normal: 'No unusual provider pattern detected — billing is in line with peers.',
+    low_complexity: 'All features are within normal range — this appears to be a clean, low-risk claim.',
+  };
+  return narratives[cat.id] || 'Review the claim per standard audit procedures.';
+}
+
+// ── Values panel ───────────────────────────────────────────────────────────
+function renderValues(claim, features) {
+  const hasFeatures = Object.keys(features).length > 0;
+  const hasRaw = Object.keys(claim.raw || {}).length > 0;
+
+  if (!hasFeatures && !hasRaw) {
+    return `<div class="card"><div class="card-title">Feature values</div><p style="color:var(--text-muted);font-size:13px;">No feature value columns detected. Add columns like <code>drgcode</code>, <code>losgm_ratio</code>, <code>mcc_count</code> etc. alongside your SHAP columns.</p></div>`;
+  }
+
+  const display = hasFeatures ? features : (claim.raw || {});
+  const cells = Object.entries(display).map(([k,v]) => {
+    const meta = FEATURE_META[k.toLowerCase()] || FEATURE_META[k.toLowerCase().replace(/[^a-z0-9_]/g,'')];
+    const label = meta ? meta.label : k;
+    return `<div class="var-cell"><div class="var-name">${escHtml(label)}</div><div class="var-val">${escHtml(String(v) || '—')}</div></div>`;
+  });
+
+  return `
+    <div class="card">
+      <div class="card-title">Claim feature values</div>
+      <div class="callout">These are the raw values the model read from this claim before computing SHAP scores.</div>
+      <div class="grid2">${cells.join('')}</div>
+    </div>
+  `;
+}
+
+// ── SHAP panel ─────────────────────────────────────────────────────────────
+function renderShap(posShap, negShap, maxAbs) {
+  if (posShap.length === 0 && negShap.length === 0) {
+    return `<div class="card"><p style="color:var(--text-muted);font-size:13px;">No SHAP columns detected. Add columns with a <code>shap_</code> prefix (e.g. <code>shap_drgcode</code>, <code>shap_losgm_ratio</code>).</p></div>`;
+  }
+
+  const posRows = posShap.map(([feat, val]) => {
+    const pct = Math.round((Math.abs(val) / maxAbs) * 88);
+    const meta = FEATURE_META[feat] || { label: feat };
+    const lbl = Math.abs(val) > 0.15 ? '↑ pushes toward risk' : '';
+    return `
+      <div class="shap-row">
+        <div class="shap-feat">${escHtml(meta.label)}</div>
+        <div class="shap-bar-wrap">
+          <div class="shap-bar-pos" style="width:${pct}%">
+            <span class="shap-bar-label">${lbl}</span>
+          </div>
+        </div>
+        <div class="shap-val shap-val-pos">+${val.toFixed(3)}</div>
+      </div>`;
+  }).join('');
+
+  const negRows = negShap.map(([feat, val]) => {
+    const pct = Math.round((Math.abs(val) / maxAbs) * 88);
+    const meta = FEATURE_META[feat] || { label: feat };
+    const lbl = Math.abs(val) > 0.1 ? '↓ reduces risk' : '';
+    return `
+      <div class="shap-row">
+        <div class="shap-feat">${escHtml(meta.label)}</div>
+        <div class="shap-bar-wrap">
+          <div class="shap-bar-neg" style="width:${pct}%">
+            <span class="shap-bar-label">${lbl}</span>
+          </div>
+        </div>
+        <div class="shap-val shap-val-neg">${val.toFixed(3)}</div>
+      </div>`;
+  }).join('');
+
+  const posSum = posShap.reduce((a,[,v]) => a+v, 0);
+  const negSum = negShap.reduce((a,[,v]) => a+v, 0);
+
+  return `
+    <div class="card">
+      <div class="card-title">SHAP influence breakdown</div>
+      <div class="callout">Each bar shows how much a feature pushed the risk score up (red) or down (green). Longer bar = stronger pull.</div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-val" style="color:var(--red)">+${posSum.toFixed(3)}</div>
+          <div class="stat-lbl">Total risk-increasing</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" style="color:var(--green)">${negSum.toFixed(3)}</div>
+          <div class="stat-lbl">Total risk-reducing</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val">${(posShap.length + negShap.length)}</div>
+          <div class="stat-lbl">Features analyzed</div>
+        </div>
+      </div>
+
+      ${posRows.length ? `<div class="shap-section-label">Pushing toward overpayment ↑</div>${posRows}` : ''}
+      ${(posRows.length && negRows.length) ? `<div class="zero-line">zero</div>` : ''}
+      ${negRows.length ? `<div class="shap-section-label">Pulling away from overpayment ↓</div>${negRows}` : ''}
+    </div>
+  `;
+}
+
+// ── Verdict panel ──────────────────────────────────────────────────────────
+function renderVerdict(claim, cat, posShap, negShap) {
+  const zone = cat.zone;
+  const topPos = posShap[0];
+  const topNeg = negShap[0];
+  const topPosMeta = topPos ? (FEATURE_META[topPos[0]] || { label: topPos[0] }) : null;
+  const topNegMeta = topNeg ? (FEATURE_META[topNeg[0]] || { label: topNeg[0] }) : null;
+
+  const primaryBlock = `
+    <div class="verdict verdict-${zone}">
+      <div class="verdict-title">${zone==='red'?'🔴':zone==='amber'?'🟡':'🟢'} Primary category: ${cat.name}</div>
+      <div class="verdict-body">${getCategoryNarrative(cat)}</div>
+    </div>`;
+
+  let driverBlock = '';
+  if (topPosMeta && topNegMeta) {
+    driverBlock = `
+      <div class="verdict verdict-${zone==='red'?'amber':'green'}">
+        <div class="verdict-title">Key tension: ${topPosMeta.label} vs ${topNegMeta.label}</div>
+        <div class="verdict-body">The model's score reflects a balance between <strong>${topPosMeta.label}</strong> (pushing risk up, SHAP: +${topPos[1].toFixed(3)}) and <strong>${topNegMeta.label}</strong> (pulling risk down, SHAP: ${topNeg[1].toFixed(3)}). This interaction is the core explainability signal for this claim.</div>
+      </div>`;
+  }
+
+  const actionItems = getActionItems(cat, posShap, negShap, claim.features || {});
+  const actionList = actionItems.map(a => `<li>${a}</li>`).join('');
+
+  const notBlock = zone !== 'red' ? '' : `
+    <div class="verdict verdict-amber">
+      <div class="verdict-title">⚠️ What the model is not saying</div>
+      <div class="verdict-body">This is a flag for review — not a denial decision. Clinical context may explain the pattern. An auditor should pull records before any action.</div>
+    </div>`;
+
+  return `
+    ${primaryBlock}
+    ${driverBlock}
+    ${notBlock}
+    <div class="action-box">
+      <strong>Recommended audit actions</strong>
+      <ul class="action-list">${actionList}</ul>
+    </div>
+  `;
+}
+
+function getActionItems(cat, posShap, negShap, features) {
+  const actions = {
+    drg_upcoding:         ['Pull medical records and verify MCC/CC documentation supports the DRG tier', 'Confirm ICD-10 codes were correctly sequenced', 'Review coder notes for any DRG optimization flags'],
+    los_outlier:          ['Request clinical notes justifying the extended length of stay', 'Check if daily progress notes reflect continued acute-level care', 'Compare LOS to similar DRG/diagnosis cases at the same facility'],
+    provider_anomaly:     ['Pull provider\'s DRG 871 billing history for the past 12 months', 'Cross-reference against regional peer billing rates', 'Request itemized bill and clinical records'],
+    proc_unbundling:      ['Verify procedure codes against the DRG grouper output', 'Check for improper unbundling of bundled services', 'Confirm procedures were medically necessary and documented'],
+    acuity_discharge:     ['Verify discharge disposition against clinical record', 'Confirm ventilator/ICU documentation if high-acuity DRG billed', 'Cross-reference discharge planning notes'],
+    comorbidity_inflate:  ['Validate each listed comorbidity against clinical documentation', 'Check that each MCC/CC is supported by a treating physician note', 'Review coding query forms for comorbidity capture'],
+    mixed_acuity:         ['Route to clinical reviewer — neither approval nor denial is clear', 'Review key clinical indicators: MCC documentation, LOS justification', 'Peer-to-peer review with attending physician may be warranted'],
+    los_borderline:       ['Brief clinical review to confirm LOS medical necessity', 'Check utilization management notes for day-by-day justification', 'Compare against InterQual or Milliman criteria'],
+    drg_tension:          ['Coding audit to confirm correct DRG assignment', 'Verify principal diagnosis sequencing', 'Check if alternate DRG would be more appropriate'],
+    discharge_unclear:    ['Confirm discharge status code against face sheet and nursing notes', 'Check if patient was sent to SNF, rehab, or home with services'],
+    acuity_justified:     ['Low priority — standard documentation verification only', 'Spot-check MCC/CC coding accuracy', 'No urgent action required'],
+    drg_aligned:          ['Routine review — no significant flags detected', 'Standard remittance verification'],
+    provider_normal:      ['No provider-level action required', 'Process claim per standard workflow'],
+    low_complexity:       ['Clean claim — approve per standard process', 'No additional review required'],
+  };
+  return actions[cat.id] || ['Review claim per standard audit procedures', 'Pull supporting clinical documentation'];
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function showLoading(on) {
+  document.getElementById('loading-state').style.display = on ? 'block' : 'none';
+  document.getElementById('empty-state').style.display = on ? 'none' : (allClaims.length ? 'none' : 'block');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
