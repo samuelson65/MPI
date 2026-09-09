@@ -1,0 +1,2231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Claim Population Drift Monitor — DRG Model Governance</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f4f6f9;--surface:#fff;--surface2:#f8fafc;--border:#e1e6ed;--border-strong:#c5cdd8;
+  --text:#111827;--text-sec:#475467;--text-muted:#8a94a6;
+  --navy:#17305c;--blue:#2563eb;--blue-light:#eef4ff;
+  --red:#b42318;--red-light:#fef3f2;--red-mid:#fda29b;
+  --green:#15803d;--green-light:#f0fdf4;--green-mid:#86efac;
+  --amber:#b54708;--amber-light:#fffaeb;--amber-mid:#fdd68a;
+  --radius:10px;--shadow:0 1px 4px rgba(16,24,40,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+.header{background:var(--navy);color:#fff;padding:16px 28px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.header-icon{width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.header h1{font-size:16px;font-weight:600}
+.header p{font-size:12px;opacity:.72;margin-top:1px}
+.header-right{margin-left:auto;font-size:12px;opacity:.8;text-align:right}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 24px 60px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card-title{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.h2{font-size:16px;font-weight:700;margin-bottom:4px}
+.sub{font-size:12px;color:var(--text-sec);margin-bottom:14px}
+
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.uz{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:22px 14px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2)}
+.uz:hover,.uz.drag{border-color:var(--blue);background:var(--blue-light)}
+.uz.filled{border-style:solid;border-color:var(--green-mid);background:var(--green-light)}
+.uz .ic{font-size:24px;margin-bottom:6px}
+.uz .t{font-size:13px;font-weight:600;color:var(--text)}
+.uz .s{font-size:11px;color:var(--text-muted);margin-top:3px}
+.uz.filled .s{color:var(--green);font-weight:600}
+input[type=file]{display:none}
+
+.mode-toggle{display:flex;gap:6px;margin-bottom:14px}
+.mt{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border-strong);background:#fff;color:var(--text-sec);font-family:inherit}
+.mt.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.fld label{display:block;font-size:11px;font-weight:600;color:var(--text-sec);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.fld select,.fld input{width:100%;padding:7px 9px;border:1px solid var(--border-strong);border-radius:7px;font-size:13px;background:#fff;font-family:inherit;color:var(--text)}
+.fld select:focus,.fld input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.fld .hint{font-size:10px;color:var(--text-muted);margin-top:3px}
+
+.btn{padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:var(--navy);color:#fff;font-family:inherit;transition:.15s}
+.btn:hover:not(:disabled){background:#1e3d73}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-sec{background:#fff;color:var(--text-sec);border:1px solid var(--border-strong)}
+.btn-sec:hover:not(:disabled){background:var(--surface2)}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+
+.alert{border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.6;margin-bottom:10px;border:1px solid}
+.a-red{background:var(--red-light);border-color:var(--red-mid);color:#912018}
+.a-amber{background:var(--amber-light);border-color:var(--amber-mid);color:#93370d}
+.a-green{background:var(--green-light);border-color:var(--green-mid);color:#166534}
+.a-blue{background:var(--blue-light);border-color:#bfdbfe;color:#1e3a8a}
+.alert strong{display:block;margin-bottom:2px}
+
+.tabs{display:flex;gap:3px;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow);overflow-x:auto}
+.tab{padding:8px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text-sec);border:none;background:none;font-family:inherit;white-space:nowrap;transition:.15s}
+.tab:hover{background:var(--surface2)}
+.tab.active{background:var(--navy);color:#fff}
+.panel{display:none}.panel.active{display:block}
+
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow)}
+.stat .v{font-size:23px;font-weight:700;line-height:1.15}
+.stat .l{font-size:11px;color:var(--text-muted);margin-top:3px}
+.stat .d{font-size:11px;margin-top:5px;font-weight:600}
+.c-red{color:var(--red)}.c-green{color:var(--green)}.c-amber{color:var(--amber)}.c-navy{color:var(--navy)}.c-mut{color:var(--text-muted)}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);font-weight:700;color:var(--text-sec);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+td{padding:8px 10px;border:1px solid var(--border);vertical-align:top;color:var(--text-sec);line-height:1.55}
+td.n{font-family:ui-monospace,Menlo,monospace;font-weight:600;color:var(--text);white-space:nowrap}
+td.nm{font-weight:600;color:var(--text)}
+tr:nth-child(even) td{background:var(--surface2)}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}
+.ch-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-mid)}
+.ch-green{background:var(--green-light);color:var(--green);border:1px solid var(--green-mid)}
+.ch-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid)}
+.ch-gray{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)}
+
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.bar-lbl{font-size:12px;color:var(--text-sec);width:150px;flex-shrink:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-wrap{flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.bar{height:100%;border-radius:3px}
+.bar-red{background:linear-gradient(90deg,#fecaca,#f87171)}
+.bar-amber{background:linear-gradient(90deg,#fde68a,#fbbf24)}
+.bar-green{background:linear-gradient(90deg,#bbf7d0,#4ade80)}
+.bar-blue{background:linear-gradient(90deg,#bfdbfe,#60a5fa)}
+.bar-val{font-size:12px;font-weight:700;width:60px;text-align:right;flex-shrink:0;font-family:ui-monospace,monospace}
+
+.note{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--text-sec);line-height:1.65;margin-bottom:12px}
+.note strong{color:var(--text)}
+.note code{background:#fff;border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:monospace;font-size:11px;color:var(--blue)}
+
+.gauge{height:26px;background:linear-gradient(90deg,#22c55e 0%,#22c55e 25%,#fbbf24 25%,#fbbf24 55%,#f87171 55%,#f87171 100%);border-radius:13px;position:relative;margin:10px 0 6px}
+.gauge-ptr{position:absolute;top:-5px;width:4px;height:36px;background:var(--navy);border-radius:2px;box-shadow:0 0 0 2px #fff}
+.gauge-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);font-weight:600}
+
+.hm{display:grid;gap:2px;margin-top:8px;overflow-x:auto}
+.hm-cell{aspect-ratio:1;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;min-width:34px}
+.hm-lbl{font-size:9px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;text-align:center;font-weight:600;overflow:hidden;line-height:1.1}
+
+.prog{display:none;padding:30px;text-align:center}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;max-width:340px;margin:14px auto 0}
+.prog-fill{height:100%;background:var(--navy);width:0%;transition:width .3s}
+.prog-txt{font-size:13px;color:var(--text-sec);font-weight:500}
+
+.svgbox{width:100%;overflow-x:auto}
+svg{display:block}
+.hidden{display:none!important}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none;z-index:999}
+.toast.show{opacity:1;transform:translateY(0)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
+@media(max-width:720px){.upload-grid{grid-template-columns:1fr}.wrap{padding:14px}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">◈</div>
+  <div>
+    <h1>Claim Population Drift Monitor</h1>
+    <p>Seven-method multivariate drift analysis with hit-rate forecasting · CatBoost-aligned encoding</p>
+  </div>
+  <div class="header-right" id="hdr-sum"></div>
+</div>
+
+<div class="wrap">
+
+<!-- ══ SETUP ══ -->
+<div id="setup">
+  <div class="card">
+    <div class="h2">1 · Load data</div>
+    <div class="sub">Compare a baseline period against a current period. Both files need the same feature columns.</div>
+
+    <div class="mode-toggle">
+      <button class="mt active" id="mt-two" onclick="setMode('two')">Two files</button>
+      <button class="mt" id="mt-one" onclick="setMode('one')">One file with a period column</button>
+    </div>
+
+    <div id="mode-two">
+      <div class="upload-grid">
+        <div class="uz" id="uz-a" onclick="pick('a')" ondragover="dOver(event,this)" ondragleave="this.classList.remove('drag')" ondrop="dDrop(event,'a',this)">
+          <div class="ic">📊</div>
+          <div class="t">Baseline period</div>
+          <div class="s" id="s-a">Last 12 months · .xlsx or .csv</div>
+        </div>
+        <div class="uz" id="uz-b" onclick="pick('b')" ondragover="dOver(event,this)" ondragleave="this.classList.remove('drag')" ondrop="dDrop(event,'b',this)">
+          <div class="ic">📈</div>
+          <div class="t">Current period</div>
+          <div class="s" id="s-b">This month · .xlsx or .csv</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mode-one" class="hidden">
+      <div class="uz" id="uz-c" onclick="pick('c')" ondragover="dOver(event,this)" ondragleave="this.classList.remove('drag')" ondrop="dDrop(event,'c',this)">
+        <div class="ic">🗂</div>
+        <div class="t">Combined file</div>
+        <div class="s" id="s-c">Must contain a period / month / cohort column</div>
+      </div>
+    </div>
+
+    <input type="file" id="fi-a" accept=".xlsx,.xls,.csv" onchange="onFile(this.files[0],'a')"/>
+    <input type="file" id="fi-b" accept=".xlsx,.xls,.csv" onchange="onFile(this.files[0],'b')"/>
+    <input type="file" id="fi-c" accept=".xlsx,.xls,.csv" onchange="onFile(this.files[0],'c')"/>
+  </div>
+
+  <div class="card hidden" id="cfg-card">
+    <div class="h2">2 · Confirm columns</div>
+    <div class="sub">Auto-detected from your headers. Override anything that looks wrong.</div>
+    <div id="cfg-alerts"></div>
+    <div class="cfg-grid" id="cfg-grid"></div>
+    <div class="btn-row">
+      <button class="btn" id="run-btn" onclick="runAnalysis()">Run drift analysis</button>
+      <button class="btn btn-sec" onclick="location.reload()">Reset</button>
+      <span style="font-size:12px;color:var(--text-muted)" id="run-hint"></span>
+    </div>
+  </div>
+
+  <div class="prog" id="prog">
+    <div class="prog-txt" id="prog-txt">Preparing…</div>
+    <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+  </div>
+</div>
+
+<!-- ══ REPORT ══ -->
+<div id="report" class="hidden"></div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════ */
+let MODE='two';
+let RAW={a:null,b:null,c:null};
+let CFG={};
+let DATA={base:[],curr:[],features:[],numeric:[],categorical:[],dropped:[]};
+let RESULT={};
+
+const KNOWN_FEATURES=['drgcode','providertaxid','primary_diag','procedure_code','losgm_ratio',
+  'discharge_status','mcc_all','mcc_count','cc_all','cc_count'];
+const FEATURE_LABEL={
+  drgcode:'DRG code',providertaxid:'Provider tax ID',primary_diag:'Primary diagnosis',
+  procedure_code:'Procedure code',losgm_ratio:'LOS / GM ratio',discharge_status:'Discharge status',
+  mcc_all:'MCC present',mcc_count:'MCC count',cc_all:'CC present',cc_count:'CC count'
+};
+const LEAK_PATTERNS=/^(date|dt|month|period|year|cohort|batch|snapshot|load|ingest|created|updated|timestamp|seq|rownum|row_num|index|idx|_id$|claimid|claim_id|claim_number|claimnumber|paid_date|svc_date|admit|discharge_date)/i;
+
+/* ═══════════════════════════════════════════════════════════════
+   FILE HANDLING
+   ═══════════════════════════════════════════════════════════════ */
+function setMode(m){
+  MODE=m;
+  document.getElementById('mt-two').classList.toggle('active',m==='two');
+  document.getElementById('mt-one').classList.toggle('active',m==='one');
+  document.getElementById('mode-two').classList.toggle('hidden',m!=='two');
+  document.getElementById('mode-one').classList.toggle('hidden',m!=='one');
+  document.getElementById('cfg-card').classList.add('hidden');
+  RAW={a:null,b:null,c:null};
+  ['a','b','c'].forEach(k=>{
+    const uz=document.getElementById('uz-'+k); if(uz)uz.classList.remove('filled');
+  });
+  document.getElementById('s-a').textContent='Last 12 months · .xlsx or .csv';
+  document.getElementById('s-b').textContent='This month · .xlsx or .csv';
+  document.getElementById('s-c').textContent='Must contain a period / month / cohort column';
+}
+function pick(k){document.getElementById('fi-'+k).click()}
+function dOver(e,el){e.preventDefault();el.classList.add('drag')}
+function dDrop(e,k,el){e.preventDefault();el.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)onFile(f,k)}
+
+function onFile(file,key){
+  if(!file)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    try{
+      let rows;
+      if(/\.csv$/i.test(file.name)) rows=parseCSV(new TextDecoder().decode(e.target.result));
+      else{
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      }
+      if(!rows||!rows.length){toast('That file has no data rows.');return}
+      RAW[key]=rows;
+      const uz=document.getElementById('uz-'+key);
+      uz.classList.add('filled');
+      document.getElementById('s-'+key).textContent=`${file.name} — ${rows.length.toLocaleString()} rows`;
+      tryConfig();
+    }catch(err){toast('Could not read file: '+err.message)}
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function parseCSV(t){
+  const lines=t.replace(/^\uFEFF/,'').trim().split(/\r?\n/);
+  if(!lines.length)return[];
+  const split=l=>{
+    const out=[];let cur='',q=false;
+    for(let i=0;i<l.length;i++){
+      const c=l[i];
+      if(c==='"'){ if(q&&l[i+1]==='"'){cur+='"';i++} else q=!q }
+      else if(c===','&&!q){out.push(cur);cur=''}
+      else cur+=c;
+    }
+    out.push(cur);return out.map(s=>s.trim());
+  };
+  const hs=split(lines[0]).map(h=>h.replace(/^"|"$/g,''));
+  return lines.slice(1).filter(l=>l.trim()).map(l=>{
+    const vs=split(l);const o={};
+    hs.forEach((h,i)=>o[h]=vs[i]!==undefined?vs[i]:'');
+    return o;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COLUMN DETECTION + CONFIG UI
+   ═══════════════════════════════════════════════════════════════ */
+const norm=s=>String(s).toLowerCase().trim().replace(/[^a-z0-9]/g,'');
+function findCol(hdrs,cands){
+  for(const c of cands){
+    const f=hdrs.find(h=>norm(h)===norm(c));
+    if(f)return f;
+  }
+  for(const c of cands){
+    const f=hdrs.find(h=>norm(h).includes(norm(c)));
+    if(f)return f;
+  }
+  return '';
+}
+
+function tryConfig(){
+  let hdrs;
+  if(MODE==='two'){
+    if(!RAW.a||!RAW.b)return;
+    const ha=Object.keys(RAW.a[0]),hb=Object.keys(RAW.b[0]);
+    hdrs=ha.filter(h=>hb.some(x=>norm(x)===norm(h)));
+    if(!hdrs.length){toast('The two files share no common columns.');return}
+  }else{
+    if(!RAW.c)return;
+    hdrs=Object.keys(RAW.c[0]);
+  }
+
+  const alerts=[];
+  const periodCol=MODE==='one'?findCol(hdrs,['period','month','cohort','batch','snapshot','yearmonth','year_month','load_month']):'';
+  if(MODE==='one'&&!periodCol){
+    alerts.push(['a-red','No period column found','Add a column named <code>period</code>, <code>month</code>, or <code>cohort</code> that marks which rows are baseline and which are current — or switch to two-file mode.']);
+  }
+  const scoreCol=findCol(hdrs,['score','risk_score','probability','pred','prediction','model_score','p_overpay','proba']);
+  const outcomeCol=findCol(hdrs,['outcome','label','overpayment','is_overpayment','actual','target','audit_result','recovered','y','hit']);
+  const amtCol=findCol(hdrs,['recoverable','amount','paid_amount','allowed','billed','exposure','recovery']);
+  const audCol=findCol(hdrs,['audited','audit','is_audited','reviewed','audit_flag','selected','sampled','audit_status','worked']);
+
+  if(!scoreCol) alerts.push(['a-amber','No model score column detected','Drift analysis will still run in full. Hit-rate forecasting needs a score column (e.g. <code>score</code>, <code>risk_score</code>) and will be limited without one.']);
+  if(!outcomeCol) alerts.push(['a-amber','No finding column detected','Without labels the absolute hit rate cannot be measured. You will get a relative forecast (how the hit rate should move) but not an absolute percentage.']);
+  if(outcomeCol&&!audCol) alerts.push(['a-amber','No audited flag detected','Every row carrying a finding value will be treated as audited. If your file uses a blank or zero finding for claims that were never reviewed, those will be miscounted as clean claims and the hit rate will read far too low. Map an audited column if you have one.']);
+  if(audCol) alerts.push(['a-green','Audited flag detected','Hit rate will be computed as findings divided by audited claims, and calibration will be fitted only on rows that were actually reviewed. Claims that were never audited are treated as unknown, not as clean.']);
+
+  const featOpts=hdrs.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
+  const optNone='<option value="">— none —</option>';
+
+  document.getElementById('cfg-alerts').innerHTML=alerts.map(([c,t,b])=>
+    `<div class="alert ${c}"><strong>${t}</strong>${b}</div>`).join('');
+
+  document.getElementById('cfg-grid').innerHTML=`
+    ${MODE==='one'?`
+    <div class="fld"><label>Period column</label>
+      <select id="cfg-period">${optNone}${featOpts}</select>
+      <div class="hint">Column separating baseline from current</div></div>
+    <div class="fld"><label>Current period value</label>
+      <select id="cfg-currval"><option value="">— select —</option></select>
+      <div class="hint">Everything else becomes baseline</div></div>`:''}
+    <div class="fld"><label>Model score</label>
+      <select id="cfg-score">${optNone}${featOpts}</select>
+      <div class="hint">CatBoost predicted probability</div></div>
+    <div class="fld"><label>Audited flag</label>
+      <select id="cfg-audited">${optNone}${featOpts}</select>
+      <div class="hint">1 = claim was reviewed</div></div>
+    <div class="fld"><label>Finding / outcome</label>
+      <select id="cfg-outcome">${optNone}${featOpts}</select>
+      <div class="hint">1 = Finding (overpayment)</div></div>
+    <div class="fld"><label>Recoverable amount</label>
+      <select id="cfg-amount">${optNone}${featOpts}</select>
+      <div class="hint">Optional — enables value-weighted metrics</div></div>
+    <div class="fld"><label>Audit threshold</label>
+      <input type="number" id="cfg-thresh" value="0.65" min="0" max="1" step="0.01"/>
+      <div class="hint">Score above which claims are selected</div></div>
+    <div class="fld"><label>Monthly audit capacity</label>
+      <input type="number" id="cfg-capacity" value="" min="0" step="1" placeholder="optional"/>
+      <div class="hint">If set, forecasts the top N by score instead</div></div>
+  `;
+
+  if(MODE==='one'){document.getElementById('cfg-period').value=periodCol; onPeriodChange();
+    document.getElementById('cfg-period').addEventListener('change',onPeriodChange);}
+  document.getElementById('cfg-score').value=scoreCol;
+  document.getElementById('cfg-outcome').value=outcomeCol;
+  document.getElementById('cfg-audited').value=audCol;
+  document.getElementById('cfg-amount').value=amtCol;
+
+  document.getElementById('cfg-card').classList.remove('hidden');
+  const n=MODE==='two'?RAW.a.length+RAW.b.length:RAW.c.length;
+  document.getElementById('run-hint').textContent=`${n.toLocaleString()} total rows · ${hdrs.length} shared columns`;
+}
+
+function onPeriodChange(){
+  const pc=document.getElementById('cfg-period').value;
+  const sel=document.getElementById('cfg-currval');
+  if(!pc||!RAW.c){sel.innerHTML='<option value="">— select —</option>';return}
+  const vals=[...new Set(RAW.c.map(r=>String(r[pc])).filter(v=>v!==''))].sort();
+  sel.innerHTML='<option value="">— select —</option>'+vals.map(v=>`<option value="${esc(v)}">${esc(v)} (${RAW.c.filter(r=>String(r[pc])===v).length.toLocaleString()})</option>`).join('');
+  if(vals.length)sel.value=vals[vals.length-1];
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MATH UTILITIES
+   ═══════════════════════════════════════════════════════════════ */
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const sd=a=>{if(a.length<2)return 0;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1))};
+function quantile(sorted,p){
+  if(!sorted.length)return NaN;
+  const i=(sorted.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);
+  return lo===hi?sorted[lo]:sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);
+}
+function ranks(arr){
+  const idx=arr.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]);
+  const r=new Array(arr.length);
+  let i=0;
+  while(i<idx.length){
+    let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++;
+    const avg=(i+j)/2+1;
+    for(let k=i;k<=j;k++)r[idx[k][1]]=avg;
+    i=j+1;
+  }
+  return r;
+}
+function spearman(x,y){
+  const n=x.length; if(n<3)return 0;
+  const rx=ranks(x),ry=ranks(y);
+  const mx=mean(rx),my=mean(ry);
+  let num=0,dx=0,dy=0;
+  for(let i=0;i<n;i++){const a=rx[i]-mx,b=ry[i]-my;num+=a*b;dx+=a*a;dy+=b*b}
+  return (dx===0||dy===0)?0:num/Math.sqrt(dx*dy);
+}
+function auc(labels,scores){
+  const pairs=labels.map((l,i)=>[scores[i],l]).sort((a,b)=>a[0]-b[0]);
+  const n=pairs.length; const r=new Array(n);
+  let i=0;
+  while(i<n){
+    let j=i; while(j+1<n&&pairs[j+1][0]===pairs[i][0])j++;
+    const avg=(i+j)/2+1;
+    for(let k=i;k<=j;k++)r[k]=avg;
+    i=j+1;
+  }
+  let sumPos=0,nPos=0,nNeg=0;
+  for(let k=0;k<n;k++){ if(pairs[k][1]===1){sumPos+=r[k];nPos++} else nNeg++ }
+  if(!nPos||!nNeg)return 0.5;
+  return (sumPos-nPos*(nPos+1)/2)/(nPos*nNeg);
+}
+function ksStat(a,b){
+  const sa=[...a].sort((x,y)=>x-y),sb=[...b].sort((x,y)=>x-y);
+  let i=0,j=0,d=0;
+  while(i<sa.length&&j<sb.length){
+    const v=Math.min(sa[i],sb[j]);
+    while(i<sa.length&&sa[i]<=v)i++;
+    while(j<sb.length&&sb[j]<=v)j++;
+    d=Math.max(d,Math.abs(i/sa.length-j/sb.length));
+  }
+  return d;
+}
+function shuffle(a,rnd){
+  const x=[...a];
+  for(let i=x.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[x[i],x[j]]=[x[j],x[i]]}
+  return x;
+}
+function mulberry(seed){
+  return function(){
+    seed|=0;seed=seed+0x6D2B79F5|0;
+    let t=Math.imul(seed^seed>>>15,1|seed);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PSI (population stability index) — handles numeric + categorical
+   ═══════════════════════════════════════════════════════════════ */
+function psiNumeric(base,curr,bins=10){
+  const clean=a=>a.filter(v=>Number.isFinite(v));
+  const b=clean(base),c=clean(curr);
+  if(b.length<10||c.length<10)return{psi:NaN,detail:[]};
+  const sb=[...b].sort((x,y)=>x-y);
+  const cuts=[];
+  for(let i=1;i<bins;i++)cuts.push(quantile(sb,i/bins));
+  const uniq=[...new Set(cuts)];
+  if(uniq.length<1)return{psi:0,detail:[],note:'constant'};
+  const bucket=v=>{let k=0;while(k<uniq.length&&v>uniq[k])k++;return k};
+  const nb=uniq.length+1;
+  const cb=new Array(nb).fill(0),cc=new Array(nb).fill(0);
+  b.forEach(v=>cb[bucket(v)]++); c.forEach(v=>cc[bucket(v)]++);
+  let psi=0;const detail=[];
+  for(let i=0;i<nb;i++){
+    const pb=Math.max(cb[i]/b.length,1e-6),pc=Math.max(cc[i]/c.length,1e-6);
+    const contrib=(pc-pb)*Math.log(pc/pb);
+    psi+=contrib;
+    detail.push({bin:i,lo:i===0?-Infinity:uniq[i-1],hi:i===nb-1?Infinity:uniq[i],pb,pc,contrib});
+  }
+  return{psi,detail};
+}
+function psiCategorical(base,curr,topK=20){
+  const cnt=a=>{const m=new Map();a.forEach(v=>m.set(v,(m.get(v)||0)+1));return m};
+  const mb=cnt(base),mc=cnt(curr);
+  const all=[...new Set([...mb.keys(),...mc.keys()])];
+  const ranked=all.map(k=>[k,(mb.get(k)||0)+(mc.get(k)||0)]).sort((x,y)=>y[1]-x[1]);
+  const keep=ranked.slice(0,topK).map(x=>x[0]);
+  const other=new Set(ranked.slice(topK).map(x=>x[0]));
+  const cats=[...keep,...(other.size?['__OTHER__']:[])];
+  let psi=0;const detail=[];
+  cats.forEach(k=>{
+    let bn,cn;
+    if(k==='__OTHER__'){bn=0;cn=0;other.forEach(o=>{bn+=mb.get(o)||0;cn+=mc.get(o)||0})}
+    else{bn=mb.get(k)||0;cn=mc.get(k)||0}
+    const pb=Math.max(bn/base.length,1e-6),pc=Math.max(cn/curr.length,1e-6);
+    const contrib=(pc-pb)*Math.log(pc/pb);
+    psi+=contrib;
+    detail.push({cat:k,pb,pc,contrib});
+  });
+  detail.sort((a,b)=>Math.abs(b.contrib)-Math.abs(a.contrib));
+  const newCats=[...mc.keys()].filter(k=>!mb.has(k));
+  const lostCats=[...mb.keys()].filter(k=>!mc.has(k));
+  return{psi,detail,newCats,lostCats};
+}
+const psiBand=p=>!Number.isFinite(p)?['ch-gray','n/a']:p<0.10?['ch-green','Stable']:p<0.25?['ch-amber','Investigate']:['ch-red','Significant'];
+
+/* ═══════════════════════════════════════════════════════════════
+   ENCODING — CatBoost-style ordered target statistics for cats
+   ═══════════════════════════════════════════════════════════════ */
+function buildMatrix(rows,featNames,numSet,catMaps){
+  const n=rows.length,p=featNames.length;
+  const X=new Float64Array(n*p);
+  for(let j=0;j<p;j++){
+    const f=featNames[j];
+    if(numSet.has(f)){
+      for(let i=0;i<n;i++){
+        const v=parseFloat(rows[i][f]);
+        X[i*p+j]=Number.isFinite(v)?v:catMaps[f].median;
+      }
+    }else{
+      const m=catMaps[f];
+      for(let i=0;i<n;i++){
+        const k=String(rows[i][f]);
+        X[i*p+j]=m.map.has(k)?m.map.get(k):m.prior;
+      }
+    }
+  }
+  return X;
+}
+function fitEncoders(base,curr,featNames,numSet){
+  const all=[...base,...curr];
+  const maps={};
+  featNames.forEach(f=>{
+    if(numSet.has(f)){
+      const vals=all.map(r=>parseFloat(r[f])).filter(Number.isFinite).sort((a,b)=>a-b);
+      maps[f]={median:vals.length?quantile(vals,0.5):0};
+    }else{
+      // frequency encoding on the POOLED data (label-free -> no leakage of period)
+      const cnt=new Map();
+      all.forEach(r=>{const k=String(r[f]);cnt.set(k,(cnt.get(k)||0)+1)});
+      const total=all.length;
+      const map=new Map();
+      cnt.forEach((v,k)=>map.set(k,v/total));
+      maps[f]={map,prior:1/Math.max(total,1),card:cnt.size};
+    }
+  });
+  return maps;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GRADIENT BOOSTED TREES (histogram, logistic loss) — the "detective"
+   ═══════════════════════════════════════════════════════════════ */
+function binFeatures(X,n,p,nBins=32){
+  const edges=[],B=new Uint8Array(n*p);
+  for(let j=0;j<p;j++){
+    const col=new Float64Array(n);
+    for(let i=0;i<n;i++)col[i]=X[i*p+j];
+    const s=Array.from(col).sort((a,b)=>a-b);
+    const e=[];
+    for(let k=1;k<nBins;k++){const q=quantile(s,k/nBins);if(!e.length||q>e[e.length-1])e.push(q)}
+    edges.push(e);
+    for(let i=0;i<n;i++){
+      const v=col[i];let lo=0,hi=e.length;
+      while(lo<hi){const m=(lo+hi)>>1;if(v<=e[m])hi=m;else lo=m+1}
+      B[i*p+j]=lo;
+    }
+  }
+  return{B,edges};
+}
+function trainGBM(B,y,n,p,edges,opts={}){
+  const nTrees=opts.nTrees||60,depth=opts.depth||3,lr=opts.lr||0.15,lam=1.0,minChild=opts.minChild||20;
+  const F=new Float64Array(n).fill(0);
+  const trees=[];
+  const gain=new Float64Array(p);
+  const nBinsArr=edges.map(e=>e.length+1);
+  for(let t=0;t<nTrees;t++){
+    const g=new Float64Array(n),h=new Float64Array(n);
+    for(let i=0;i<n;i++){
+      const pr=1/(1+Math.exp(-F[i]));
+      g[i]=pr-y[i]; h[i]=Math.max(pr*(1-pr),1e-6);
+    }
+    const idx=new Int32Array(n); for(let i=0;i<n;i++)idx[i]=i;
+    const tree={nodes:[]};
+    const build=(rowIdx,d)=>{
+      let G=0,H=0;
+      for(const i of rowIdx){G+=g[i];H+=h[i]}
+      if(d>=depth||rowIdx.length<minChild*2){
+        const leaf=-G/(H+lam);
+        tree.nodes.push({leaf});return tree.nodes.length-1;
+      }
+      let bestGain=1e-9,bf=-1,bb=-1;
+      for(let j=0;j<p;j++){
+        const nb=nBinsArr[j];
+        const hg=new Float64Array(nb),hh=new Float64Array(nb);
+        for(const i of rowIdx){const b=B[i*p+j];hg[b]+=g[i];hh[b]+=h[i]}
+        let cg=0,ch=0;
+        for(let b=0;b<nb-1;b++){
+          cg+=hg[b];ch+=hh[b];
+          const rg=G-cg,rh=H-ch;
+          if(ch<minChild*0.001||rh<minChild*0.001)continue;
+          const gn=(cg*cg)/(ch+lam)+(rg*rg)/(rh+lam)-(G*G)/(H+lam);
+          if(gn>bestGain){bestGain=gn;bf=j;bb=b}
+        }
+      }
+      if(bf<0){
+        const leaf=-G/(H+lam);
+        tree.nodes.push({leaf});return tree.nodes.length-1;
+      }
+      gain[bf]+=bestGain;
+      const L=[],R=[];
+      for(const i of rowIdx){ (B[i*p+bf]<=bb?L:R).push(i) }
+      if(!L.length||!R.length){
+        const leaf=-G/(H+lam);
+        tree.nodes.push({leaf});return tree.nodes.length-1;
+      }
+      const li=build(L,d+1),ri=build(R,d+1);
+      tree.nodes.push({f:bf,b:bb,l:li,r:ri});
+      return tree.nodes.length-1;
+    };
+    tree.root=build(Array.from(idx),0);
+    trees.push(tree);
+    for(let i=0;i<n;i++){
+      let nd=tree.nodes[tree.root];
+      while(nd.leaf===undefined) nd=tree.nodes[B[i*p+nd.f]<=nd.b?nd.l:nd.r];
+      F[i]+=lr*nd.leaf;
+    }
+  }
+  return{trees,lr,gain};
+}
+function predictGBM(model,B,n,p){
+  const F=new Float64Array(n);
+  for(const tree of model.trees){
+    for(let i=0;i<n;i++){
+      let nd=tree.nodes[tree.root];
+      while(nd.leaf===undefined) nd=tree.nodes[B[i*p+nd.f]<=nd.b?nd.l:nd.r];
+      F[i]+=model.lr*nd.leaf;
+    }
+  }
+  return Array.from(F,v=>1/(1+Math.exp(-v)));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MMD / ENERGY / WASSERSTEIN
+   ═══════════════════════════════════════════════════════════════ */
+function standardize(X,n,p){
+  const Z=new Float64Array(n*p);
+  for(let j=0;j<p;j++){
+    let s=0;for(let i=0;i<n;i++)s+=X[i*p+j];
+    const m=s/n;
+    let v=0;for(let i=0;i<n;i++)v+=(X[i*p+j]-m)**2;
+    const sdv=Math.sqrt(v/Math.max(n-1,1))||1;
+    for(let i=0;i<n;i++)Z[i*p+j]=(X[i*p+j]-m)/sdv;
+  }
+  return Z;
+}
+function pdist2(Z,p,ia,ib){
+  let s=0;
+  for(let j=0;j<p;j++){const d=Z[ia*p+j]-Z[ib*p+j];s+=d*d}
+  return s;
+}
+function mmdEnergy(Z,p,nA,nB,rnd){
+  const A=[],Bx=[];
+  for(let i=0;i<nA;i++)A.push(i);
+  for(let i=0;i<nB;i++)Bx.push(nA+i);
+  // median heuristic bandwidth
+  const samp=[];
+  for(let k=0;k<Math.min(600,nA*nB);k++){
+    const i=A[Math.floor(rnd()*A.length)],j=Bx[Math.floor(rnd()*Bx.length)];
+    samp.push(pdist2(Z,p,i,j));
+  }
+  samp.sort((a,b)=>a-b);
+  const sigma2=Math.max(quantile(samp,0.5),1e-6);
+  const k=(i,j)=>Math.exp(-pdist2(Z,p,i,j)/sigma2);
+  let kaa=0,ca=0;
+  for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++){kaa+=k(A[i],A[j]);ca++}
+  let kbb=0,cb=0;
+  for(let i=0;i<Bx.length;i++)for(let j=i+1;j<Bx.length;j++){kbb+=k(Bx[i],Bx[j]);cb++}
+  let kab=0,cc=0;
+  for(const i of A)for(const j of Bx){kab+=k(i,j);cc++}
+  const mmd2Raw=(ca?kaa/ca:0)+(cb?kbb/cb:0)-2*(cc?kab/cc:0);
+  const mmd2=mmd2Raw;
+  // energy distance
+  const d=(i,j)=>Math.sqrt(pdist2(Z,p,i,j));
+  let daa=0;for(let i=0;i<A.length;i++)for(let j=i+1;j<A.length;j++)daa+=d(A[i],A[j]);
+  daa=ca?daa/ca:0;
+  let dbb=0;for(let i=0;i<Bx.length;i++)for(let j=i+1;j<Bx.length;j++)dbb+=d(Bx[i],Bx[j]);
+  dbb=cb?dbb/cb:0;
+  let dab=0;for(const i of A)for(const j of Bx)dab+=d(i,j);
+  dab=cc?dab/cc:0;
+  const energy=2*dab-daa-dbb;
+  return{mmd2,mmd2Raw,energy,sigma2};
+}
+function wasserstein1D(a,b){
+  const sa=a.filter(Number.isFinite).sort((x,y)=>x-y);
+  const sb=b.filter(Number.isFinite).sort((x,y)=>x-y);
+  if(sa.length<5||sb.length<5)return{w1:NaN,shift:NaN};
+  let s=0;const K=100;
+  for(let i=1;i<=K;i++){
+    const q=(i-0.5)/K;
+    s+=Math.abs(quantile(sa,q)-quantile(sb,q));
+  }
+  return{w1:s/K,shift:quantile(sb,0.5)-quantile(sa,0.5)};
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN PIPELINE
+   ═══════════════════════════════════════════════════════════════ */
+function setProg(pct,txt){
+  document.getElementById('prog-fill').style.width=pct+'%';
+  document.getElementById('prog-txt').textContent=txt;
+}
+
+async function runAnalysis(){
+  const btn=document.getElementById('run-btn'); btn.disabled=true;
+  document.getElementById('prog').style.display='block';
+  await tick();
+
+  try{
+    // ── Split into base / curr ─────────────────────────────────
+    let base,curr;
+    if(MODE==='two'){ base=RAW.a; curr=RAW.b; }
+    else{
+      const pc=document.getElementById('cfg-period').value;
+      const cv=document.getElementById('cfg-currval').value;
+      if(!pc||!cv){toast('Select a period column and current value.');reset();return}
+      base=RAW.c.filter(r=>String(r[pc])!==cv);
+      curr=RAW.c.filter(r=>String(r[pc])===cv);
+    }
+    if(base.length<30||curr.length<30){
+      toast('Need at least 30 rows in each period.');reset();return;
+    }
+
+    CFG={
+      score:document.getElementById('cfg-score').value,
+      outcome:document.getElementById('cfg-outcome').value,
+      audited:document.getElementById('cfg-audited').value,
+      amount:document.getElementById('cfg-amount').value,
+      capacity:parseInt(document.getElementById('cfg-capacity').value)||null,
+      thresh:parseFloat(document.getElementById('cfg-thresh').value)||0.65
+    };
+
+    setProg(8,'Profiling columns…'); await tick();
+
+    // ── Feature selection ──────────────────────────────────────
+    const hb=Object.keys(base[0]),hc=Object.keys(curr[0]);
+    const shared=hb.filter(h=>hc.some(x=>norm(x)===norm(h)));
+    const excluded=new Set([CFG.score,CFG.outcome,CFG.audited,CFG.amount].filter(Boolean).map(norm));
+    if(MODE==='one')excluded.add(norm(document.getElementById('cfg-period').value));
+
+    const features=[],dropped=[];
+    shared.forEach(h=>{
+      if(excluded.has(norm(h))){dropped.push([h,'Used as score / outcome / amount / period']);return}
+      if(LEAK_PATTERNS.test(h.trim())){dropped.push([h,'Time or identifier field — would leak the period label']);return}
+      const vb=base.map(r=>r[h]),vc=curr.map(r=>r[h]);
+      const uniqAll=new Set([...vb,...vc].map(String));
+      if(uniqAll.size<=1){dropped.push([h,'Constant across both periods']);return}
+      const nonEmpty=[...vb,...vc].filter(v=>v!==''&&v!==null&&v!==undefined).length;
+      if(nonEmpty/(vb.length+vc.length)<0.05){dropped.push([h,'Over 95% missing']);return}
+      // near-unique identifier check — only meaningful on non-tiny samples, and
+      // never applied to continuous numerics where near-uniqueness is expected
+      const tot=base.length+curr.length;
+      const nonNum=[...vb,...vc].filter(v=>v!==''&&v!=null&&!Number.isFinite(parseFloat(v))).length;
+      const mostlyText=nonNum/Math.max(tot,1)>0.5;
+      if(tot>=400&&uniqAll.size>0.9*tot&&mostlyText){
+        dropped.push([h,'Near-unique text value per row — behaves like an identifier']);return;
+      }
+      features.push(h);
+    });
+
+    if(!features.length){toast('No usable feature columns after filtering.');reset();return}
+
+    // ── Numeric vs categorical ─────────────────────────────────
+    const numSet=new Set(),catSet=new Set();
+    features.forEach(f=>{
+      const vals=[...base.map(r=>r[f]),...curr.map(r=>r[f])].filter(v=>v!==''&&v!==null);
+      const numOK=vals.filter(v=>Number.isFinite(parseFloat(v))).length;
+      const uniq=new Set(vals.map(String)).size;
+      const isNum=numOK/Math.max(vals.length,1)>0.95;
+      // codes like DRG / diag are numeric-looking but categorical
+      const codeish=/^(drg|diag|proc|dx|px|code|status|taxid|npi|provider)/i.test(f)||norm(f).includes('code')||norm(f).includes('status')||norm(f).includes('taxid');
+      if(isNum&&!codeish&&uniq>12)numSet.add(f); else catSet.add(f);
+    });
+
+    const encoders=fitEncoders(base,curr,features,numSet);
+    const highCard=features.filter(f=>catSet.has(f)&&encoders[f].card>200);
+
+    setProg(20,'Training drift classifier…'); await tick();
+
+    // ── Build matrices ─────────────────────────────────────────
+    const rnd=mulberry(20260906);
+    // balance + cap for tractability
+    const CAP=12000;
+    const sampleIdx=(arr,k)=>{
+      if(arr.length<=k)return arr.map((_,i)=>i);
+      const idx=[];const seen=new Set();
+      while(idx.length<k){const i=Math.floor(rnd()*arr.length);if(!seen.has(i)){seen.add(i);idx.push(i)}}
+      return idx;
+    };
+    const nEach=Math.min(CAP,Math.max(base.length,curr.length));
+    const bi=sampleIdx(base,Math.min(nEach,base.length));
+    const ci=sampleIdx(curr,Math.min(nEach,curr.length));
+    const bs=bi.map(i=>base[i]), cs=ci.map(i=>curr[i]);
+
+    const p=features.length;
+    const allRows=[...bs,...cs];
+    const n=allRows.length;
+    const X=buildMatrix(allRows,features,numSet,encoders);
+    const y=new Float64Array(n);
+    for(let i=bs.length;i<n;i++)y[i]=1;
+
+    const{B,edges}=binFeatures(X,n,p,32);
+
+    // ── 1. C2ST with 3-fold CV ─────────────────────────────────
+    const folds=3;
+    const order=shuffle([...Array(n).keys()],rnd);
+    const oof=new Array(n).fill(0.5);
+    let featGain=new Float64Array(p);
+    for(let k=0;k<folds;k++){
+      const test=new Set(order.filter((_,i)=>i%folds===k));
+      const trIdx=[...Array(n).keys()].filter(i=>!test.has(i));
+      const teIdx=[...test];
+      const ntr=trIdx.length;
+      const Btr=new Uint8Array(ntr*p),ytr=new Float64Array(ntr);
+      trIdx.forEach((src,d)=>{ytr[d]=y[src];for(let j=0;j<p;j++)Btr[d*p+j]=B[src*p+j]});
+      const m=trainGBM(Btr,ytr,ntr,p,edges,{nTrees:55,depth:3,lr:0.15});
+      for(let j=0;j<p;j++)featGain[j]+=m.gain[j];
+      const nte=teIdx.length;
+      const Bte=new Uint8Array(nte*p);
+      teIdx.forEach((src,d)=>{for(let j=0;j<p;j++)Bte[d*p+j]=B[src*p+j]});
+      const pr=predictGBM(m,Bte,nte,p);
+      teIdx.forEach((src,d)=>oof[src]=pr[d]);
+      setProg(20+18*(k+1)/folds,`Training drift classifier — fold ${k+1}/${folds}…`); await tick();
+    }
+    const c2stAUC=auc(Array.from(y),oof);
+    const driftScore=Math.max(0,2*(c2stAUC-0.5));
+
+    // permutation null for AUC
+    setProg(42,'Permutation test…'); await tick();
+    const permAUCs=[];
+    for(let r=0;r<40;r++){
+      const yp=shuffle(Array.from(y),rnd);
+      permAUCs.push(auc(yp,oof));
+    }
+    permAUCs.sort((a,b)=>a-b);
+    const pValC2ST=(permAUCs.filter(v=>v>=c2stAUC).length+1)/(permAUCs.length+1);
+
+    // ── 7. Density ratio weights (from C2ST) ───────────────────
+    const rBase=base.length/(base.length+curr.length);
+    const w=oof.map(pp=>{
+      const cl=Math.min(Math.max(pp,0.01),0.99);
+      return (cl/(1-cl))*(rBase/(1-rBase));
+    });
+    const wSorted=[...w].sort((a,b)=>a-b);
+    const wClip=quantile(wSorted,0.99);
+    const wC=w.map(v=>Math.min(v,wClip));
+    const ess=Math.pow(wC.reduce((s,v)=>s+v,0),2)/Math.max(wC.reduce((s,v)=>s+v*v,0),1e-9);
+
+    // top novel current claims
+    const novel=[];
+    for(let i=bs.length;i<n;i++)novel.push({row:cs[i-bs.length],w:wC[i],pp:oof[i]});
+    novel.sort((a,b)=>b.w-a.w);
+
+    setProg(50,'Computing per-feature stability…'); await tick();
+
+    // ── Univariate PSI ─────────────────────────────────────────
+    const psiRows=features.map(f=>{
+      const vb=base.map(r=>r[f]),vc=curr.map(r=>r[f]);
+      const missB=vb.filter(v=>v===''||v==null).length/base.length;
+      const missC=vc.filter(v=>v===''||v==null).length/curr.length;
+      if(numSet.has(f)){
+        const r=psiNumeric(vb.map(v=>parseFloat(v)),vc.map(v=>parseFloat(v)));
+        const bA=vb.map(v=>parseFloat(v)).filter(Number.isFinite).sort((x,y)=>x-y);
+        const cA=vc.map(v=>parseFloat(v)).filter(Number.isFinite).sort((x,y)=>x-y);
+        const qs=[0.05,0.10,0.25,0.50,0.75,0.90,0.95];
+        const quant=qs.map(q=>({q,b:quantile(bA,q),c:quantile(cA,q)}));
+        // shared bin edges over pooled range for an honest overlay
+        const lo=Math.min(bA[0],cA[0]), hi=Math.max(bA[bA.length-1],cA[cA.length-1]);
+        const NB=18, hb=new Array(NB).fill(0), hc=new Array(NB).fill(0);
+        const span=(hi-lo)||1;
+        bA.forEach(v=>{let k=Math.floor((v-lo)/span*NB);if(k>=NB)k=NB-1;if(k<0)k=0;hb[k]++});
+        cA.forEach(v=>{let k=Math.floor((v-lo)/span*NB);if(k>=NB)k=NB-1;if(k<0)k=0;hc[k]++});
+        return{f,type:'numeric',psi:r.psi,ks:ksStat(bA,cA),
+          meanB:mean(bA),meanC:mean(cA),sdB:sd(bA),sdC:sd(cA),
+          nB:bA.length,nC:cA.length,quant,lo,hi,
+          histB:hb.map(x=>x/bA.length),histC:hc.map(x=>x/cA.length),
+          missB,missC,newCats:[],lostCats:[],card:null};
+      }else{
+        const sb=vb.map(String),sc=vc.map(String);
+        const r=psiCategorical(sb,sc);
+        const cnt=a=>{const m=new Map();a.forEach(v=>m.set(v,(m.get(v)||0)+1));return m};
+        const mb=cnt(sb),mc=cnt(sc);
+        const allK=[...new Set([...mb.keys(),...mc.keys()])];
+        const cats=allK.map(k=>{
+          const nb=mb.get(k)||0,nc=mc.get(k)||0;
+          const pb=nb/sb.length,pc=nc/sc.length;
+          return{k,nb,nc,pb,pc,dpp:(pc-pb)*100,ratio:pb>0?pc/pb:Infinity};
+        }).sort((a,b)=>Math.abs(b.dpp)-Math.abs(a.dpp));
+        return{f,type:'categorical',psi:r.psi,ks:NaN,top:r.detail.slice(0,3),cats,
+          nB:sb.length,nC:sc.length,
+          meanB:null,meanC:null,missB,missC,newCats:r.newCats,lostCats:r.lostCats,card:encoders[f].card};
+      }
+    }).sort((a,b)=>(b.psi||0)-(a.psi||0));
+
+    setProg(58,'Kernel distance tests…'); await tick();
+
+    // ── 2 & 3. MMD + Energy on standardized subsample ──────────
+    const SUB=Math.min(500,bs.length,cs.length);
+    const subIdxB=[],subIdxC=[];
+    { const sb=shuffle([...Array(bs.length).keys()],rnd).slice(0,SUB);
+      const sc=shuffle([...Array(cs.length).keys()],rnd).slice(0,SUB);
+      sb.forEach(i=>subIdxB.push(i)); sc.forEach(i=>subIdxC.push(i)); }
+    const subRows=[...subIdxB.map(i=>bs[i]),...subIdxC.map(i=>cs[i])];
+    const Xs=buildMatrix(subRows,features,numSet,encoders);
+    const Zs=standardize(Xs,subRows.length,p);
+    const me=mmdEnergy(Zs,p,subIdxB.length,subIdxC.length,rnd);
+
+    // permutation p-value for MMD
+    const permMMD=[];
+    for(let r=0;r<25;r++){
+      const perm=shuffle([...Array(subRows.length).keys()],rnd);
+      const Zp=new Float64Array(Zs.length);
+      perm.forEach((src,d)=>{for(let j=0;j<p;j++)Zp[d*p+j]=Zs[src*p+j]});
+      permMMD.push(mmdEnergy(Zp,p,subIdxB.length,subIdxC.length,rnd).mmd2);
+      if(r%8===0){setProg(58+8*r/25,'Kernel distance tests…');await tick()}
+    }
+    permMMD.sort((a,b)=>a-b);
+    const pValMMD=(permMMD.filter(v=>v>=me.mmd2).length+1)/(permMMD.length+1);
+
+    setProg(70,'Transport distances…'); await tick();
+
+    // ── 4. Wasserstein on numeric features ─────────────────────
+    const wass=[...numSet].map(f=>{
+      const a=base.map(r=>parseFloat(r[f])),b=curr.map(r=>parseFloat(r[f]));
+      const r=wasserstein1D(a,b);
+      const sa=a.filter(Number.isFinite).sort((x,y)=>x-y);
+      const sb=b.filter(Number.isFinite).sort((x,y)=>x-y);
+      return{f,...r,
+        medB:quantile(sa,0.5),medC:quantile(sb,0.5),
+        p90B:quantile(sa,0.9),p90C:quantile(sb,0.9),
+        sdB:sd(sa)||1};
+    }).filter(r=>Number.isFinite(r.w1)).sort((a,b)=>b.w1/b.sdB-a.w1/a.sdB);
+
+    setProg(78,'Dependency structure…'); await tick();
+
+    // ── 6. Copula / dependency drift ───────────────────────────
+    const depFeats=features.slice(0,12);
+    const rankMat=(rows)=>{
+      const cols=depFeats.map(f=>{
+        if(numSet.has(f)){
+          const v=rows.map(r=>{const x=parseFloat(r[f]);return Number.isFinite(x)?x:encoders[f].median});
+          return ranks(v).map(r=>r/v.length);
+        }else{
+          const m=encoders[f].map;
+          const v=rows.map(r=>m.get(String(r[f]))||encoders[f].prior);
+          return ranks(v).map(r=>r/v.length);
+        }
+      });
+      return cols;
+    };
+    const rb=rankMat(bs),rc=rankMat(cs);
+    const K=depFeats.length;
+    const corrB=[],corrC=[],delta=[];
+    for(let i=0;i<K;i++){
+      corrB.push([]);corrC.push([]);delta.push([]);
+      for(let j=0;j<K;j++){
+        const cb=i===j?1:spearman(rb[i],rb[j]);
+        const cc=i===j?1:spearman(rc[i],rc[j]);
+        corrB[i].push(cb);corrC[i].push(cc);delta[i].push(cc-cb);
+      }
+    }
+    let frob=0,pairs=[];
+    for(let i=0;i<K;i++)for(let j=i+1;j<K;j++){
+      frob+=delta[i][j]**2;
+      pairs.push({a:depFeats[i],b:depFeats[j],base:corrB[i][j],curr:corrC[i][j],d:delta[i][j]});
+    }
+    frob=Math.sqrt(frob);
+    const depIndex=Math.min(1,frob/Math.sqrt(K*(K-1)/2)*2);
+    pairs.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
+
+    setProg(86,'Model-aware drift…'); await tick();
+
+    // ── 5. Model-aware drift ───────────────────────────────────
+    let modelAware=null;
+    const sc=CFG.score;
+    if(sc){
+      const gs=r=>{let v=parseFloat(r[sc]);if(!Number.isFinite(v))return NaN;if(v>1)v=v/100;return v};
+      const sB=base.map(gs).filter(Number.isFinite);
+      const sC=curr.map(gs).filter(Number.isFinite);
+      if(sB.length>20&&sC.length>20){
+        const ps=psiNumeric(sB,sC,10);
+        const t=CFG.thresh;
+        const rateB=sB.filter(v=>v>=t).length/sB.length;
+        const rateC=sC.filter(v=>v>=t).length/sC.length;
+        // SHAP-space proxy: C2ST on score + rank-position (cheap model-space signal)
+        modelAware={
+          psi:ps.psi,ks:ksStat(sB,sC),
+          meanB:mean(sB),meanC:mean(sC),
+          p90B:quantile([...sB].sort((a,b)=>a-b),0.9),
+          p90C:quantile([...sC].sort((a,b)=>a-b),0.9),
+          rateB,rateC,sB,sC
+        };
+      }
+    }
+
+    setProg(93,'Hit-rate forecast…'); await tick();
+
+    // ── HIT RATE ───────────────────────────────────────────────
+    const hit=computeHitRate(base,curr,CFG,wC,bs,cs,modelAware);
+
+    setProg(100,'Rendering report…'); await tick();
+
+    RESULT={
+      base,curr,bs,cs,features,numSet,catSet,dropped,encoders,highCard,
+      c2stAUC,driftScore,pValC2ST,featGain:Array.from(featGain),
+      yLabels:Array.from(y),nBaseSamp:bs.length,
+      psiRows,mmd2:me.mmd2,energy:me.energy,pValMMD,permMMD,SUB,
+      wass,depFeats,corrB,corrC,delta,depIndex,frob,pairs,
+      modelAware,hit,novel,wC,ess,oof,rnd
+    };
+
+    renderReport();
+  }catch(err){
+    console.error(err);
+    toast('Analysis failed: '+err.message);
+    reset();
+  }
+}
+function reset(){
+  document.getElementById('run-btn').disabled=false;
+  document.getElementById('prog').style.display='none';
+}
+const tick=()=>new Promise(r=>setTimeout(r,12));
+
+/* ═══════════════════════════════════════════════════════════════
+   HIT RATE FORECAST
+   ═══════════════════════════════════════════════════════════════ */
+function computeHitRate(base,curr,cfg,wC,bs,cs,ma){
+  const out={available:false,reason:'',mode:'none',notes:[],hasAudited:!!cfg.audited};
+  if(!cfg.score){out.reason='No model score column was provided, so no hit rate can be projected.';return out}
+
+  const gs=r=>{let v=parseFloat(r[cfg.score]);if(!Number.isFinite(v))return NaN;if(v>1)v=v/100;return v};
+  /* Value parser. Negatives are tested FIRST because "No Findings"
+     contains "Findings" — matching positives first inverts the label
+     on every clean claim and drives the hit rate to 100%.            */
+  const unparsed=new Map();
+  const truthy=(v,tag)=>{
+    if(v===''||v==null)return null;
+    const t=String(v).toLowerCase().trim().replace(/[_\-]+/g,' ').replace(/\s+/g,' ');
+    if(!t)return null;
+    if(/^(no|not|non)\b/.test(t))return 0;
+    if(/^(0|n|f|false|none|nil|clean|miss|negative|pending|open|unaudited|unreviewed|na|n a)$/.test(t))return 0;
+    if(/^(1|y|t|yes|true|finding|findings|overpay|overpaid|overpayment|overpayments|hit|hits|positive|audited|reviewed|complete|completed|closed|done|error|exception|confirmed|recovered|recoverable)$/.test(t))return 1;
+    const f=parseFloat(t);
+    if(Number.isFinite(f))return f>0?1:0;
+    if(tag){const k=tag+'|'+String(v).trim();unparsed.set(k,(unparsed.get(k)||0)+1)}
+    return null;
+  };
+  out._unparsed=unparsed;
+  const snapUnparsed=()=>{ out.unparsedList=[...unparsed.entries()].map(([k,n])=>{const i=k.indexOf('|');
+    return{col:k.slice(0,i),val:k.slice(i+1),n}}).sort((a,b)=>b.n-a.n).slice(0,10); };
+  const gy=r=>truthy(r[cfg.outcome],'finding');
+  const ga=r=>cfg.audited?truthy(r[cfg.audited],'audited'):null;
+  const t=cfg.thresh;
+
+  const bScores=base.map(gs).filter(Number.isFinite);
+  const cScores=curr.map(gs).filter(Number.isFinite);
+  if(cScores.length<20||bScores.length<20){out.reason='Too few valid scores to project a hit rate.';return out}
+
+  out.volumeB=bScores.filter(v=>v>=t).length;
+  out.volumeC=cScores.filter(v=>v>=t).length;
+  out.rateB=out.volumeB/bScores.length;
+  out.rateC=out.volumeC/cScores.length;
+  out.nBaseScored=bScores.length;
+  out.nCurrScored=cScores.length;
+
+  if(!cfg.outcome){
+    out.available=true;out.mode='relative';snapUnparsed();
+    const aB=bScores.filter(v=>v>=t),aC=cScores.filter(v=>v>=t);
+    out.impliedB=aB.length?mean(aB):NaN;
+    out.impliedC=aC.length?mean(aC):NaN;
+    out.reason='No finding column, so these are model-implied rates (mean predicted probability above threshold), not measured hit rates.';
+    return out;
+  }
+
+  /* ── Build the audited universe ──────────────────────────────
+     With an audited flag: audited = flag is 1. Finding is only
+     meaningful inside that set. Everything else is UNKNOWN.
+     Without it: fall back to "has a finding value" and warn.      */
+  const bAll=base.map(r=>({s:gs(r),y:gy(r),a:ga(r),r})).filter(o=>Number.isFinite(o.s));
+  const audB = cfg.audited ? bAll.filter(o=>o.a===1) : bAll.filter(o=>o.y!==null);
+  const labB = audB.filter(o=>o.y!==null);
+
+  out.nAuditedB=audB.length;
+  out.nFindingB=labB.filter(o=>o.y===1).length;
+  out.nNoFindingB=labB.filter(o=>o.y===0).length;
+  out.nAuditedNoResultB=audB.length-labB.length;
+  out.nUnauditedB=bAll.length-audB.length;
+  out.auditCoverageB=bAll.length?audB.length/bAll.length:0;
+
+  if(labB.length<40){
+    out.available=true;out.mode='relative';snapUnparsed();
+    const extra=(out.unparsedList&&out.unparsedList.length)
+      ? ` ${out.unparsedList.reduce((a,u)=>a+u.n,0).toLocaleString()} rows carry values that could not be read as a result (${out.unparsedList.slice(0,3).map(u=>'"'+u.val+'"').join(', ')}) — check the column mapping.`:'';
+    out.reason=`Only ${labB.length} baseline claim${labB.length===1?'':'s'} have both an audit result and a score — too few to calibrate. Showing model-implied rates instead.`+extra;
+    const aB=bScores.filter(v=>v>=t),aC=cScores.filter(v=>v>=t);
+    out.impliedB=aB.length?mean(aB):NaN;
+    out.impliedC=aC.length?mean(aC):NaN;
+    return out;
+  }
+
+  /* ── Observed baseline hit rate = findings / audited ────────── */
+  out.measuredB=out.nFindingB/labB.length;
+  out.nAudB=labB.length;
+
+  /* ── Audit selection profile by score decile ─────────────────
+     Shows HOW audits were chosen. This is what determines whether
+     the calibration curve can be trusted outside the audited band. */
+  const allSorted=[...bAll].sort((a,b)=>a.s-b.s);
+  const ND=10, cov=[];
+  for(let i=0;i<ND;i++){
+    const lo=Math.floor(i*allSorted.length/ND), hi=Math.floor((i+1)*allSorted.length/ND);
+    const sl=allSorted.slice(lo,hi);
+    if(!sl.length)continue;
+    const aud=sl.filter(o=>cfg.audited?o.a===1:o.y!==null);
+    const lab=aud.filter(o=>o.y!==null);
+    cov.push({
+      lo:sl[0].s, hi:sl[sl.length-1].s, n:sl.length,
+      nAud:aud.length, cover:aud.length/sl.length,
+      nFind:lab.filter(o=>o.y===1).length,
+      rate: lab.length?lab.filter(o=>o.y===1).length/lab.length:NaN,
+      nLab:lab.length
+    });
+  }
+  out.coverage=cov;
+  const covered=cov.filter(c=>c.nLab>=10);
+  out.nBandsCovered=covered.length;
+  out.minCoveredScore=covered.length?covered[0].lo:NaN;
+  out.maxCoveredScore=covered.length?covered[covered.length-1].hi:NaN;
+
+  /* ── Isotonic calibration on AUDITED claims only ───────────── */
+  const sortedLab=[...labB].sort((a,b)=>a.s-b.s);
+  const NB=Math.min(20,Math.max(5,Math.floor(labB.length/40)));
+  const bins=[];
+  for(let i=0;i<NB;i++){
+    const lo=Math.floor(i*sortedLab.length/NB), hi=Math.floor((i+1)*sortedLab.length/NB);
+    const sl=sortedLab.slice(lo,hi);
+    if(!sl.length)continue;
+    bins.push({lo:sl[0].s,hi:sl[sl.length-1].s,n:sl.length,
+      nFind:sl.filter(o=>o.y===1).length,
+      rate:sl.filter(o=>o.y===1).length/sl.length,
+      mid:mean(sl.map(o=>o.s))});
+  }
+  for(let pass=0;pass<60;pass++){
+    let ok=true;
+    for(let i=0;i<bins.length-1;i++){
+      if(bins[i].rate>bins[i+1].rate){
+        const tot=bins[i].n+bins[i+1].n;
+        const r=(bins[i].rate*bins[i].n+bins[i+1].rate*bins[i+1].n)/tot;
+        bins[i].rate=r;bins[i+1].rate=r;ok=false;
+      }
+    }
+    if(ok)break;
+  }
+  /* Piecewise-linear calibration through the bin midpoints.
+     A step function assigns every claim in a bin the same rate, which
+     flattens the top of the range where bins are widest and biases the
+     forecast downward whenever the current period is shifted right.   */
+  const knots=bins.map(b=>({x:b.mid,y:b.rate}));
+  // guarantee strictly increasing x for interpolation
+  for(let i=1;i<knots.length;i++) if(knots[i].x<=knots[i-1].x) knots[i].x=knots[i-1].x+1e-6;
+  const calib=sc=>{
+    if(knots.length===1)return knots[0].y;
+    if(sc<=knots[0].x){
+      // below the fitted range: fall toward zero along the first segment
+      const k0=knots[0],k1=knots[1];
+      const slope=(k1.y-k0.y)/(k1.x-k0.x);
+      return Math.max(0,Math.min(1,k0.y-slope*(k0.x-sc)));
+    }
+    for(let i=1;i<knots.length;i++){
+      if(sc<=knots[i].x){
+        const a=knots[i-1],b=knots[i];
+        return Math.max(0,Math.min(1,a.y+(b.y-a.y)*(sc-a.x)/(b.x-a.x)));
+      }
+    }
+    // above the fitted range: continue the final slope, never below the last knot
+    const a=knots[knots.length-2],b=knots[knots.length-1];
+    const slope=(b.y-a.y)/(b.x-a.x);
+    return Math.max(b.y,Math.min(1,b.y+slope*(sc-b.x)));
+  };
+  /* Conservative twin: identical inside the fitted range, but clamped
+     at the top knot instead of continuing the slope. The gap between the
+     two forecasts is the honest cost of extrapolating past the audited
+     score range, and it is folded into the interval below.            */
+  const calibClamp=sc=>{
+    if(knots.length===1)return knots[0].y;
+    if(sc>=knots[knots.length-1].x)return knots[knots.length-1].y;
+    return calib(sc);
+  };
+  out.bins=bins; out.knots=knots;
+
+  /* ── Select the current-period claims that will be audited ── */
+  const cAll=curr.map(r=>({s:gs(r),y:gy(r),a:ga(r),r})).filter(o=>Number.isFinite(o.s))
+                 .sort((a,b)=>b.s-a.s);
+  let selected, selMode;
+  if(cfg.capacity&&cfg.capacity>0){
+    selected=cAll.slice(0,Math.min(cfg.capacity,cAll.length));
+    selMode='capacity';
+    out.capacity=cfg.capacity;
+    out.effThresh=selected.length?selected[selected.length-1].s:NaN;
+  }else{
+    selected=cAll.filter(o=>o.s>=t);
+    selMode='threshold';
+    out.effThresh=t;
+  }
+  out.selMode=selMode;
+  out.nSelectedC=selected.length;
+  if(!selected.length){
+    out.available=true;out.mode='empty';snapUnparsed();
+    out.reason=selMode==='capacity'
+      ? 'The audit capacity resolved to zero claims.'
+      : `No claim in the current period scores at or above ${t}. The highest score this period is ${cAll.length?cAll[0].s.toFixed(3):'—'}, so nothing would be selected for audit under this rule.`;
+    return out;
+  }
+
+  /* ── The forecast ──────────────────────────────────────────── */
+  const pc=selected.map(o=>calib(o.s));
+  const pcClamp=selected.map(o=>calibClamp(o.s));
+  out.expectedC=pc.length?mean(pc):NaN;
+  out.expectedCClamp=pcClamp.length?mean(pcClamp):NaN;
+  out.extrapSpread=Math.abs(out.expectedC-out.expectedCClamp);
+  out.expectedFindingsC=pc.length?pc.reduce((a,b)=>a+b,0):NaN;
+  out.nAudC=selected.length;
+
+  // extrapolation check: how many selected claims sit beyond the fitted knots
+  const maxK=knots[knots.length-1].x, minK=knots[0].x;
+  out.nAboveCalib=selected.filter(o=>o.s>maxK).length;
+  out.nBelowCalib=selected.filter(o=>o.s<minK).length;
+  out.topKnot=maxK;
+
+  /* ── Like-for-like comparator ────────────────────────────────
+     The overall baseline hit rate covers every claim ever audited,
+     which includes low-scoring ones. The forecast covers only claims
+     meeting the selection rule. Comparing the two directly is
+     apples-to-oranges, so restrict the baseline to the same rule.   */
+  const labSel=labB.filter(o=>o.s>=out.effThresh);
+  out.nAudBSel=labSel.length;
+  out.nFindBSel=labSel.filter(o=>o.y===1).length;
+  out.measuredBSel=labSel.length?out.nFindBSel/labSel.length:NaN;
+  out.comparator=Number.isFinite(out.measuredBSel)&&labSel.length>=25?'selected':'overall';
+  out.benchmark=out.comparator==='selected'?out.measuredBSel:out.measuredB;
+
+  /* ── Back-test: reproduce the baseline hit rate ─────────────── */
+  out.expectedB=mean(labB.map(o=>calib(o.s)));
+  out.calibGap=Math.abs(out.expectedB-out.measuredB);
+  if(out.comparator==='selected'&&labSel.length){
+    out.expectedBSel=mean(labSel.map(o=>calib(o.s)));
+    out.calibGapSel=Math.abs(out.expectedBSel-out.measuredBSel);
+  }
+
+  /* ── Uncertainty ───────────────────────────────────────────── */
+  if(Number.isFinite(out.expectedC)&&out.nAudC>0){
+    // variance from the binomial sampling of the forecast set
+    const vSel=pc.reduce((a,q)=>a+q*(1-q),0)/(pc.length*pc.length);
+    // variance from the calibration bins themselves
+    let vCal=0;
+    selected.forEach(o=>{
+      const b=bins.find(x=>o.s<=x.hi)||bins[bins.length-1];
+      vCal+=b.rate*(1-b.rate)/Math.max(b.n,1);
+    });
+    vCal=vCal/(pc.length*pc.length);
+    const seStat=Math.sqrt(vSel+vCal);
+    // extrapolation adds a systematic term the binomial maths cannot see
+    const seExtrap=out.extrapSpread/1.6;
+    const se=Math.sqrt(seStat*seStat+seExtrap*seExtrap);
+    out.seStat=seStat; out.seExtrap=seExtrap; out.se=se;
+    out.ciLo=Math.max(0,Math.min(out.expectedC,out.expectedCClamp)-1.96*seStat-0.35*out.extrapSpread);
+    out.ciHi=Math.min(1,Math.max(out.expectedC,out.expectedCClamp)+1.96*seStat+0.35*out.extrapSpread);
+    out.extrapShare=out.nSelectedC?out.nAboveCalib/out.nSelectedC:0;
+  }
+
+  /* ── Drift-adjusted estimate via density-ratio reweighting ─── */
+  const nb=bs.length;
+  const wB=wC.slice(0,nb);
+  const bsLab=bs.map((r,i)=>({s:gs(r),y:gy(r),a:ga(r),w:wB[i]}))
+    .filter(o=>Number.isFinite(o.s)&&o.y!==null&&(cfg.audited?o.a===1:true));
+  const bsSel=cfg.capacity?bsLab.filter(o=>o.s>=out.effThresh):bsLab.filter(o=>o.s>=t);
+  if(bsSel.length>=20){
+    const sw=bsSel.reduce((a,o)=>a+o.w,0);
+    out.iwHitRate=sw>0?bsSel.reduce((a,o)=>a+o.w*o.y,0)/sw:NaN;
+    out.nIW=bsSel.length;
+  }
+
+  /* ── Actuals if the current period is partly audited ────────── */
+  const cLab=cAll.filter(o=>(cfg.audited?o.a===1:true)&&o.y!==null&&o.s>=out.effThresh);
+  if(cLab.length>=15){
+    out.measuredC=cLab.filter(o=>o.y===1).length/cLab.length;
+    out.nMeasC=cLab.length;
+    out.nFindingC=cLab.filter(o=>o.y===1).length;
+  }
+  out.nAuditedC=cfg.audited?cAll.filter(o=>o.a===1).length:0;
+
+  /* ── Value-weighted ────────────────────────────────────────── */
+  if(cfg.amount){
+    const gam=r=>{const v=parseFloat(String(r[cfg.amount]).replace(/[$,€£]/g,'').replace(/,/g,''));return Number.isFinite(v)?v:NaN};
+    const amt=selected.map(o=>({p:calib(o.s),a:gam(o.r)})).filter(o=>Number.isFinite(o.a));
+    if(amt.length>=10){
+      out.expRecovery=amt.reduce((acc,o)=>acc+o.p*o.a,0);
+      out.totalExposure=amt.reduce((acc,o)=>acc+o.a,0);
+      out.nAmt=amt.length;
+    }
+  }
+
+  snapUnparsed();
+  out.available=true;out.mode='calibrated';
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER
+   ═══════════════════════════════════════════════════════════════ */
+function renderReport(){
+  const R=RESULT;
+  document.getElementById('setup').classList.add('hidden');
+  const rep=document.getElementById('report');
+  rep.classList.remove('hidden');
+
+  const ds=R.driftScore;
+  const zone=ds<0.20?'green':ds<0.45?'amber':'red';
+  const zoneWord=ds<0.20?'Stable':ds<0.45?'Moderate shift':'Material shift';
+
+  // composite index
+  const maNorm=R.modelAware?Math.min(1,R.modelAware.psi/0.35):null;
+  const composite=maNorm!==null
+    ? 0.5*ds+0.3*maNorm+0.2*R.depIndex
+    : 0.65*ds+0.35*R.depIndex;
+
+  document.getElementById('hdr-sum').innerHTML=
+    `${R.base.length.toLocaleString()} baseline · ${R.curr.length.toLocaleString()} current<br>Drift Score ${ds.toFixed(2)}`;
+
+  rep.innerHTML=`
+  ${renderExecutive(R,ds,zone,zoneWord,composite,maNorm)}
+  <div class="tabs">
+    <button class="tab active" onclick="tabTo(event,'p-hit')">Hit rate</button>
+    <button class="tab" onclick="tabTo(event,'p-1')">1 · Detective</button>
+    <button class="tab" onclick="tabTo(event,'p-chg')">What changed</button>
+    <button class="tab" onclick="tabTo(event,'p-2')">2 · MMD</button>
+    <button class="tab" onclick="tabTo(event,'p-3')">3 · Energy</button>
+    <button class="tab" onclick="tabTo(event,'p-4')">4 · Wasserstein</button>
+    <button class="tab" onclick="tabTo(event,'p-5')">5 · Model-aware</button>
+    <button class="tab" onclick="tabTo(event,'p-6')">6 · Copula</button>
+    <button class="tab" onclick="tabTo(event,'p-7')">7 · Density ratio</button>
+    <button class="tab" onclick="tabTo(event,'p-data')">Data quality</button>
+  </div>
+  <div class="panel active" id="p-hit">${renderHit(R)}</div>
+  <div class="panel" id="p-1">${render1(R)}</div>
+  <div class="panel" id="p-chg">${renderChanges(R)}</div>
+  <div class="panel" id="p-2">${render2(R)}</div>
+  <div class="panel" id="p-3">${render3(R)}</div>
+  <div class="panel" id="p-4">${render4(R)}</div>
+  <div class="panel" id="p-5">${render5(R)}</div>
+  <div class="panel" id="p-6">${render6(R)}</div>
+  <div class="panel" id="p-7">${render7(R)}</div>
+  <div class="panel" id="p-data">${renderData(R)}</div>
+  <div class="btn-row">
+    <button class="btn btn-sec" onclick="location.reload()">New analysis</button>
+    <button class="btn btn-sec" onclick="window.print()">Print report</button>
+  </div>`;
+  window.scrollTo(0,0);
+}
+function tabTo(e,id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+
+/* ── Executive summary ── */
+function renderExecutive(R,ds,zone,zoneWord,composite,maNorm){
+  const ma=R.modelAware;
+  const rawHigh=ds>=0.30, modelHigh=ma?ma.psi>=0.10:null;
+  let verdict,vzone,action;
+  if(modelHigh===null){
+    verdict=rawHigh?'Feature distributions have shifted materially. Model impact cannot be assessed without a score column.'
+                   :'Feature distributions look stable. Model impact cannot be assessed without a score column.';
+    vzone=rawHigh?'amber':'green';
+    action=rawHigh?'Re-run with the CatBoost score column included to determine whether the shift affects your predictions.'
+                  :'No action. Include the score column next run for a complete picture.';
+  }else if(rawHigh&&modelHigh){
+    verdict='Material covariate shift that your model is sensitive to.';vzone='red';
+    action='Recalibrate the audit threshold against the current population. Consider importance-weighted refit using the density-ratio weights in section 7 rather than waiting for new audit labels.';
+  }else if(rawHigh&&!modelHigh){
+    verdict='The population changed, but in features your model does not lean on.';vzone='amber';
+    action='Log it and monitor. Do not retrain on this signal alone — the shift is in low-weight features. Watch whether it migrates into high-influence features next cycle.';
+  }else if(!rawHigh&&modelHigh){
+    verdict='Inputs look normal but the score distribution moved. This pattern usually means a pipeline problem, not real drift.';vzone='red';
+    action='Check the scoring pipeline before touching the model: stale LOS geometric-mean reference table, a changed ICD or DRG grouper version, or a feature-order mismatch between training and inference.';
+  }else{
+    verdict='Population is stable on every measure.';vzone='green';
+    action='Any hit-rate movement this period reflects a genuine change in the underlying rate of overpayment, not model degradation. Report it as such and hold the threshold.';
+  }
+
+  const pos=Math.min(98,Math.max(2,composite*100));
+  return `
+  <div class="card">
+    <div class="h2">Executive summary</div>
+    <div class="sub">${R.base.length.toLocaleString()} baseline claims vs ${R.curr.length.toLocaleString()} current claims · ${R.features.length} features evaluated</div>
+
+    <div class="stats-row">
+      <div class="stat"><div class="v c-${zone}">${ds.toFixed(2)}</div><div class="l">Drift Score (C2ST)</div><div class="d c-${zone}">${zoneWord}</div></div>
+      <div class="stat"><div class="v c-navy">${R.c2stAUC.toFixed(3)}</div><div class="l">Classifier AUC</div><div class="d c-mut">p ${R.pValC2ST<0.026?'< 0.026':'= '+R.pValC2ST.toFixed(3)}</div></div>
+      <div class="stat"><div class="v c-navy">${composite.toFixed(2)}</div><div class="l">Composite shift index</div><div class="d c-mut">weighted blend</div></div>
+      <div class="stat"><div class="v ${ma?(ma.psi<0.1?'c-green':ma.psi<0.25?'c-amber':'c-red'):'c-mut'}">${ma?ma.psi.toFixed(3):'—'}</div><div class="l">Score-distribution PSI</div><div class="d c-mut">${ma?(ma.psi<0.1?'Stable':ma.psi<0.25?'Investigate':'Significant'):'no score column'}</div></div>
+      <div class="stat"><div class="v ${R.depIndex<0.2?'c-green':R.depIndex<0.4?'c-amber':'c-red'}">${R.depIndex.toFixed(2)}</div><div class="l">Dependency drift index</div><div class="d c-mut">Frobenius ${R.frob.toFixed(2)}</div></div>
+    </div>
+
+    <div class="gauge"><div class="gauge-ptr" style="left:calc(${pos}% - 2px)"></div></div>
+    <div class="gauge-scale"><span>Stable</span><span>Monitor</span><span>Investigate</span><span>Act</span></div>
+
+    <div class="alert a-${vzone}" style="margin-top:14px"><strong>${esc(verdict)}</strong>${esc(action)}</div>
+
+    <table style="margin-top:12px">
+      <thead><tr><th style="width:16%">Raw drift</th><th style="width:16%">Model-aware</th><th>Reading</th><th style="width:12%">This run</th></tr></thead>
+      <tbody>
+        <tr><td class="nm">Low</td><td class="nm">Low</td><td>Stable population — hit-rate movement is real base-rate change</td><td>${!rawHigh&&modelHigh===false?'<span class="chip ch-green">Matched</span>':''}</td></tr>
+        <tr><td class="nm">High</td><td class="nm">Low</td><td>Shift sits in features the model under-weights — monitor only</td><td>${rawHigh&&modelHigh===false?'<span class="chip ch-amber">Matched</span>':''}</td></tr>
+        <tr><td class="nm">High</td><td class="nm">High</td><td>Material covariate shift — recalibrate threshold</td><td>${rawHigh&&modelHigh===true?'<span class="chip ch-red">Matched</span>':''}</td></tr>
+        <tr><td class="nm">Low</td><td class="nm">High</td><td>Reasoning changed on similar inputs — check the pipeline</td><td>${!rawHigh&&modelHigh===true?'<span class="chip ch-red">Matched</span>':''}</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+}
+
+/* ── Hit rate ── */
+function renderHit(R){
+  const h=R.hit;
+  if(!h.available){
+    return `<div class="card"><div class="card-title">Expected hit rate</div>
+      <div class="alert a-amber"><strong>Not available</strong>${esc(h.reason)}</div>
+      <div class="note">To forecast the hit rate you need a model score column, a finding column, and ideally an audited flag on the baseline period. Outcomes on the current period are not required — producing them before the audit happens is the point of the forecast.</div></div>`;
+  }
+
+  if(h.mode==='empty'){
+    return `<div class="card"><div class="card-title">Forecast hit rate</div>
+      <div class="alert a-amber"><strong>No claims selected</strong>${esc(h.reason)}</div>
+      <div class="note">Lower the threshold, or set a monthly audit capacity to forecast the top N claims by score instead of using a fixed cut-off. Baseline hit rate across all ${(h.nAudB||0).toLocaleString()} audited claims was ${pct(h.measuredB)}.</div>
+      </div>${renderAuditUniverse(h)}${renderCoverage(h)}`;
+  }
+
+  if(h.mode==='relative'){
+    const dir=h.impliedC<h.impliedB?'lower':'higher';
+    return `<div class="card">
+      <div class="card-title">Expected hit rate — model-implied only</div>
+      <div class="alert a-amber"><strong>Limited mode</strong>${esc(h.reason)}</div>
+      ${h.unparsedList&&h.unparsedList.length?`<div class="alert a-red"><strong>Unreadable values found</strong>${h.unparsedList.map(u=>`<code>${esc(u.val)}</code> in ${esc(u.col)} (${u.n.toLocaleString()} rows)`).join(', ')}. Recognised values are 1/0, Y/N, Yes/No, True/False, Findings / No Findings — anything beginning with "no" or "not" reads as negative.</div>`:''}
+      <div class="stats-row">
+        <div class="stat"><div class="v c-navy">${pct(h.impliedB)}</div><div class="l">Baseline implied rate</div></div>
+        <div class="stat"><div class="v ${h.impliedC<h.impliedB?'c-amber':'c-green'}">${pct(h.impliedC)}</div><div class="l">Current implied rate</div><div class="d">${dir}</div></div>
+        <div class="stat"><div class="v c-navy">${pct(h.rateB)}</div><div class="l">Baseline flag rate</div></div>
+        <div class="stat"><div class="v c-navy">${pct(h.rateC)}</div><div class="l">Current flag rate</div><div class="d c-mut">${h.volumeC.toLocaleString()} claims</div></div>
+      </div>
+      <div class="note"><strong>How to read this.</strong> Without confirmed audit results these are the model's own predicted probabilities averaged over flagged claims, not observed hit rates. They indicate the direction the hit rate should move, not the level. Supply a baseline finding column and audited flag to convert this into an absolute forecast.</div>
+    </div>`;
+  }
+
+  const bench=Number.isFinite(h.benchmark)?h.benchmark:h.measuredB;
+  const delta=h.expectedC-bench;
+  const dPct=(delta*100).toFixed(1);
+  const calOK=(Number.isFinite(h.calibGapSel)?h.calibGapSel:h.calibGap)<0.05;
+  const volDelta=h.rateB>0?(h.rateC-h.rateB)/h.rateB:0;
+  const lowN=h.nAudB<80;
+
+  let interp,izone;
+  if(delta<-0.04){
+    if(RESULT.driftScore<0.30){
+      izone='green';
+      interp=`The forecast is ${Math.abs(dPct)} points below the baseline hit rate, but the drift metrics are stable. This points to a genuinely cleaner month rather than model degradation. Hold the threshold — lowering it to keep audit volume up would pull in weaker claims and push precision down further.`;
+    }else{
+      izone='red';
+      interp=`The forecast is ${Math.abs(dPct)} points below the baseline hit rate, and the drift metrics are also elevated. Check the executive verdict before reacting: a population shift that the model is sensitive to calls for recalibration, whereas a shift confined to low-weight features does not.`;
+    }
+  }else if(delta>0.04){
+    izone='green';
+    interp=`The forecast is ${dPct} points above the baseline hit rate. The claims selected this period carry a higher share of likely findings than the baseline audit mix did.`;
+  }else{
+    izone='green';
+    interp=`The forecast sits within 4 points of the baseline hit rate. Expect performance broadly in line with the last period.`;
+  }
+
+  const selLine = h.selMode==='capacity'
+    ? `top ${h.capacity.toLocaleString()} claims by score (effective score cut-off ${h.effThresh.toFixed(3)})`
+    : `claims scoring at or above ${CFG.thresh}`;
+
+  return `
+  <div class="card">
+    <div class="card-title">Forecast hit rate — findings ÷ audited</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v c-navy">${pct(bench)}</div><div class="l">Baseline hit rate${h.comparator==='selected'?' (like-for-like)':''}</div><div class="d c-mut">${h.comparator==='selected'?`${h.nFindBSel.toLocaleString()} / ${h.nAudBSel.toLocaleString()} audited above cut-off`:`${h.nFindingB.toLocaleString()} / ${h.nAudB.toLocaleString()} audited`}</div></div>
+      <div class="stat"><div class="v ${delta<-0.04?'c-amber':delta>0.04?'c-green':'c-navy'}">${pct(h.expectedC)}</div><div class="l">Forecast hit rate</div><div class="d c-mut">${Number.isFinite(h.ciLo)?`95% CI ${pct(h.ciLo)} – ${pct(h.ciHi)}`:''}</div></div>
+      <div class="stat"><div class="v ${delta<0?'c-red':'c-green'}">${delta>0?'+':''}${dPct} pts</div><div class="l">Change vs baseline</div></div>
+      <div class="stat"><div class="v c-navy">${Math.round(h.expectedFindingsC).toLocaleString()}</div><div class="l">Expected findings</div><div class="d c-mut">from ${h.nSelectedC.toLocaleString()} audits</div></div>
+      ${h.extrapShare>0.03?`<div class="stat"><div class="v c-mut">${pct(h.expectedCClamp)}</div><div class="l">Conservative floor</div><div class="d c-mut">no extrapolation</div></div>`:''}
+      ${Number.isFinite(h.iwHitRate)?`<div class="stat"><div class="v c-navy">${pct(h.iwHitRate)}</div><div class="l">Drift-adjusted check</div><div class="d c-mut">reweighted baseline</div></div>`:''}
+    </div>
+
+    <div class="alert a-${izone}"><strong>Reading</strong>${esc(interp)}</div>
+
+    ${h.comparator==='selected'?`<div class="note"><strong>Why the benchmark is ${pct(h.measuredBSel)} and not ${pct(h.measuredB)}.</strong> Across every claim you audited in the baseline the hit rate was ${pct(h.measuredB)} — but that set includes low-scoring claims picked up by random sampling. The forecast only covers claims meeting the current selection rule, so the fair comparison is the baseline claims that also met it: ${h.nFindBSel.toLocaleString()} findings from ${h.nAudBSel.toLocaleString()} audits, or ${pct(h.measuredBSel)}. Comparing against the ${pct(h.measuredB)} figure would overstate the improvement.</div>`:`<div class="note"><strong>Benchmark basis.</strong> Only ${h.nAudBSel||0} baseline audits met the current selection rule — too few for a like-for-like comparison, so the overall baseline hit rate of ${pct(h.measuredB)} is used instead. Treat the change figure with caution: it compares a selected set against an unselected one.</div>`}
+    <div class="note"><strong>Selection basis.</strong> The forecast covers ${esc(selLine)} — ${h.nSelectedC.toLocaleString()} claims out of ${h.nCurrScored.toLocaleString()} scored this period (${pct(h.nSelectedC/h.nCurrScored)}). Baseline flag rate was ${pct(h.rateB)} against ${pct(h.rateC)} now, a ${volDelta>0?'rise':'fall'} of ${Math.abs(volDelta*100).toFixed(0)}% in the share of claims clearing the bar.${h.selMode==='threshold'&&Math.abs(volDelta)>0.2?' A volume change this large will move the hit rate on its own, independent of model quality.':''}</div>
+
+    ${Number.isFinite(h.measuredC)?`<div class="alert a-blue"><strong>Partial actuals available for the current period</strong>${h.nMeasC.toLocaleString()} current claims above the cut-off have already been audited, returning ${h.nFindingC.toLocaleString()} findings — an actual hit rate of ${pct(h.measuredC)} against a forecast of ${pct(h.expectedC)}. ${Math.abs(h.measuredC-h.expectedC)<0.05?'The forecast is holding, which supports leaving the model and threshold as they are.':'The gap between forecast and actual is the degradation signal: the model is not merely seeing a different population, it is scoring that population incorrectly. Prioritise recalibration.'}</div>`:''}
+
+    ${!calOK?`<div class="alert a-amber"><strong>Calibration back-test is off by ${(h.calibGap*100).toFixed(1)} points</strong>Re-applying the fitted curve to the baseline audited claims reproduces ${pct(h.expectedB)} against an observed ${pct(h.measuredB)}. A gap this size means the score-to-finding relationship is not smooth enough for the bins used. Treat the forecast as indicative and gather more audited claims across the score range.</div>`
+      :`<div class="alert a-green"><strong>Calibration back-test passed</strong>Re-applying the fitted curve to the baseline audited claims reproduces ${pct(h.expectedB)} against an observed ${pct(h.measuredB)} — a gap of ${(h.calibGap*100).toFixed(1)} points. The curve describes your historical audit results faithfully.</div>`}
+
+    ${h.unparsedList&&h.unparsedList.length?`<div class="alert a-red"><strong>${h.unparsedList.length} value${h.unparsedList.length>1?'s'
+      :''} in your finding or audited column could not be interpreted</strong>${h.unparsedList.map(u=>`<code>${esc(u.val)}</code> in ${esc(u.col)} (${u.n.toLocaleString()} rows)`).join(', ')}. These rows are excluded from every rate on this page. Recognised values are 1/0, Y/N, Yes/No, True/False, Findings / No Findings, and anything starting with "no" or "not" is read as negative.</div>`:''}
+
+    ${lowN?`<div class="alert a-red"><strong>Only ${h.nAudB} audited baseline claims</strong>A hit rate estimated on this few claims carries a very wide interval, and the forecast inherits that. Treat the number as directional until more audit history accumulates.</div>`:''}
+
+    ${h.extrapShare>0.03?`<div class="alert a-${h.extrapShare>0.35?'red':'amber'}"><strong>${pct(h.extrapShare)} of selected claims score higher than anything in your baseline audit set</strong>${h.nAboveCalib.toLocaleString()} of ${h.nSelectedC.toLocaleString()} claims sit above ${h.topKnot.toFixed(3)}, the top of the fitted curve, so their finding rate is extrapolated rather than measured. Two defensible readings: extending the curve's final slope gives <strong>${pct(h.expectedC)}</strong>, while refusing to extrapolate and holding the top rate flat gives <strong>${pct(h.expectedCClamp)}</strong>. The truth normally sits between them, and the interval above has been widened to span both. ${h.extrapShare>0.35?'At this level of extrapolation the point estimate carries little weight — the range is the answer.':'Auditing a handful of very high-scoring claims would collapse this uncertainty quickly.'}</div>`:''}
+    ${h.nBelowCalib>0?`<div class="alert a-amber"><strong>${h.nBelowCalib.toLocaleString()} selected claims score below the fitted range</strong>Their rate is extended downward from the first knot. Low-score audit coverage is the usual gap; a small random sample below the cut-off fixes it.</div>`:''}
+
+    ${Number.isFinite(h.expRecovery)?`<div class="note"><strong>Value-weighted view.</strong> Exposure across the ${h.nAmt.toLocaleString()} selected claims carrying an amount is ${money(h.totalExposure)}, of which calibrated expected recovery is ${money(h.expRecovery)} — ${pct(h.expRecovery/h.totalExposure)} of exposure, or ${money(h.expRecovery/h.nSelectedC)} per audit performed. Ranking by expected recovery rather than raw probability usually raises total dollars recovered even when the headline hit rate falls.</div>`:''}
+  </div>
+
+  ${renderAuditUniverse(h)}
+  ${renderCoverage(h)}
+  ${renderCalibCurve(h)}
+  ${renderMethodology(h)}`;
+}
+
+/* ── the audited universe ── */
+function renderAuditUniverse(h){
+  if(!h.hasAudited){
+    return `<div class="card">
+      <div class="card-title">Audit universe</div>
+      <div class="alert a-amber"><strong>No audited flag was mapped</strong>Every baseline row carrying a finding value was treated as audited. If your file records a blank or a zero finding for claims that were never reviewed, those rows are being counted as confirmed clean claims and the hit rate will read materially too low. Map an audited column to fix this.</div>
+      <div class="note">The distinction matters: a claim that was never audited is <strong>unknown</strong>, not clean. Only reviewed claims belong in the denominator of a hit rate.</div>
+    </div>`;
+  }
+  const rows=[
+    ['Scored baseline claims',h.nBaseScored,'The full population the model ran against'],
+    ['Audited',h.nAuditedB,`${pct(h.auditCoverageB)} of the population was reviewed`],
+    ['— with a recorded result',h.nAudB,'These form the denominator of the hit rate and the calibration set'],
+    ['— audited, result pending',h.nAuditedNoResultB,'Excluded: reviewed but no finding recorded yet'],
+    ['Findings',h.nFindingB,'Confirmed overpayments'],
+    ['No finding',h.nNoFindingB,'Reviewed and confirmed clean'],
+    ['Never audited',h.nUnauditedB,'Status unknown — deliberately excluded from every rate below'],
+  ];
+  return `<div class="card">
+    <div class="card-title">Audit universe — how the denominator is built</div>
+    <table><thead><tr><th style="width:30%">Segment</th><th style="width:16%">Claims</th><th>Meaning</th></tr></thead><tbody>
+      ${rows.map(([k,v,d])=>`<tr><td class="nm">${esc(k)}</td><td class="n">${(v||0).toLocaleString()}</td><td>${esc(d)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="note" style="margin-top:10px"><strong>Hit rate = ${h.nFindingB.toLocaleString()} findings ÷ ${h.nAudB.toLocaleString()} audited = ${pct(h.measuredB)}.</strong> The ${(h.nUnauditedB||0).toLocaleString()} never-audited claims are excluded entirely. Folding them in as clean would have produced ${pct(h.nFindingB/Math.max(h.nBaseScored,1))} — a materially different and wrong figure.</div>
+  </div>`;
+}
+
+/* ── audit selection coverage ── */
+function renderCoverage(h){
+  if(!h.coverage||!h.coverage.length)return '';
+  const cov=h.coverage;
+  const maxCov=Math.max(...cov.map(c=>c.cover))||1;
+  const thin=cov.filter(c=>c.nLab>0&&c.nLab<10).length;
+  const empty=cov.filter(c=>c.nLab===0).length;
+  return `<div class="card">
+    <div class="card-title">How audits were selected across the score range</div>
+    <div class="note">This is the single most important diagnostic for trusting the forecast. The calibration curve can only be fitted where audits actually happened. Score bands with little or no audit coverage are extrapolated, not measured.</div>
+    <table><thead><tr><th>Score band</th><th>Claims</th><th>Audited</th><th>Coverage</th><th>Results</th><th>Findings</th><th>Hit rate</th><th></th></tr></thead><tbody>
+      ${cov.map(c=>{
+        const bar=`<div class="bar-wrap" style="height:12px"><div class="bar ${c.cover>0.5?'bar-green':c.cover>0.15?'bar-amber':'bar-red'}" style="width:${Math.max(2,c.cover/maxCov*100)}%"></div></div>`;
+        return `<tr>
+          <td class="n">${c.lo.toFixed(3)} – ${c.hi.toFixed(3)}</td>
+          <td class="n">${c.n.toLocaleString()}</td>
+          <td class="n">${c.nAud.toLocaleString()}</td>
+          <td class="n">${pct(c.cover)}</td>
+          <td class="n">${c.nLab.toLocaleString()}</td>
+          <td class="n">${c.nFind.toLocaleString()}</td>
+          <td class="n" style="color:${Number.isFinite(c.rate)?(c.rate>0.4?'var(--red)':c.rate>0.15?'var(--amber)':'var(--text)'):'var(--text-muted)'}">${Number.isFinite(c.rate)?pct(c.rate):'—'}</td>
+          <td style="width:110px">${bar}</td></tr>`;
+      }).join('')}
+    </tbody></table>
+    ${empty||thin?`<div class="alert a-amber" style="margin-top:10px"><strong>${empty?`${empty} score band${empty>1?'s have':' has'} no audit results at all`:''}${empty&&thin?'; ':''}${thin?`${thin} band${thin>1?'s have':' has'} fewer than 10 results`:''}</strong>The curve is interpolated through these regions rather than measured there. If the current period pushes more claims into a thin band than the baseline did, the forecast is on weaker ground. The standard remedy is to audit a small random sample outside the usual selection rule so every band gets some coverage.</div>`
+      :`<div class="alert a-green" style="margin-top:10px"><strong>Audit coverage spans the score range</strong>Every decile carries at least 10 recorded results, so the calibration curve is measured rather than extrapolated across the band the forecast draws on.</div>`}
+    <div class="note" style="margin-top:10px"><strong>Why the shape of this table matters.</strong> If coverage is concentrated only at high scores, you learn nothing about what a low-scoring claim would have yielded — and you cannot tell whether the model is genuinely separating claims or whether the audit process simply confirmed its own selection. Coverage that is flat across bands is what makes the hit rate a real measure of model quality rather than a measure of your audit policy.</div>
+  </div>`;
+}
+
+/* ── calibration curve chart ── */
+function renderCalibCurve(h){
+  if(!h.bins||h.bins.length<2)return '';
+  const W=560,H=280,PL=52,PR=20,PT=18,PB=44;
+  const bins=h.bins;
+  const px=v=>PL+(W-PL-PR)*v, py=v=>H-PB-(H-PT-PB)*v;
+  let g='';
+  for(let i=0;i<=5;i++){
+    const t=i/5;
+    g+=`<line x1="${px(t)}" y1="${PT}" x2="${px(t)}" y2="${H-PB}" stroke="#eef1f5"/>`;
+    g+=`<line x1="${PL}" y1="${py(t)}" x2="${W-PR}" y2="${py(t)}" stroke="#eef1f5"/>`;
+    g+=`<text x="${px(t)}" y="${H-PB+16}" font-size="10" fill="#8a94a6" text-anchor="middle">${t.toFixed(1)}</text>`;
+    g+=`<text x="${PL-8}" y="${py(t)+3}" font-size="10" fill="#8a94a6" text-anchor="end">${(t*100).toFixed(0)}%</text>`;
+  }
+  const pts=bins.map(b=>({x:b.mid,y:b.rate,n:b.n}));
+  const path=pts.map((p,i)=>`${i?'L':'M'}${px(p.x).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ');
+  const maxN=Math.max(...pts.map(p=>p.n));
+  const dots=pts.map(p=>`<circle cx="${px(p.x).toFixed(1)}" cy="${py(p.y).toFixed(1)}" r="${(3+4*p.n/maxN).toFixed(1)}" fill="#17305c" opacity=".85"/>`).join('');
+  const tx=px(Math.min(1,h.effThresh));
+  return `<div class="card">
+    <div class="card-title">Fitted calibration curve — model score against observed finding rate</div>
+    <div class="svgbox"><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto">
+      ${g}
+      <line x1="${px(0)}" y1="${py(0)}" x2="${px(1)}" y2="${py(1)}" stroke="#b0b8c4" stroke-width="1.4" stroke-dasharray="5 4"/>
+      <path d="${path}" fill="none" stroke="#17305c" stroke-width="2.4"/>
+      ${dots}
+      <line x1="${tx}" y1="${PT}" x2="${tx}" y2="${H-PB}" stroke="#b42318" stroke-width="1.8" stroke-dasharray="4 3"/>
+      <text x="${tx+5}" y="${PT+11}" font-size="10" fill="#b42318" font-weight="700">cut-off ${h.effThresh.toFixed(2)}</text>
+      <text x="${px(0.06)}" y="${py(0.90)}" font-size="10" fill="#8a94a6">dashed line = perfectly calibrated</text>
+      <text x="${(PL+W-PR)/2}" y="${H-8}" font-size="11" fill="#475467" text-anchor="middle" font-weight="600">Model score</text>
+      <text x="14" y="${(PT+H-PB)/2}" font-size="11" fill="#475467" text-anchor="middle" font-weight="600" transform="rotate(-90 14 ${(PT+H-PB)/2})">Observed finding rate</text>
+    </svg></div>
+    <div class="note" style="margin-top:10px">Each dot is a score bin from the baseline audited claims, sized by how many claims it holds. The curve is forced to rise monotonically. Where it sits <em>below</em> the dashed line the model is over-confident for that score band; <em>above</em> means under-confident. The forecast is the average height of this curve across the current period's selected claims.</div>
+    <table style="margin-top:10px"><thead><tr><th>Score band</th><th>Audited claims</th><th>Findings</th><th>Observed rate</th><th>Fitted rate</th></tr></thead><tbody>
+      ${bins.map(b=>`<tr><td class="n">${b.lo.toFixed(3)} – ${b.hi.toFixed(3)}</td><td class="n">${b.n.toLocaleString()}</td><td class="n">${b.nFind.toLocaleString()}</td><td class="n">${pct(b.nFind/b.n)}</td><td class="n">${pct(b.rate)}</td></tr>`).join('')}
+    </tbody></table>
+  </div>`;
+}
+
+/* ── methodology explainer ── */
+function renderMethodology(h){
+  const step=(n,title,body)=>`
+    <div style="display:flex;gap:12px;margin-bottom:13px;align-items:flex-start">
+      <div style="width:24px;height:24px;border-radius:50%;background:var(--navy);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${n}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px">${title}</div>
+        <div style="font-size:12px;color:var(--text-sec);line-height:1.65">${body}</div>
+      </div>
+    </div>`;
+  return `<div class="card">
+    <div class="card-title">How this forecast is produced</div>
+    <div class="note">The forecast answers a specific question: if you audit the claims this model selects from the current period, what share will come back as findings? It is built entirely from the baseline period's own audit history — no results from the current month are required.</div>
+
+    ${step(1,'Establish who was actually audited',
+      `A claim only belongs in a hit rate if someone reviewed it. ${h.hasAudited?`Using your audited flag, ${(h.nAuditedB||0).toLocaleString()} baseline claims were reviewed and ${(h.nAudB||0).toLocaleString()} carry a recorded result. The ${(h.nUnauditedB||0).toLocaleString()} never-audited claims are set aside as unknown rather than assumed clean.`:'No audited flag was supplied, so rows carrying any finding value are treated as reviewed. This is the weakest link in the current run.'}`)}
+
+    ${step(2,'Measure the baseline hit rate on a like-for-like basis',
+      `Across all audited baseline claims the rate is ${(h.nFindingB||0).toLocaleString()} ÷ ${(h.nAudB||0).toLocaleString()} = ${pct(h.measuredB)}. ${h.comparator==='selected'?`That set includes low-scoring claims from random sampling, which the forecast does not cover. Restricting to baseline audits that met the same selection rule gives ${(h.nFindBSel||0).toLocaleString()} ÷ ${(h.nAudBSel||0).toLocaleString()} = <strong>${pct(h.measuredBSel)}</strong>, and that is the benchmark the forecast is compared against.`:`Too few baseline audits met the current selection rule to form a restricted benchmark, so this overall figure is used.`}`)}
+
+    ${step(3,'Map how audits were selected',
+      `Audit coverage is tabulated by score decile. This reveals whether reviewers worked the whole score range or only the top. It is the check on whether the next step is measurement or guesswork — ${h.nBandsCovered>=8?'coverage here spans the range, so the fit is well supported':`only ${h.nBandsCovered} of 10 bands carry enough results, so parts of the curve are interpolated`}.`)}
+
+    ${step(4,'Fit a calibration curve on audited claims only',
+      `Audited baseline claims are sorted by score and split into ${h.bins?h.bins.length:0} bins. Within each bin the observed finding rate is computed. Because a higher score should never mean a lower finding rate, the bins are smoothed with pool-adjacent-violators so the curve rises monotonically. The result is a lookup: given a score, what fraction of claims at that score historically returned a finding.`)}
+
+    ${step(5,'Back-test the curve against the baseline',
+      `The curve is applied to the same audited baseline claims it was fitted on and averaged. It reproduces ${pct(h.expectedB)} against the observed ${pct(h.measuredB)}, a gap of ${((h.calibGap||0)*100).toFixed(1)} points. ${h.calibGap<0.04?'That is close enough to trust the curve.':'That gap is wide enough to treat the forecast as indicative only.'}`)}
+
+    ${step(6,'Select the current claims that will be audited',
+      h.selMode==='capacity'
+        ? `You set a capacity of ${(h.capacity||0).toLocaleString()} audits, so the top ${(h.nSelectedC||0).toLocaleString()} current claims by score are selected. That works out to an effective score cut-off of ${(h.effThresh||0).toFixed(3)}. Capacity-based selection keeps workload flat and lets the hit rate float with population quality, which is usually the more honest arrangement.`
+        : `Using the ${CFG.thresh} threshold, ${(h.nSelectedC||0).toLocaleString()} current claims qualify. A fixed threshold means audit volume moves with the score distribution — set a capacity instead if you want workload held constant.`)}
+
+    ${step(7,'Average the curve across those claims',
+      `Each selected claim's score is read off the calibration curve and the results are averaged. The curve interpolates linearly between bin midpoints rather than stepping between flat bin values — a step function gives every claim in a wide bin the same rate, which systematically understates the forecast whenever the current period has shifted toward higher scores. That average is the forecast hit rate: <strong>${pct(h.expectedC)}</strong>. Summing instead of averaging gives the expected number of findings: <strong>${Math.round(h.expectedFindingsC||0).toLocaleString()}</strong>.`)}
+
+    ${step(8,'Attach an interval',
+      `Three sources of uncertainty are combined. First, the binomial variation in how many selected claims actually return findings. Second, the sampling error inside the calibration bins, which is larger where fewer claims were audited. Third — usually the biggest — the cost of extrapolating past the top of the audited score range${h.extrapShare>0.03?`, which affects ${pct(h.extrapShare)} of the selected claims here`:', which is negligible in this run'}. Together they give a 95% interval of ${Number.isFinite(h.ciLo)?`${pct(h.ciLo)} to ${pct(h.ciHi)}`:'—'}. A wide interval is not a defect; it is the honest width given how your audits were selected.`)}
+
+    ${step(9,'Cross-check against the drift analysis',
+      `The forecast rests on one assumption: that the score-to-finding relationship learned from the baseline still holds. That is exactly what the seven drift methods test. ${RESULT.driftScore<0.20?'Drift is low here, so the assumption is sound and the forecast can be relied on.':RESULT.driftScore<0.45?'Drift is moderate, so treat the forecast as a central estimate with more spread than the interval alone suggests.':'Drift is high, which means the assumption is under strain — a confident forecast alongside a high drift score is a contradiction, and the drift finding should take precedence.'}`)}
+
+    <div class="alert a-blue" style="margin-top:14px"><strong>What this does and does not tell you</strong>A forecast below the baseline hit rate is not by itself evidence that the model has degraded. It could equally mean the population is cleaner this month. The way to distinguish the two is the raw-drift against model-aware-drift comparison in the executive summary — if both are low, a lower hit rate is a genuinely cleaner month and the correct response is to report it, not to lower the threshold.</div>
+
+    <div class="alert a-amber" style="margin-top:10px"><strong>The one prerequisite that is easy to skip</strong>Audit results only exist for claims you chose to audit, which are mostly high-scoring. That is a biased sample, and no amount of modelling recovers an unbiased base rate from it. Auditing a small random sample — 2 to 5% of claims below the cut-off — each month fills in the low-score bands of the coverage table and is the only way to know whether a falling hit rate means a cleaner population or a weakening model.</div>
+  </div>`;
+}
+
+/* ── 1. C2ST ── */
+function render1(R){
+  const tot=R.featGain.reduce((a,b)=>a+b,0)||1;
+  const rows=R.features.map((f,i)=>({f,g:R.featGain[i]/tot}))
+    .sort((a,b)=>b.g-a.g);
+  const mx=rows[0]?rows[0].g:1;
+  const ds=R.driftScore;
+  const zone=ds<0.20?'green':ds<0.45?'amber':'red';
+
+  const roc=R.yLabels?rocPoints(R.yLabels,R.oof):null;
+  const psiMap={}; R.psiRows.forEach(r=>psiMap[r.f]=r);
+  return `
+  <div class="card">
+    <div class="card-title">Method 1 · Classifier two-sample test</div>
+    <div class="note">A gradient-boosted classifier was trained to tell baseline claims from current claims, using only the feature columns. If the two periods are the same population, it cannot beat a coin flip. Cross-validated over 3 folds; identifiers and date-like fields were removed first so it cannot cheat.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v c-${zone}">${R.c2stAUC.toFixed(3)}</div><div class="l">Cross-validated AUC</div></div>
+      <div class="stat"><div class="v c-${zone}">${ds.toFixed(2)}</div><div class="l">Drift Score · 2(AUC−0.5)</div></div>
+      <div class="stat"><div class="v c-navy">${R.pValC2ST<0.026?'< 0.026':R.pValC2ST.toFixed(3)}</div><div class="l">Permutation p-value</div><div class="d c-mut">40 label shuffles</div></div>
+    </div>
+    ${roc?`<div class="card-title" style="margin-top:16px">ROC curve — out-of-fold predictions</div>
+    ${rocSVG(roc,R.c2stAUC)}
+    <div class="note" style="margin-top:10px"><strong>How to read this.</strong> The dashed diagonal is a classifier that cannot tell the periods apart. The further the solid curve bows toward the top-left, the more separable the two populations are. The shaded area is the AUC. At the marked point the classifier best distinguishes the periods — ${(roc.length?`it catches ${pct(roc.reduce((b,p)=>((1-p.y)**2+p.x**2)<((1-b.y)**2+b.x**2)?p:b).y)} of current-month claims while misflagging ${pct(roc.reduce((b,p)=>((1-p.y)**2+p.x**2)<((1-b.y)**2+b.x**2)?p:b).x)} of baseline claims`:'')}. ${R.c2stAUC<0.55?'A curve hugging the diagonal is the result you want — it means the population is stable.':'A curve well above the diagonal means the periods are genuinely different populations.'}</div>`:''}
+    <table>
+      <thead><tr><th>AUC</th><th>Reading</th><th style="width:14%">This run</th></tr></thead>
+      <tbody>
+        <tr><td class="n">0.50 – 0.55</td><td>Indistinguishable — no meaningful shift</td><td>${R.c2stAUC<0.55?'<span class="chip ch-green">Here</span>':''}</td></tr>
+        <tr><td class="n">0.55 – 0.65</td><td>Mild shift — monitor</td><td>${R.c2stAUC>=0.55&&R.c2stAUC<0.65?'<span class="chip ch-amber">Here</span>':''}</td></tr>
+        <tr><td class="n">0.65 – 0.75</td><td>Material shift — investigate</td><td>${R.c2stAUC>=0.65&&R.c2stAUC<0.75?'<span class="chip ch-red">Here</span>':''}</td></tr>
+        <tr><td class="n">above 0.75</td><td>Substantially different populations</td><td>${R.c2stAUC>=0.75?'<span class="chip ch-red">Here</span>':''}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">Attribution — what the classifier used to separate the periods</div>
+    <div class="note">Split-gain attribution across all boosting rounds. This is the "why" behind the drift score: the fields at the top are the ones that changed.</div>
+    ${rows.map(r=>{
+      const pr=psiMap[r.f];
+      return `<div style="margin-bottom:11px">
+        <div class="bar-row" style="margin-bottom:3px">
+          <div class="bar-lbl">${esc(lbl(r.f))}</div>
+          <div class="bar-wrap"><div class="bar ${r.g>0.25?'bar-red':r.g>0.10?'bar-amber':'bar-blue'}" style="width:${Math.max(2,r.g/mx*100)}%"></div></div>
+          <div class="bar-val">${(r.g*100).toFixed(1)}%</div>
+        </div>
+        ${pr&&r.g>=0.02?`<div style="font-size:11px;color:var(--text-sec);padding-left:158px;line-height:1.55">${esc(changeSummary(pr))}</div>`:''}
+      </div>`}).join('')}
+    <div class="note" style="margin-top:10px">Full distributions, percentile shifts and category-level share changes for every field are on the <strong>What changed</strong> tab.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Per-feature stability (PSI) — the univariate breakdown</div>
+    <div class="note">PSI is the familiar univariate check. It cannot see joint shifts, which is why it sits beneath the classifier rather than above it. Bands: below 0.10 stable, 0.10–0.25 investigate, above 0.25 significant.</div>
+    <table>
+      <thead><tr><th>Feature</th><th>Type</th><th>PSI</th><th>Band</th><th>Baseline</th><th>Current</th><th>Notes</th></tr></thead>
+      <tbody>${R.psiRows.map(r=>{
+        const [cls,word]=psiBand(r.psi);
+        const notes=[];
+        if(r.newCats&&r.newCats.length)notes.push(`${r.newCats.length} new value${r.newCats.length>1?'s':''}`);
+        if(r.lostCats&&r.lostCats.length)notes.push(`${r.lostCats.length} disappeared`);
+        if(r.card&&r.card>200)notes.push(`${r.card.toLocaleString()} levels`);
+        if(Math.abs(r.missC-r.missB)>0.05)notes.push(`missing ${pct(r.missB)}→${pct(r.missC)}`);
+        if(Number.isFinite(r.ks)&&r.ks>0.1)notes.push(`KS ${r.ks.toFixed(2)}`);
+        return `<tr>
+          <td class="nm">${esc(lbl(r.f))}</td>
+          <td>${r.type}</td>
+          <td class="n">${Number.isFinite(r.psi)?r.psi.toFixed(3):'—'}</td>
+          <td><span class="chip ${cls}">${word}</span></td>
+          <td class="n">${r.meanB!==null?fmt(r.meanB):'—'}</td>
+          <td class="n">${r.meanC!==null?fmt(r.meanC):'—'}</td>
+          <td>${notes.length?esc(notes.join(' · ')):'—'}</td>
+        </tr>`}).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+/* ── 2. MMD ── */
+function render2(R){
+  const sig=R.pValMMD<0.05;
+  const nullMed=quantile(R.permMMD,0.5),null95=quantile(R.permMMD,0.95);
+  return `
+  <div class="card">
+    <div class="card-title">Method 2 · Maximum mean discrepancy</div>
+    <div class="note">MMD compares the two periods on infinitely many summary statistics at once via an RBF kernel, then measures the total gap. Unlike AUC it is a true distance, so values are comparable across months — that is its main job here. Computed on a balanced subsample of ${R.SUB} claims per period with median-heuristic bandwidth.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v ${sig?'c-red':'c-green'}">${R.mmd2.toExponential(2)}</div><div class="l">MMD²</div></div>
+      <div class="stat"><div class="v c-navy">${R.pValMMD<0.04?'< 0.04':R.pValMMD.toFixed(3)}</div><div class="l">Permutation p-value</div><div class="d c-mut">25 shuffles</div></div>
+      <div class="stat"><div class="v c-mut">${null95.toExponential(2)}</div><div class="l">Null 95th percentile</div><div class="d c-mut">median ${nullMed.toExponential(2)}</div></div>
+      <div class="stat"><div class="v ${sig?'c-red':'c-green'}">${sig?'Significant':'Not significant'}</div><div class="l">Verdict at α = 0.05</div></div>
+    </div>
+    ${R.mmd2<=0?`<div class="alert a-green"><strong>MMD² is at or below zero</strong>The unbiased estimator returns small negative values when the two samples genuinely come from one distribution — the cross-period similarity matched the within-period similarity. Read this as zero: no distributional difference on this test.</div>`:''}
+    <div class="alert a-${sig?'red':'green'}"><strong>${sig?'The two periods are statistically distinguishable':'No detectable distributional difference'}</strong>${sig
+      ?`The observed MMD² of ${R.mmd2.toExponential(2)} sits above the permutation null (95th percentile ${null95.toExponential(2)}). Record this value — the trendline across months is what makes it useful. If typical month-to-month MMD² is an order of magnitude smaller, this period is anomalous.`
+      :`The observed MMD² falls inside what random relabelling produces, so the periods are consistent with a single population on this test.`}</div>
+    <div class="note"><strong>Using this for trending.</strong> MMD is the metric to store month over month. Drift Score from method 1 cannot be compared across periods — 0.80 is not "twice" 0.65 in any meaningful sense. MMD² can: 0.04 against a typical 0.01 means this month drifted four times as hard as usual. Build the baseline band from at least six months before treating any single value as an alarm.</div>
+  </div>`;
+}
+
+/* ── 3. Energy ── */
+function render3(R){
+  return `
+  <div class="card">
+    <div class="card-title">Method 3 · Energy distance</div>
+    <div class="note">Energy distance asks whether claims from different periods are farther apart than claims from the same period. If both months came from one population, a baseline-to-current pair should be about as similar as two baseline claims. Same family as MMD, with no kernel bandwidth to choose.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v ${R.energy>0.05?'c-red':R.energy>0.01?'c-amber':'c-green'}">${R.energy<=0?'≈ 0':R.energy.toFixed(4)}</div><div class="l">Energy distance</div>${R.energy<0?'<div class="d c-mut">estimator noise at zero</div>':''}</div>
+      <div class="stat"><div class="v c-navy">${R.SUB}</div><div class="l">Claims per period sampled</div></div>
+      <div class="stat"><div class="v ${R.energy>0.01?'c-amber':'c-green'}">${R.energy>0.05?'Separated':R.energy>0.01?'Mild separation':'Overlapping'}</div><div class="l">Reading</div></div>
+    </div>
+    <div class="note"><strong>Why it agrees with MMD.</strong> These two measure the same thing through different lenses, so they should broadly agree — and here they do${(R.energy>0.01)===(R.pValMMD<0.05)?'':', though not perfectly, which usually reflects subsample noise at this size'}. In production, pick one and drop the other rather than reconciling two numbers that say the same thing. Energy is the simpler choice because it has no bandwidth parameter to defend in model governance.</div>
+    <div class="note"><strong>Caveat for your feature set.</strong> Both methods assume Euclidean distance between encoded claims is meaningful. With ${R.highCard.length?`high-cardinality fields present (${R.highCard.map(lbl).join(', ')})`:'mostly low-cardinality categoricals'}, that assumption is ${R.highCard.length?'weaker — treat these as supporting evidence rather than primary':'reasonable'}.</div>
+  </div>`;
+}
+
+/* ── 4. Wasserstein ── */
+function render4(R){
+  if(!R.wass.length)return `<div class="card"><div class="card-title">Method 4 · Wasserstein distance</div>
+    <div class="alert a-amber"><strong>No continuous features detected</strong>Wasserstein distance is only reported on continuous fields where the units stay interpretable. All detected features were treated as categorical codes. If a field like <code>Losgm_ratio</code> should be continuous, check that it is not being read as text.</div></div>`;
+  const mx=Math.max(...R.wass.map(r=>r.w1/r.sdB));
+  return `
+  <div class="card">
+    <div class="card-title">Method 4 · Wasserstein / optimal transport</div>
+    <div class="note">The minimum "shovelling effort" to reshape the baseline distribution into the current one. Reported in the feature's own units, which makes it the easiest metric to explain to a non-technical audience. Restricted to continuous features — on one-hot encoded provider IDs the units stop meaning anything.</div>
+    ${R.wass.map(r=>`
+      <div class="bar-row">
+        <div class="bar-lbl">${esc(lbl(r.f))}</div>
+        <div class="bar-wrap"><div class="bar ${r.w1/r.sdB>0.4?'bar-red':r.w1/r.sdB>0.15?'bar-amber':'bar-green'}" style="width:${Math.max(2,(r.w1/r.sdB)/mx*100)}%"></div></div>
+        <div class="bar-val">${r.w1.toFixed(3)}</div>
+      </div>`).join('')}
+    <table style="margin-top:12px">
+      <thead><tr><th>Feature</th><th>W₁</th><th>In SDs</th><th>Median base → curr</th><th>P90 base → curr</th><th>Plain reading</th></tr></thead>
+      <tbody>${R.wass.map(r=>`<tr>
+        <td class="nm">${esc(lbl(r.f))}</td>
+        <td class="n">${r.w1.toFixed(3)}</td>
+        <td class="n">${(r.w1/r.sdB).toFixed(2)}</td>
+        <td class="n">${fmt(r.medB)} → ${fmt(r.medC)}</td>
+        <td class="n">${fmt(r.p90B)} → ${fmt(r.p90C)}</td>
+        <td>The average claim moved ${r.w1.toFixed(3)} on this field${Math.abs(r.shift)>1e-9?`, with the median shifting ${r.shift>0?'up':'down'} by ${Math.abs(r.shift).toFixed(3)}`:''}.</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    ${R.wass.some(r=>norm(r.f).includes('losgm'))?`<div class="note"><strong>On LOS ratio specifically.</strong> A W₁ of ${R.wass.find(r=>norm(r.f).includes('losgm')).w1.toFixed(3)} on the LOS-to-geometric-mean ratio translates roughly to that fraction of the DRG's geometric mean per claim. For a DRG with a 5-day GM, ${R.wass.find(r=>norm(r.f).includes('losgm')).w1.toFixed(2)} is about ${(R.wass.find(r=>norm(r.f).includes('losgm')).w1*5).toFixed(1)} days of average stay difference.</div>`:''}
+  </div>`;
+}
+
+/* ── 5. Model-aware ── */
+function render5(R){
+  const ma=R.modelAware;
+  if(!ma)return `<div class="card"><div class="card-title">Method 5 · Model-aware drift</div>
+    <div class="alert a-amber"><strong>Requires the model score column</strong>This is the method that separates "the world changed" from "my model has a problem", so it is worth re-running with your CatBoost predicted probability included. Column names such as <code>score</code>, <code>risk_score</code> or <code>probability</code> are detected automatically.</div></div>`;
+  const band=psiBand(ma.psi);
+  const volDelta=(ma.rateC-ma.rateB)/Math.max(ma.rateB,1e-9);
+  return `
+  <div class="card">
+    <div class="card-title">Method 5 · Model-aware drift</div>
+    <div class="note">Everything else asks whether the data changed. This asks whether anything changed that your CatBoost model actually reacts to. Drift in a feature the model barely weights is noise; drift in the score distribution is not.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v ${band[0].replace('ch-','c-')}">${ma.psi.toFixed(3)}</div><div class="l">Score PSI</div><div class="d">${band[1]}</div></div>
+      <div class="stat"><div class="v c-navy">${ma.ks.toFixed(3)}</div><div class="l">KS statistic</div></div>
+      <div class="stat"><div class="v c-navy">${ma.meanB.toFixed(3)} → ${ma.meanC.toFixed(3)}</div><div class="l">Mean score</div></div>
+      <div class="stat"><div class="v c-navy">${ma.p90B.toFixed(3)} → ${ma.p90C.toFixed(3)}</div><div class="l">90th percentile</div><div class="d c-mut">${ma.p90C<ma.p90B?'right tail thinner':'right tail heavier'}</div></div>
+      <div class="stat"><div class="v ${volDelta<-0.15?'c-amber':'c-navy'}">${pct(ma.rateB)} → ${pct(ma.rateC)}</div><div class="l">Flag rate at ${CFG.thresh}</div><div class="d ${volDelta<0?'c-amber':'c-green'}">${volDelta>0?'+':''}${(volDelta*100).toFixed(0)}%</div></div>
+    </div>
+    ${scoreHistSVG(ma.sB,ma.sC,CFG.thresh)}
+    <div class="alert a-${ma.psi<0.1?'green':ma.psi<0.25?'amber':'red'}"><strong>${ma.psi<0.1?'Score distribution is stable':ma.psi<0.25?'Score distribution has moved — investigate':'Score distribution has shifted significantly'}</strong>${
+      ma.p90C<ma.p90B
+        ?`The right tail thinned: the 90th percentile fell from ${ma.p90B.toFixed(3)} to ${ma.p90C.toFixed(3)}. Fewer claims are reaching the audit threshold, which mechanically reduces audit volume and can reduce hit rate even with no model fault.`
+        :`The right tail is heavier this period: the 90th percentile rose from ${ma.p90B.toFixed(3)} to ${ma.p90C.toFixed(3)}. More claims clear the threshold, so audit volume rises.`}</div>
+    <div class="note"><strong>The blind spot.</strong> This method only sees drift in regions the model currently attends to. Drift building in a feature CatBoost presently ignores is invisible here — right up until a retrain makes that feature relevant. That is why method 1 runs on raw features alongside this one, and why the two are read together in the executive verdict.</div>
+    <div class="note"><strong>Going further.</strong> The strongest version of this test compares SHAP vectors rather than scores: same input value, different attribution, means the model is reasoning differently about identical claims. If you can export per-claim SHAP values from CatBoost for both periods, re-running method 1 on those columns gives a model-relevant drift score directly.</div>
+  </div>`;
+}
+
+/* ── 6. Copula ── */
+function render6(R){
+  const K=R.depFeats.length;
+  const cell=v=>{
+    const a=Math.min(1,Math.abs(v)/0.5);
+    const c=v>0?`rgba(180,35,24,${a*0.85+0.08})`:`rgba(21,128,61,${a*0.85+0.08})`;
+    return c;
+  };
+  const size=`repeat(${K+1},minmax(34px,1fr))`;
+  let hm=`<div class="hm" style="grid-template-columns:${size}">`;
+  hm+=`<div class="hm-lbl"></div>`;
+  R.depFeats.forEach(f=>hm+=`<div class="hm-lbl" title="${esc(lbl(f))}">${esc(short(f))}</div>`);
+  R.depFeats.forEach((f,i)=>{
+    hm+=`<div class="hm-lbl" title="${esc(lbl(f))}">${esc(short(f))}</div>`;
+    R.depFeats.forEach((g,j)=>{
+      const v=R.delta[i][j];
+      hm+=`<div class="hm-cell" style="background:${i===j?'#e5e7eb':cell(v)};color:${Math.abs(v)>0.25?'#fff':'#374151'}" title="${esc(lbl(f))} × ${esc(lbl(g))}: ${R.corrB[i][j].toFixed(2)} → ${R.corrC[i][j].toFixed(2)}">${i===j?'':v.toFixed(2)}</div>`;
+    });
+  });
+  hm+=`</div>`;
+
+  const flipped=R.pairs.filter(p=>Math.sign(p.base)!==Math.sign(p.curr)&&Math.abs(p.base)>0.15&&Math.abs(p.curr)>0.15);
+
+  return `
+  <div class="card">
+    <div class="card-title">Method 6 · Copula / dependency drift</div>
+    <div class="note">Every value was replaced by its percentile rank within its own period, which erases all marginal differences by construction. Anything still different is pure relationship structure. This is the method that catches the case where every univariate PSI reads green but the provider-to-severity relationship has inverted.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v ${R.depIndex<0.2?'c-green':R.depIndex<0.4?'c-amber':'c-red'}">${R.depIndex.toFixed(3)}</div><div class="l">Dependency drift index</div></div>
+      <div class="stat"><div class="v c-navy">${R.frob.toFixed(3)}</div><div class="l">Frobenius norm of Δ</div></div>
+      <div class="stat"><div class="v ${flipped.length?'c-red':'c-green'}">${flipped.length}</div><div class="l">Sign-flipped relationships</div></div>
+    </div>
+    ${flipped.length?`<div class="alert a-red"><strong>${flipped.length} relationship${flipped.length>1?'s'
+      :''} reversed direction</strong>${flipped.slice(0,3).map(p=>`${esc(lbl(p.a))} × ${esc(lbl(p.b))} went from ${p.base.toFixed(2)} to ${p.curr.toFixed(2)}`).join('; ')}. A sign flip is the strongest form of dependency drift — the rule your model learned about how these fields relate is now inverted, even if both fields individually look unchanged.</div>`:''}
+    <div class="card-title" style="margin-top:16px">Correlation change heatmap (current − baseline)</div>
+    <div class="svgbox">${hm}</div>
+    <div class="note" style="margin-top:10px">Red means the two fields became more positively related this period; green means more negatively related. Hover any cell for the before and after values.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Largest relationship changes</div>
+    <table>
+      <thead><tr><th>Field A</th><th>Field B</th><th>Baseline ρ</th><th>Current ρ</th><th>Change</th><th>Reading</th></tr></thead>
+      <tbody>${R.pairs.slice(0,12).map(p=>`<tr>
+        <td class="nm">${esc(lbl(p.a))}</td>
+        <td class="nm">${esc(lbl(p.b))}</td>
+        <td class="n">${p.base.toFixed(3)}</td>
+        <td class="n">${p.curr.toFixed(3)}</td>
+        <td class="n" style="color:${Math.abs(p.d)>0.2?'var(--red)':'var(--text)'}">${p.d>0?'+':''}${p.d.toFixed(3)}</td>
+        <td>${Math.sign(p.base)!==Math.sign(p.curr)&&Math.abs(p.base)>0.15&&Math.abs(p.curr)>0.15?'<span class="chip ch-red">Inverted</span>':Math.abs(p.d)>0.2?'<span class="chip ch-amber">Materially changed</span>':'<span class="chip ch-gray">Stable</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div class="note" style="margin-top:10px"><strong>Limitation.</strong> Rank correlation only sees monotone relationships. A U-shaped pattern — where both very short and very long stays are suspicious but middling ones are not — will not show up here. For fuller coverage, run method 1 on the rank-transformed data rather than comparing correlation matrices alone.</div>
+  </div>`;
+}
+
+/* ── 7. Density ratio ── */
+function render7(R){
+  const top=R.novel.slice(0,15);
+  const showCols=R.features.slice(0,6);
+  const wArr=R.wC||[];
+  const essPct=R.ess/wArr.length;
+  return `
+  <div class="card">
+    <div class="card-title">Method 7 · Density ratio estimation</div>
+    <div class="note">For each claim, how much more likely is it under the current period than the baseline? The weight w(x) comes from the same classifier trained in method 1, transformed as p/(1−p) and prior-corrected. Weights are clipped at the 99th percentile to stop a handful of outliers dominating.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v c-navy">${top.length?top[0].w.toFixed(1)+'×':'—'}</div><div class="l">Highest weight</div></div>
+      <div class="stat"><div class="v ${essPct<0.3?'c-red':essPct<0.6?'c-amber':'c-green'}">${pct(essPct)}</div><div class="l">Effective sample size</div><div class="d c-mut">${Math.round(R.ess).toLocaleString()} of ${wArr.length.toLocaleString()}</div></div>
+      <div class="stat"><div class="v c-navy">${R.novel.filter(x=>x.w>3).length.toLocaleString()}</div><div class="l">Claims over 3× weight</div></div>
+    </div>
+    ${essPct<0.3?`<div class="alert a-red"><strong>Weights are unstable</strong>Effective sample size is only ${pct(essPct)} of the nominal size, meaning a small number of claims carry most of the weight. Importance-weighted recalibration built on these weights would be dominated by a handful of rows. Treat the novelty ranking as useful but do not reweight your training set on this run.</div>`
+      :essPct<0.6?`<div class="alert a-amber"><strong>Weights are moderately concentrated</strong>Effective sample size is ${pct(essPct)} of nominal. Reweighting is usable but the variance will be higher than a plain refit — validate carefully before deploying a reweighted model.</div>`
+      :`<div class="alert a-green"><strong>Weights are well behaved</strong>Effective sample size is ${pct(essPct)} of nominal, so importance-weighted recalibration is viable. Weight your existing labelled baseline claims by w(x) and refit — this adjusts the model toward the current population without waiting for new audit outcomes.</div>`}
+  </div>
+  <div class="card">
+    <div class="card-title">Most novel current claims — send these to an SME first</div>
+    <div class="note">These are the claims most characteristic of the current period relative to baseline. Rather than presenting a drift statistic, hand this list to a clinical reviewer and ask what changed. It is a far more concrete conversation.</div>
+    <table>
+      <thead><tr><th>#</th><th>Weight</th>${showCols.map(f=>`<th>${esc(short(f))}</th>`).join('')}</tr></thead>
+      <tbody>${top.map((o,i)=>`<tr>
+        <td class="n">${i+1}</td>
+        <td class="n" style="color:var(--red)">${o.w.toFixed(1)}×</td>
+        ${showCols.map(f=>`<td class="n">${esc(String(o.row[f]??'—')).slice(0,18)}</td>`).join('')}
+      </tr>`).join('')}</tbody>
+    </table>
+    <div class="note" style="margin-top:10px"><strong>How to use the weights operationally.</strong> Take your historical labelled claims, weight each by its w(x), and refit or recalibrate CatBoost on that weighted set. You have then adjusted to the current population without new labels — which matters because audit outcomes take months to accumulate. The clip point (99th percentile) is arbitrary and will need to be documented for model governance.</div>
+  </div>`;
+}
+
+/* ── Data quality ── */
+function renderData(R){
+  const missing=R.features.map(f=>{
+    const mb=R.base.filter(r=>r[f]===''||r[f]==null).length/R.base.length;
+    const mc=R.curr.filter(r=>r[f]===''||r[f]==null).length/R.curr.length;
+    return{f,mb,mc,d:mc-mb};
+  }).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+  const bad=missing.filter(m=>Math.abs(m.d)>0.05);
+
+  return `
+  <div class="card">
+    <div class="card-title">Data quality and preprocessing decisions</div>
+    ${bad.length?`<div class="alert a-red"><strong>Missing-rate shift detected on ${bad.length} field${bad.length>1?'s':''}</strong>A jump in missingness between periods is almost always an upstream pipeline problem rather than genuine population drift. Fix the ingestion before interpreting any drift metric on ${bad.map(m=>lbl(m.f)).join(', ')}.</div>`
+      :`<div class="alert a-green"><strong>Missing rates are consistent</strong>No field changed its missing rate by more than 5 points between periods, so the drift signal is not a data-completeness artifact.</div>`}
+
+    <div class="card-title" style="margin-top:14px">Features used</div>
+    <table>
+      <thead><tr><th>Feature</th><th>Treated as</th><th>Levels</th><th>Missing base</th><th>Missing curr</th></tr></thead>
+      <tbody>${R.features.map(f=>{
+        const m=missing.find(x=>x.f===f);
+        return `<tr><td class="nm">${esc(lbl(f))}</td>
+        <td>${R.numSet.has(f)?'numeric':'categorical'}</td>
+        <td class="n">${R.numSet.has(f)?'—':R.encoders[f].card.toLocaleString()}</td>
+        <td class="n">${pct(m.mb)}</td>
+        <td class="n" style="${Math.abs(m.d)>0.05?'color:var(--red)':''}">${pct(m.mc)}</td></tr>`}).join('')}
+      </tbody>
+    </table>
+
+    ${R.dropped.length?`<div class="card-title" style="margin-top:16px">Columns excluded and why</div>
+    <table><thead><tr><th>Column</th><th>Reason</th></tr></thead><tbody>
+      ${R.dropped.map(([c,r])=>`<tr><td class="nm">${esc(c)}</td><td>${esc(r)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="note" style="margin-top:10px">Date, period and identifier columns must be excluded or the drift classifier simply reads the timestamp and returns a meaningless AUC of 1.0. If a genuine feature was dropped by mistake, rename it so it does not match those patterns and re-run.</div>`:''}
+
+    ${R.highCard.length?`<div class="alert a-amber" style="margin-top:12px"><strong>High-cardinality fields present</strong>${R.highCard.map(f=>`${esc(lbl(f))} (${R.encoders[f].card.toLocaleString()} levels)`).join(', ')}. These were frequency-encoded on the pooled data, mirroring how CatBoost handles categoricals with ordered target statistics. Kernel methods (2 and 3) are less reliable in this setting — weight methods 1, 5 and 6 more heavily.</div>`:''}
+
+    <div class="note" style="margin-top:12px"><strong>Encoding note for CatBoost users.</strong> Categorical fields were frequency-encoded using the pooled baseline and current data, which keeps the encoding label-free so it cannot leak the period into the drift classifier. This is deliberately close to CatBoost's own ordered target statistics but avoids using the outcome, since the drift test must not see it.</div>
+    <div class="note"><strong>Sampling.</strong> The drift classifier used up to 12,000 claims per period; kernel methods used ${R.SUB} per period because they are quadratic in sample size. Both are seeded, so re-running the same files reproduces the same numbers.</div>
+  </div>`;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   ROC CURVE for the drift classifier
+   ═══════════════════════════════════════════════════════════════ */
+function rocPoints(labels,scores){
+  const pr=labels.map((l,i)=>({s:scores[i],y:l})).sort((a,b)=>b.s-a.s);
+  const P=labels.reduce((a,b)=>a+b,0), N=labels.length-P;
+  if(!P||!N)return[{x:0,y:0},{x:1,y:1}];
+  let tp=0,fp=0; const pts=[{x:0,y:0,s:1}];
+  for(let i=0;i<pr.length;i++){
+    if(pr[i].y===1)tp++; else fp++;
+    if(i===pr.length-1||pr[i].s!==pr[i+1].s) pts.push({x:fp/N,y:tp/P,s:pr[i].s});
+  }
+  return pts;
+}
+function rocSVG(pts,aucVal){
+  const W=560,H=360,PL=54,PR=22,PT=20,PB=48;
+  const px=v=>PL+(W-PL-PR)*v, py=v=>H-PB-(H-PT-PB)*v;
+  const step=Math.max(1,Math.floor(pts.length/400));
+  const thin=pts.filter((_,i)=>i%step===0||i===pts.length-1);
+  const path=thin.map((p,i)=>`${i?'L':'M'}${px(p.x).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ');
+  const area=path+` L${px(1).toFixed(1)},${py(0).toFixed(1)} Z`;
+  let g='';
+  for(let i=0;i<=5;i++){
+    const t=i/5;
+    g+=`<line x1="${px(t)}" y1="${PT}" x2="${px(t)}" y2="${H-PB}" stroke="#eef1f5"/>`;
+    g+=`<line x1="${PL}" y1="${py(t)}" x2="${W-PR}" y2="${py(t)}" stroke="#eef1f5"/>`;
+    g+=`<text x="${px(t)}" y="${H-PB+16}" font-size="10" fill="#8a94a6" text-anchor="middle">${t.toFixed(1)}</text>`;
+    g+=`<text x="${PL-8}" y="${py(t)+3}" font-size="10" fill="#8a94a6" text-anchor="end">${t.toFixed(1)}</text>`;
+  }
+  // operating point closest to top-left (Youden)
+  let best=thin[0],bd=9;
+  thin.forEach(p=>{const d=(1-p.y)*(1-p.y)+p.x*p.x;if(d<bd){bd=d;best=p}});
+  return `<div class="svgbox"><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto">
+    ${g}
+    <path d="${area}" fill="#2563eb" opacity=".10"/>
+    <line x1="${px(0)}" y1="${py(0)}" x2="${px(1)}" y2="${py(1)}" stroke="#b0b8c4" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <path d="${path}" fill="none" stroke="#17305c" stroke-width="2.4"/>
+    <circle cx="${px(best.x)}" cy="${py(best.y)}" r="4.5" fill="#b42318" stroke="#fff" stroke-width="1.6"/>
+    <text x="${px(best.x)+9}" y="${py(best.y)-7}" font-size="10" fill="#b42318" font-weight="700">best separation</text>
+    <text x="${px(0.52)}" y="${py(0.42)}" font-size="11" fill="#8a94a6" transform="rotate(-45 ${px(0.52)} ${py(0.42)})">coin flip (AUC 0.50)</text>
+    <text x="${px(0.60)}" y="${py(0.26)}" font-size="15" fill="#17305c" font-weight="700">AUC ${aucVal.toFixed(3)}</text>
+    <text x="${px(0.60)}" y="${py(0.26)+15}" font-size="10" fill="#5a6472">Drift Score ${(Math.max(0,2*(aucVal-0.5))).toFixed(2)}</text>
+    <text x="${(PL+W-PR)/2}" y="${H-8}" font-size="11" fill="#475467" text-anchor="middle" font-weight="600">False positive rate · baseline claims mislabelled</text>
+    <text x="15" y="${(PT+H-PB)/2}" font-size="11" fill="#475467" text-anchor="middle" font-weight="600" transform="rotate(-90 15 ${(PT+H-PB)/2})">True positive rate · current claims found</text>
+  </svg></div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DISTRIBUTION OVERLAY (numeric) + CATEGORY BARS
+   ═══════════════════════════════════════════════════════════════ */
+function distSVG(row){
+  const W=560,H=190,PL=44,PR=16,PT=14,PB=32;
+  const NB=row.histB.length, bw=(W-PL-PR)/NB;
+  const mx=Math.max(...row.histB,...row.histC)||1;
+  const y=v=>PT+(H-PT-PB)*(1-v/mx);
+  let s='';
+  for(let i=0;i<NB;i++){
+    s+=`<rect x="${(PL+i*bw+0.8).toFixed(1)}" y="${y(row.histB[i]).toFixed(1)}" width="${(bw/2-1).toFixed(1)}" height="${Math.max(0,H-PB-y(row.histB[i])).toFixed(1)}" fill="#94a3b8" opacity=".85"/>`;
+    s+=`<rect x="${(PL+i*bw+bw/2).toFixed(1)}" y="${y(row.histC[i]).toFixed(1)}" width="${(bw/2-1).toFixed(1)}" height="${Math.max(0,H-PB-y(row.histC[i])).toFixed(1)}" fill="#2563eb" opacity=".9"/>`;
+  }
+  const medB=row.quant.find(q=>q.q===0.5).b, medC=row.quant.find(q=>q.q===0.5).c;
+  const xv=v=>PL+(W-PL-PR)*((v-row.lo)/((row.hi-row.lo)||1));
+  s+=`<line x1="${xv(medB).toFixed(1)}" y1="${PT}" x2="${xv(medB).toFixed(1)}" y2="${H-PB}" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+  s+=`<line x1="${xv(medC).toFixed(1)}" y1="${PT}" x2="${xv(medC).toFixed(1)}" y2="${H-PB}" stroke="#1d4ed8" stroke-width="1.8" stroke-dasharray="4 3"/>`;
+  for(let i=0;i<=4;i++){
+    const v=row.lo+(row.hi-row.lo)*i/4;
+    s+=`<text x="${(PL+(W-PL-PR)*i/4).toFixed(1)}" y="${H-12}" font-size="10" fill="#8a94a6" text-anchor="middle">${fmt(v)}</text>`;
+  }
+  s+=`<rect x="${W-176}" y="${PT}" width="9" height="9" fill="#94a3b8"/><text x="${W-163}" y="${PT+8}" font-size="10" fill="#475467">Baseline</text>`;
+  s+=`<rect x="${W-100}" y="${PT}" width="9" height="9" fill="#2563eb"/><text x="${W-87}" y="${PT+8}" font-size="10" fill="#475467">Current</text>`;
+  s+=`<text x="8" y="${PT+9}" font-size="10" fill="#8a94a6">share</text>`;
+  s+=`<line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="#c5cdd8"/>`;
+  return `<div class="svgbox"><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto">${s}</svg></div>`;
+}
+
+function catBars(cats,limit){
+  const show=cats.slice(0,limit);
+  const mx=Math.max(...show.map(c=>Math.max(c.pb,c.pc)))||1;
+  return show.map(c=>{
+    const up=c.dpp>0;
+    return `<div style="margin-bottom:9px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">${esc(c.k===''?'(blank)':c.k)}</span>
+        <span style="font-size:11px;color:${Math.abs(c.dpp)>=1?(up?'var(--red)':'var(--green)'):'var(--text-muted)'};font-weight:700;margin-left:auto">
+          ${pct(c.pb)} → ${pct(c.pc)} &nbsp; ${up?'+':''}${c.dpp.toFixed(1)} pp</span>
+      </div>
+      <div class="bar-row" style="margin-bottom:2px">
+        <div class="bar-lbl" style="width:56px;font-size:10px;color:var(--text-muted)">baseline</div>
+        <div class="bar-wrap" style="height:13px"><div class="bar" style="width:${Math.max(1,c.pb/mx*100)}%;background:#94a3b8"></div></div>
+        <div class="bar-val" style="width:52px;font-size:10px">${c.nb.toLocaleString()}</div>
+      </div>
+      <div class="bar-row" style="margin-bottom:0">
+        <div class="bar-lbl" style="width:56px;font-size:10px;color:var(--text-muted)">current</div>
+        <div class="bar-wrap" style="height:13px"><div class="bar" style="width:${Math.max(1,c.pc/mx*100)}%;background:${up?'#f87171':'#4ade80'}"></div></div>
+        <div class="bar-val" style="width:52px;font-size:10px">${c.nc.toLocaleString()}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* one-line plain summary of how a variable changed */
+function changeSummary(r){
+  if(r.type==='numeric'){
+    const q=k=>r.quant.find(x=>x.q===k);
+    const med=q(0.50), p90=q(0.90);
+    const dm=med.c-med.b, rel=med.b?dm/Math.abs(med.b)*100:0;
+    const spread=(r.sdC-r.sdB)/(r.sdB||1)*100;
+    const dir=Math.abs(rel)<2?'held steady':(rel>0?`rose ${Math.abs(rel).toFixed(0)}%`:`fell ${Math.abs(rel).toFixed(0)}%`);
+    const tail=p90.c>p90.b*1.05?'the upper tail extended':p90.c<p90.b*0.95?'the upper tail pulled in':'the upper tail held';
+    const sp=Math.abs(spread)<8?'spread unchanged':(spread>0?`spread widened ${Math.abs(spread).toFixed(0)}%`:`spread narrowed ${Math.abs(spread).toFixed(0)}%`);
+    return `Median ${dir} (${fmt(med.b)} → ${fmt(med.c)}), ${tail} (P90 ${fmt(p90.b)} → ${fmt(p90.c)}), ${sp}.`;
+  }
+  const risers=r.cats.filter(c=>c.dpp>0.5).slice(0,2);
+  const fallers=r.cats.filter(c=>c.dpp<-0.5).slice(0,2);
+  const parts=[];
+  if(risers.length)parts.push('gained share: '+risers.map(c=>`${c.k===''?'(blank)':c.k} ${pct(c.pb)}→${pct(c.pc)}`).join(', '));
+  if(fallers.length)parts.push('lost share: '+fallers.map(c=>`${c.k===''?'(blank)':c.k} ${pct(c.pb)}→${pct(c.pc)}`).join(', '));
+  if(r.newCats.length)parts.push(`${r.newCats.length} value${r.newCats.length>1?'s':''} appeared that were absent in baseline`);
+  if(r.lostCats.length)parts.push(`${r.lostCats.length} disappeared`);
+  return parts.length?parts.join('; ')+'.':'Category shares essentially unchanged.';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FULL DISTRIBUTION CHANGE REPORT
+   ═══════════════════════════════════════════════════════════════ */
+function renderChanges(R){
+  const tot=R.featGain.reduce((a,b)=>a+b,0)||1;
+  const gainMap={}; R.features.forEach((f,i)=>gainMap[f]=R.featGain[i]/tot);
+  const ordered=[...R.psiRows].sort((a,b)=>(gainMap[b.f]||0)-(gainMap[a.f]||0));
+  const moved=ordered.filter(r=>(gainMap[r.f]||0)>=0.03||r.psi>=0.10);
+  const stable=ordered.filter(r=>!moved.includes(r));
+
+  const card=(r)=>{
+    const g=gainMap[r.f]||0;
+    const [cls,word]=psiBand(r.psi);
+    const head=`
+      <div class="card-title" style="margin-bottom:8px">${esc(lbl(r.f))}
+        <span class="chip ${cls}" style="margin-left:8px">PSI ${Number.isFinite(r.psi)?r.psi.toFixed(3):'—'} · ${word}</span>
+        <span class="chip ch-gray" style="margin-left:5px">${(g*100).toFixed(1)}% of separation</span>
+        <span class="chip ch-gray" style="margin-left:5px">${r.type}</span>
+      </div>
+      <div class="note" style="margin-bottom:10px"><strong>What changed.</strong> ${esc(changeSummary(r))}</div>`;
+
+    if(r.type==='numeric'){
+      const q=k=>r.quant.find(x=>x.q===k);
+      const rows=r.quant.map(x=>{
+        const d=x.c-x.b, rel=x.b?d/Math.abs(x.b)*100:0;
+        const col=Math.abs(rel)<3?'var(--text-muted)':(d>0?'var(--red)':'var(--green)');
+        return `<tr><td class="nm">P${String(Math.round(x.q*100)).padStart(2,'0')}</td>
+          <td class="n">${fmt(x.b)}</td><td class="n">${fmt(x.c)}</td>
+          <td class="n" style="color:${col}">${d>0?'+':''}${fmt(d)}</td>
+          <td class="n" style="color:${col}">${d>0?'+':''}${rel.toFixed(1)}%</td></tr>`;
+      }).join('');
+      const dMean=r.meanC-r.meanB, dSd=r.sdC-r.sdB;
+      return `<div class="card">${head}
+        ${distSVG(r)}
+        <div class="note" style="margin:10px 0">Dashed lines mark the median of each period. Bars use shared bin edges across the pooled range, so the two are directly comparable.</div>
+        <table><thead><tr><th style="width:14%">Percentile</th><th>Baseline</th><th>Current</th><th>Absolute change</th><th>Relative change</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <table style="margin-top:10px"><thead><tr><th>Statistic</th><th>Baseline</th><th>Current</th><th>Change</th></tr></thead><tbody>
+          <tr><td class="nm">Mean</td><td class="n">${fmt(r.meanB)}</td><td class="n">${fmt(r.meanC)}</td><td class="n" style="color:${Math.abs(dMean)>0.01*Math.abs(r.meanB||1)?(dMean>0?'var(--red)':'var(--green)'):'var(--text-muted)'}">${dMean>0?'+':''}${fmt(dMean)}</td></tr>
+          <tr><td class="nm">Std deviation</td><td class="n">${fmt(r.sdB)}</td><td class="n">${fmt(r.sdC)}</td><td class="n">${dSd>0?'+':''}${fmt(dSd)}</td></tr>
+          <tr><td class="nm">KS statistic</td><td class="n" colspan="2">${Number.isFinite(r.ks)?r.ks.toFixed(3):'—'}</td><td>${r.ks>0.2?'<span class="chip ch-red">Large separation</span>':r.ks>0.1?'<span class="chip ch-amber">Moderate</span>':'<span class="chip ch-green">Small</span>'}</td></tr>
+          <tr><td class="nm">Rows scored</td><td class="n">${r.nB.toLocaleString()}</td><td class="n">${r.nC.toLocaleString()}</td><td class="n">${pct(r.missB)} → ${pct(r.missC)} missing</td></tr>
+        </tbody></table>
+      </div>`;
+    }
+
+    // categorical
+    const shown=Math.min(10,r.cats.length);
+    const rows=r.cats.slice(0,shown).map(c=>{
+      const col=Math.abs(c.dpp)<1?'var(--text-muted)':(c.dpp>0?'var(--red)':'var(--green)');
+      const flag=c.nb===0?'<span class="chip ch-red">New</span>':c.nc===0?'<span class="chip ch-amber">Gone</span>':
+        Math.abs(c.dpp)>=2?'<span class="chip ch-amber">Material</span>':'<span class="chip ch-gray">Minor</span>';
+      return `<tr><td class="nm">${esc(c.k===''?'(blank)':c.k)}</td>
+        <td class="n">${c.nb.toLocaleString()}</td><td class="n">${pct(c.pb)}</td>
+        <td class="n">${c.nc.toLocaleString()}</td><td class="n">${pct(c.pc)}</td>
+        <td class="n" style="color:${col}">${c.dpp>0?'+':''}${c.dpp.toFixed(2)} pp</td>
+        <td class="n" style="color:${col}">${Number.isFinite(c.ratio)?(c.ratio).toFixed(2)+'×':'new'}</td>
+        <td>${flag}</td></tr>`;
+    }).join('');
+    return `<div class="card">${head}
+      ${catBars(r.cats,6)}
+      <div class="note" style="margin:12px 0 10px">Ordered by absolute change in share. ${r.card>200?`This field has ${r.card.toLocaleString()} distinct values; only the largest movers are listed.`:`${r.cats.length} distinct value${r.cats.length===1?'':'s'} across both periods.`}</div>
+      <table><thead><tr><th>Value</th><th>Base n</th><th>Base %</th><th>Curr n</th><th>Curr %</th><th>Change</th><th>Ratio</th><th>Flag</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${r.newCats.length?`<div class="alert a-amber" style="margin-top:10px"><strong>${r.newCats.length} value${r.newCats.length>1?'s':''} present this period but absent from baseline</strong>${esc(r.newCats.slice(0,12).join(', '))}${r.newCats.length>12?` … and ${r.newCats.length-12} more`:''}. Unseen categories are scored on the model's fallback prior, which is a common source of miscalibration.</div>`:''}
+      ${r.lostCats.length?`<div class="alert a-blue" style="margin-top:10px"><strong>${r.lostCats.length} baseline value${r.lostCats.length>1?'s':''} did not appear this period</strong>${esc(r.lostCats.slice(0,12).join(', '))}${r.lostCats.length>12?` … and ${r.lostCats.length-12} more`:''}.</div>`:''}
+    </div>`;
+  };
+
+  return `
+  <div class="card">
+    <div class="card-title">How each variable changed</div>
+    <div class="note">The Detective tab ranks <em>which</em> fields separate the two periods. This tab shows <em>how</em> each one moved: the distributions side by side, percentile shifts for continuous fields, and share changes per category for coded fields. Ordered by contribution to the drift signal.</div>
+    <div class="stats-row">
+      <div class="stat"><div class="v ${moved.length?'c-red':'c-green'}">${moved.length}</div><div class="l">Fields that moved</div></div>
+      <div class="stat"><div class="v c-green">${stable.length}</div><div class="l">Fields stable</div></div>
+      <div class="stat"><div class="v c-navy">${R.psiRows.filter(r=>r.newCats&&r.newCats.length).length}</div><div class="l">Fields with new values</div></div>
+    </div>
+  </div>
+  ${moved.length?`<div class="card"><div class="card-title" style="margin:0">Fields that moved — full detail below</div></div>`:''}
+  ${moved.map(card).join('')}
+  ${stable.length?`<div class="card">
+    <div class="card-title">Fields that did not move materially</div>
+    <div class="note">Below 3% of the separation signal and PSI under 0.10. Listed for completeness — no action indicated.</div>
+    <table><thead><tr><th>Field</th><th>Type</th><th>PSI</th><th>Contribution</th><th>Summary</th></tr></thead><tbody>
+    ${stable.map(r=>`<tr><td class="nm">${esc(lbl(r.f))}</td><td>${r.type}</td>
+      <td class="n">${Number.isFinite(r.psi)?r.psi.toFixed(3):'—'}</td>
+      <td class="n">${((gainMap[r.f]||0)*100).toFixed(1)}%</td>
+      <td>${esc(changeSummary(r))}</td></tr>`).join('')}
+    </tbody></table></div>`:''}`;
+}
+
+/* ── Score histogram SVG ── */
+function scoreHistSVG(sB,sC,t){
+  const B=24,W=860,H=190,PL=44,PR=14,PT=12,PB=28;
+  const hist=a=>{const h=new Array(B).fill(0);a.forEach(v=>{let k=Math.floor(v*B);if(k>=B)k=B-1;if(k<0)k=0;h[k]++});return h.map(x=>x/a.length)};
+  const hb=hist(sB),hc=hist(sC);
+  const mx=Math.max(...hb,...hc)||1;
+  const bw=(W-PL-PR)/B;
+  const y=v=>PT+(H-PT-PB)*(1-v/mx);
+  let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-width:${W}px">`;
+  s+=`<line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="#c5cdd8"/>`;
+  s+=`<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${H-PB}" stroke="#c5cdd8"/>`;
+  for(let i=0;i<B;i++){
+    s+=`<rect x="${PL+i*bw+1}" y="${y(hb[i])}" width="${bw/2-1}" height="${Math.max(0,H-PB-y(hb[i]))}" fill="#94a3b8" opacity=".8"/>`;
+    s+=`<rect x="${PL+i*bw+bw/2}" y="${y(hc[i])}" width="${bw/2-1}" height="${Math.max(0,H-PB-y(hc[i]))}" fill="#2563eb" opacity=".85"/>`;
+  }
+  const tx=PL+(W-PL-PR)*t;
+  s+=`<line x1="${tx}" y1="${PT}" x2="${tx}" y2="${H-PB}" stroke="#b42318" stroke-width="2" stroke-dasharray="4 3"/>`;
+  s+=`<text x="${tx+4}" y="${PT+11}" font-size="10" fill="#b42318" font-weight="700">threshold ${t}</text>`;
+  for(let i=0;i<=5;i++){
+    const xx=PL+(W-PL-PR)*i/5;
+    s+=`<text x="${xx}" y="${H-10}" font-size="10" fill="#8a94a6" text-anchor="middle">${(i/5).toFixed(1)}</text>`;
+  }
+  s+=`<rect x="${W-190}" y="${PT+2}" width="10" height="10" fill="#94a3b8"/><text x="${W-176}" y="${PT+11}" font-size="10" fill="#475467">Baseline</text>`;
+  s+=`<rect x="${W-110}" y="${PT+2}" width="10" height="10" fill="#2563eb"/><text x="${W-96}" y="${PT+11}" font-size="10" fill="#475467">Current</text>`;
+  s+=`<text x="8" y="${PT+10}" font-size="10" fill="#8a94a6">share</text>`;
+  s+=`</svg>`;
+  return `<div class="svgbox" style="margin:10px 0">${s}</div>`;
+}
+
+/* ── helpers ── */
+function lbl(f){const k=norm(f);const m=Object.keys(FEATURE_LABEL).find(x=>norm(x)===k);return m?FEATURE_LABEL[m]:f}
+function short(f){const l=lbl(f);return l.length>11?l.slice(0,10)+'…':l}
+function pct(v){return Number.isFinite(v)?(v*100).toFixed(1)+'%':'—'}
+function fmt(v){if(!Number.isFinite(v))return'—';return Math.abs(v)>=1000?v.toLocaleString(undefined,{maximumFractionDigits:0}):v.toFixed(3)}
+function money(v){return Number.isFinite(v)?'$'+Math.round(v).toLocaleString():'—'}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3400)}
+</script>
+</body>
+</html>
