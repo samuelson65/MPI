@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRG Audit Simulator</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1b1f24;--mute:#5f6b7a;--line:#e3e7ec;--acc:#2f6fed;--good:#1f8a4c;--bad:#c0392b;--soft:#eef3ff}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e23;--ink:#e8eaed;--mute:#9aa4b2;--line:#2b3038;--acc:#6b9bff;--good:#4cc283;--bad:#ff7a6b;--soft:#1f2a40}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{font-size:15px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:14px}
+label span small{display:block;color:var(--mute);font-size:12px}
+input{width:130px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:14px;text-align:right}
+input:focus{outline:2px solid var(--acc);border-color:transparent}
+.derived{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.row{display:flex;justify-content:space-between;font-size:14px;margin:5px 0}
+.row b{font-variant-numeric:tabular-nums}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi.hl{background:var(--soft);border-color:var(--acc)}
+.kpi .l{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.kpi .v{font-size:22px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .d{font-size:12px;margin-top:2px}
+.up{color:var(--bad)}.down{color:var(--good)}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600}
+td.base{background:var(--soft);font-weight:650}
+.tblwrap{overflow-x:auto}
+.note{font-size:12px;color:var(--mute);margin-top:10px}
+.warn{color:var(--bad);font-size:13px;margin-top:8px}
+section{margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DRG Audit Recovery Simulator</h1>
+  <p class="sub">Enter 2025 actuals and 2026 assumptions. Results update instantly.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>2025 Actuals</h2>
+      <label><span>Total spend<small>$ billions</small></span><input id="s25" type="number" step="any" value="80"></label>
+      <label><span>Amount recovered<small>$ millions</small></span><input id="r25" type="number" step="any" value="4000"></label>
+      <label><span>Claims selected</span><input id="sel25" type="number" step="1" value="333334"></label>
+      <label><span>Claims audited</span><input id="aud25" type="number" step="1" value="200000"></label>
+      <label><span>Findings</span><input id="f25" type="number" step="1" value="40000"></label>
+      <div class="derived">
+        <div class="row"><span>Recovery %</span><b id="o_rp25"></b></div>
+        <div class="row"><span>Audit rate (audited ÷ selected)</span><b id="o_ar25"></b></div>
+        <div class="row"><span>Hit rate (findings ÷ audited)</span><b id="o_hr25"></b></div>
+        <div class="row"><span>Avg $ per finding</span><b id="o_dpf25"></b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2026 Assumptions</h2>
+      <label><span>Total spend<small>$ billions</small></span><input id="s26" type="number" step="any" value="85"></label>
+      <label><span>Target recovery %</span><input id="t26" type="number" step="any" value="5"></label>
+      <label><span>Expected hit rate %<small>at 2025 audit volume</small></span><input id="h26" type="number" step="any" value="20"></label>
+      <label><span>Audit rate %<small>audited ÷ selected</small></span><input id="ar26" type="number" step="any" value="60"></label>
+      <label><span>Change in $ per finding %<small>vs 2025, e.g. 3 or -5</small></span><input id="dpfc" type="number" step="any" value="0"></label>
+      <label><span>Hit-rate decay (k)<small>0 = off · 0.2–0.3 typical</small></span><input id="k" type="number" step="0.05" min="0" max="0.9" value="0.25"></label>
+      <label><span>Cost per audit<small>$ · optional</small></span><input id="cpa" type="number" step="any" value="0"></label>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi hl"><div class="l">Audits needed</div><div class="v" id="k_aud"></div><div class="d" id="k_aud_d"></div></div>
+    <div class="kpi hl"><div class="l">Claims to select</div><div class="v" id="k_sel"></div><div class="d" id="k_sel_d"></div></div>
+    <div class="kpi"><div class="l">Recovery target</div><div class="v" id="k_tgt"></div><div class="d" id="k_tgt_d"></div></div>
+    <div class="kpi"><div class="l">Effective hit rate</div><div class="v" id="k_hr"></div><div class="d" id="k_hr_d"></div></div>
+    <div class="kpi"><div class="l">Findings needed</div><div class="v" id="k_f"></div><div class="d" id="k_f_d"></div></div>
+    <div class="kpi"><div class="l">Avg $ per finding</div><div class="v" id="k_dpf"></div><div class="d" id="k_dpf_d"></div></div>
+    <div class="kpi" id="roiBox"><div class="l">Audit cost · ROI</div><div class="v" id="k_cost"></div><div class="d" id="k_roi"></div></div>
+  </div>
+  <div class="warn" id="warn"></div>
+
+  <section class="card">
+    <h2>Sensitivity: audits needed</h2>
+    <div class="tblwrap"><table id="sens"></table></div>
+    <p class="note">Rows: expected hit rate (at 2025 volume). Columns: target recovery %. Shaded cell = your current inputs. Decay and $ per finding settings apply throughout.</p>
+  </section>
+
+  <section class="card">
+    <h2>How it's calculated</h2>
+    <p class="note" style="font-size:13px;line-height:1.6">
+      <b>2025:</b> $ per finding = recovered ÷ findings. Hit rate = findings ÷ audited.<br>
+      <b>2026 target</b> = spend × target %.<br>
+      <b>Hit-rate decay:</b> effective hit rate = expected hit rate × (2026 audits ÷ 2025 audits)<sup>−k</sup>. Auditing more means reaching lower-risk claims, so the hit rate falls; auditing fewer raises it.<br>
+      <b>Audits needed</b> solves audits × effective hit rate × $ per finding = target:<br>
+      audits = [ target ÷ (hit rate × $/finding × audits₂₀₂₅<sup>k</sup>) ]<sup>1/(1−k)</sup><br>
+      <b>Claims to select</b> = audits ÷ audit rate.
+    </p>
+  </section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const num=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:0};
+const fmtN=n=>isFinite(n)?Math.round(n).toLocaleString('en-US'):'—';
+const fmtP=(n,d=1)=>isFinite(n)?(n*100).toFixed(d)+'%':'—';
+function fmtD(n){if(!isFinite(n))return'—';const a=Math.abs(n);
+  if(a>=1e9)return'$'+(n/1e9).toFixed(2)+'B';if(a>=1e6)return'$'+(n/1e6).toFixed(1)+'M';
+  if(a>=1e3)return'$'+(n/1e3).toFixed(1)+'K';return'$'+n.toFixed(0)}
+function delta(el,now,prev,{goodWhenDown=false,neutral=false}={}){
+  if(!isFinite(now)||!isFinite(prev)||prev===0){el.textContent='';el.className='d';return}
+  const c=(now/prev-1);el.textContent=(c>=0?'▲ ':'▼ ')+Math.abs(c*100).toFixed(1)+'% vs 2025';
+  el.className='d'+(neutral?'':(goodWhenDown?(c>0?' up':' down'):(c>0?' down':' up')));
+}
+function solve(target,h,dpf,a25,k){
+  if(h<=0||dpf<=0)return NaN;
+  if(k<=0||!a25)return target/(h*dpf);
+  return Math.pow(target/(h*dpf*Math.pow(a25,k)),1/(1-k));
+}
+function effH(h,a,a25,k){return(k>0&&a25)?h*Math.pow(a/a25,-k):h}
+
+function calc(){
+  const s25=num('s25')*1e9,r25=num('r25')*1e6,sel25=num('sel25'),a25=num('aud25'),f25=num('f25');
+  const rp25=r25/s25,ar25=a25/sel25,hr25=f25/a25,dpf25=r25/f25;
+  $('o_rp25').textContent=fmtP(rp25,2);$('o_ar25').textContent=fmtP(ar25);
+  $('o_hr25').textContent=fmtP(hr25);$('o_dpf25').textContent=fmtD(dpf25);
+
+  const s26=num('s26')*1e9,t=num('t26')/100,h=num('h26')/100,ar=num('ar26')/100,
+        dpf=dpf25*(1+num('dpfc')/100),k=Math.min(Math.max(num('k'),0),0.9),cpa=num('cpa');
+  const target=s26*t, aud=solve(target,h,dpf,a25,k), he=effH(h,aud,a25,k),
+        find=aud*he, sel=ar>0?aud/ar:NaN;
+
+  $('k_aud').textContent=fmtN(aud);delta($('k_aud_d'),aud,a25,{neutral:true});
+  $('k_sel').textContent=fmtN(sel);delta($('k_sel_d'),sel,sel25,{neutral:true});
+  $('k_tgt').textContent=fmtD(target);delta($('k_tgt_d'),target,r25);
+  $('k_hr').textContent=fmtP(he);delta($('k_hr_d'),he,hr25);
+  $('k_f').textContent=fmtN(find);delta($('k_f_d'),find,f25,{neutral:true});
+  $('k_dpf').textContent=fmtD(dpf);delta($('k_dpf_d'),dpf,dpf25);
+  if(cpa>0){const cost=aud*cpa;$('k_cost').textContent=fmtD(cost);$('k_roi').textContent='ROI '+(target/cost).toFixed(1)+'× ($ recovered per $1)';$('k_roi').className='d'}
+  else{$('k_cost').textContent='—';$('k_roi').textContent='Enter cost per audit';$('k_roi').className='d'}
+
+  const w=[];
+  if(!(a25>0&&f25>0&&r25>0))w.push('Fill in 2025 audited, findings and recovered to derive $ per finding.');
+  if(isFinite(sel)&&isFinite(sel25)&&sel>sel25*3)w.push('Selections are more than 3× 2025 — decay assumptions get less reliable that far out.');
+  if(isFinite(he)&&he<0.02)w.push('Effective hit rate is below 2% — likely beyond the productive part of the claim pool.');
+  $('warn').innerHTML=w.join('<br>');
+
+  // sensitivity
+  const hs=[-0.1,-0.05,0,0.05,0.1].map(d=>h*(1+d*2)).filter(x=>x>0);
+  const ts=[-2,-1,0,1,2].map(d=>t*100+d).filter(x=>x>0);
+  let html='<tr><th>Hit rate \\ Target</th>'+ts.map(x=>'<th>'+x.toFixed(1)+'%</th>').join('')+'</tr>';
+  hs.forEach((hh,i)=>{html+='<tr><td>'+fmtP(hh)+'</td>'+ts.map((tt,j)=>{
+    const v=solve(s26*tt/100,hh,dpf,a25,k);
+    return'<td class="'+(i===2&&j===2?'base':'')+'">'+fmtN(v)+'</td>'}).join('')+'</tr>'});
+  $('sens').innerHTML=html;
+}
+document.querySelectorAll('input').forEach(i=>i.addEventListener('input',calc));
+calc();
+</script>
+</body>
+</html>
