@@ -1,0 +1,726 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>PI Monthly Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+/* Layout: check + issue settings + reorderable section cards on the left, sticky "paper" preview on the right; tabs on phones */
+:root{
+  --bg:#eef0f3; --panel:#ffffff; --fg:#1b2531; --muted:#5d6876; --line:#dbe0e6; --soft:#f5f6f8;
+  --accent:#b06d1f; --accent-soft:#f7ecdd; --ink:#17345a; --off:#a3acb7;
+  --good:#2b7a4b; --good-soft:#e2f1e7; --warn:#9a6206; --warn-soft:#fbefd6; --bad:#b03a3a; --bad-soft:#f8e0e0;
+  --display:"Source Serif 4", Georgia, serif;
+  --ui:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171e; --panel:#1a212a; --fg:#e3e8ee; --muted:#98a3b0; --line:#2b3440; --soft:#212934;
+  --accent:#e2a25a; --accent-soft:#3a2b1a; --ink:#a6c6ea; --off:#56606c;
+  --good:#6cc28f; --good-soft:#1d3427; --warn:#e2ad4c; --warn-soft:#3a2f17; --bad:#ec8585; --bad-soft:#3d2224; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171e; --panel:#1a212a; --fg:#e3e8ee; --muted:#98a3b0; --line:#2b3440; --soft:#212934;
+  --accent:#e2a25a; --accent-soft:#3a2b1a; --ink:#a6c6ea; --off:#56606c;
+  --good:#6cc28f; --good-soft:#1d3427; --warn:#e2ad4c; --warn-soft:#3a2f17; --bad:#ec8585; --bad-soft:#3d2224; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:14px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:1360px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.brand{display:flex;flex-direction:column;min-width:0}
+.brand b{font-family:var(--display);font-size:18px;font-weight:600;color:var(--ink)}
+.brand span{font-size:12px;color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.edition{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.edition select{width:auto;padding:6px 8px;font-size:13px}
+button{font:inherit;font-size:13px;font-weight:500;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:7px 11px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--muted)}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+button.danger{border-color:var(--bad);color:var(--bad)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chk{font-size:12.5px;padding:6px 10px;border-radius:14px}
+.chk.ok{background:var(--good-soft);color:var(--good);border-color:transparent}
+.chk.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chk.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.tabs{display:none;gap:4px;width:100%}
+.tabs button{flex:1}
+.tabs button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.wrap{max-width:1360px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;
+  padding-block:20px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.editor{display:flex;flex-direction:column;gap:12px;min-width:0}
+.preview{min-width:0;position:sticky;top:76px;align-self:start;max-height:calc(100vh - 96px);overflow:auto;border-radius:10px}
+.paper{background:#fff;border-radius:10px;overflow-x:auto;box-shadow:0 1px 0 var(--line),0 8px 24px rgba(15,30,50,.08)}
+.note{font-size:12px;color:var(--muted);margin:0 0 8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ph h2{margin:0;font-family:var(--display);font-size:17px;font-weight:600;color:var(--ink)}
+.ph small{color:var(--muted);font-size:12px}
+.guide{font-size:12.5px;color:var(--muted);background:var(--accent-soft);border-radius:6px;padding:8px 10px;margin:0}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:500;color:var(--muted);min-width:0}
+label.cbx{display:flex;flex-direction:row;align-items:center;gap:7px;font-size:13px;color:var(--fg);font-weight:400}
+label.cbx input{width:auto}
+input,textarea,select{font:inherit;font-size:14px;color:var(--fg);background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+textarea{resize:vertical;min-height:54px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.item{border:1px dashed var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.item-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.x{padding:2px 8px;font-size:12px}
+.add{align-self:flex-start;border-style:dashed}
+.paste{background:var(--soft);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.paste textarea{font-family:var(--mono);font-size:12px;min-height:64px;background:var(--panel)}
+.paste p{margin:0;font-size:12px;color:var(--muted)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px}
+.sw i{display:block;width:30px;height:20px;border-radius:4px}
+.sw[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.suggest{border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.suggest p{margin:0}
+/* checks */
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.checks li{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:7px 10px;border-radius:6px;min-width:0}
+.checks li b{flex:none;font-family:var(--mono);font-size:11px;padding-top:2px}
+.checks li span{min-width:0;overflow-wrap:anywhere}
+.checks .ok{background:var(--good-soft);color:var(--good)}
+.checks .warn{background:var(--warn-soft);color:var(--fg)} .checks .warn b{color:var(--warn)}
+.checks .bad{background:var(--bad-soft);color:var(--fg)} .checks .bad b{color:var(--bad)}
+/* section cards */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card.off{opacity:.62}
+.card.off .ch{background:repeating-linear-gradient(135deg,var(--panel) 0 8px,var(--soft) 8px 16px)}
+.card.hid .badge{background:var(--soft);color:var(--off)}
+.ch{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.badge{font-family:var(--mono);font-size:11px;min-width:26px;height:26px;border-radius:13px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:none}
+.card.off .badge{background:var(--soft);color:var(--off)}
+.expand{flex:1;min-width:0;text-align:left;border:0;background:none;padding:4px 2px;display:flex;flex-direction:column}
+.expand b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.expand span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:9px;flex:none}
+.st.Draft{background:var(--soft);color:var(--muted)}
+.st.Ready{background:var(--warn-soft);color:var(--warn)}
+.st.Approved{background:var(--good-soft);color:var(--good)}
+.tools{display:flex;gap:4px;align-items:center;flex:none}
+.ic{padding:4px 8px;font-size:13px;line-height:1}
+.switch{position:relative;width:38px;height:22px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;width:100%;height:100%}
+.switch span{position:absolute;inset:0;border-radius:11px;background:var(--off);transition:background .15s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:8px;background:#fff;transition:transform .15s}
+.switch input:checked+span{background:var(--good)}
+.switch input:checked+span::after{transform:translateX(16px)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.cb{padding:12px 14px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.flags{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;background:var(--soft);border-radius:8px;padding:8px 10px}
+.flags select{width:auto}
+.delbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bad-soft);padding:8px 10px;border-top:1px solid var(--line);font-size:13px}
+.addbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.addbar select{flex:1 1 180px;width:auto}
+.confirm{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.confirm p{margin:0;flex:1 1 260px}
+.lst{display:flex;flex-direction:column;gap:6px}
+.lr{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.lr b{flex:1 1 140px;min-width:0;font-weight:500}
+.lr small{color:var(--muted);font-size:12px}
+.empty{font-size:13px;color:var(--muted);margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:6px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+.mx{overflow-x:auto}
+.mx table{border-collapse:collapse;font-size:13px;min-width:100%}
+.mx th{font-size:11px;color:var(--muted);text-align:left;font-weight:500;padding:4px}
+.mx td{padding:3px 4px;vertical-align:top}
+.mx td input{min-width:64px;padding:5px 6px;font-size:13px}
+.mx .pair{display:flex;gap:4px}
+.backup textarea{font-family:var(--mono);font-size:12px;min-height:80px}
+@media (max-width:900px){
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  .tabs{display:flex}
+  .preview{position:static;max-height:none;overflow:visible}
+  body[data-view="edit"] .preview{display:none}
+  body[data-view="preview"] .editor{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><b>PI Monthly Builder</b><span id="saved">Draft saved in this browser</span></div>
+    <div class="actions">
+      <label class="edition" for="editionSel">Edition <select id="editionSel"></select></label>
+      <button class="chk" id="chkChip">Checking…</button>
+      <button class="primary" id="copyRich">Copy newsletter</button>
+      <button id="copyHtml">Copy HTML</button>
+      <button id="nextMonth">Start next month</button>
+    </div>
+    <div class="tabs" role="group" aria-label="View">
+      <button id="tabEdit" aria-pressed="true">Edit</button>
+      <button id="tabPrev" aria-pressed="false">Preview</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="editor" id="editor" aria-label="Newsletter editor"></section>
+  <section class="preview" aria-label="Newsletter preview">
+    <p class="note" id="prevNote">Live preview.</p>
+    <div class="paper" id="paper"></div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const KEY='pi-monthly-draft-v3', OLDKEY='pi-monthly-draft-v2', ARCH='pi-monthly-archive-v1', TPL='pi-monthly-layouts-v1';
+const THEMES={
+  harbor:{name:'Harbor',dark:'#14304f',accent:'#c7822b',soft:'#fbf1e3',tint:'#eef2f7',mid:'#9fb3c8'},
+  evergreen:{name:'Evergreen',dark:'#15392f',accent:'#c49a2c',soft:'#f8f1dc',tint:'#edf3f0',mid:'#9dbbb0'},
+  graphite:{name:'Graphite',dark:'#23272e',accent:'#1c8c8a',soft:'#e1f2f1',tint:'#f0f2f4',mid:'#aab2bc'},
+  claret:{name:'Claret',dark:'#4a1d2b',accent:'#c28650',soft:'#f7ebe0',tint:'#f6eff1',mid:'#c3a5ae'}
+};
+let uid=Date.now();const nid=()=>'s'+(uid++).toString(36);
+const TYPES={
+  scorecard:{name:'Scorecard',hint:'KPIs vs target',kicker:'Scorecard',title:'Are we on target?',
+    guide:'Add, remove or rename any KPI. Each shows a bar to target, the change from last month, and a trend once past months are archived.',
+    data:()=>({flags:true,metrics:[{label:'New KPI',actual:'',target:'',prev:'',unit:'%',dir:'Higher is better',note:''}]})},
+  ytd:{name:'Year to date',hint:'Run-rate & recovery',kicker:'Year to date',title:'Are we on pace for the year?',
+    guide:'Run-rate = YTD ÷ months elapsed × 12. Recovery rate = recovered ÷ identified.',
+    data:()=>({fy:'FY2026',unit:'$M',annual:'',ytd:'',recovered:'',months:''})},
+  clients:{name:'Client scorecard',hint:'Targets by client',kicker:'By client',title:'Client targets at a glance',
+    guide:'Columns are KPIs, rows are clients. Cells turn green at target, amber within 10%, red below. Paste straight from Excel below the grid.',
+    data:()=>({metrics:[{label:'$ identified',unit:'$M',dir:'Higher is better'}],clients:[{name:'Client A',values:[{actual:'',target:''}]}]})},
+  money:{name:'Where the money is',hint:'Ranked bar chart',kicker:'Where the money is',title:'Average overpayment per finding',
+    guide:'One insight, one chart. The top bar is highlighted automatically.',
+    data:()=>({insight:'',metric:'Avg $ per finding',rows:[{name:'',volume:'',value:''}]})},
+  opportunity:{name:'Opportunity',hint:'Sized $ value',kicker:'Opportunity',title:'What it is worth',
+    guide:'Turn the insight into a number, the move that captures it, and the basis.',data:()=>({value:'',text:'',basis:''})},
+  pipeline:{name:'Opportunity pipeline',hint:'Identified → realized',kicker:'Opportunity pipeline',title:'Where last month\'s dollars went',
+    guide:'Dollars at each stage. The newsletter shows how much moved from one stage to the next.',
+    data:()=>({unit:'$M',stages:[{label:'Identified',value:'',count:''},{label:'In progress',value:'',count:''},{label:'Realized',value:'',count:''}],note:''})},
+  initiatives:{name:'Initiatives',hint:'What we\'re doing',kicker:'What we\'re doing',title:'Initiatives',
+    guide:'These carry over each month. Update status and impact.',data:()=>({items:[{name:'',owner:'',status:'On track',impact:''}]})},
+  watch:{name:'Market & regulatory watch',hint:'OIG · CMS · AI',kicker:'Market & regulatory watch',title:'',
+    guide:'One signal that touches our book. Rename, add or remove any row below.',
+    data:()=>({source:'OIG',title:'',link:'',rows:[{label:'Impact on our data',text:''},{label:'How we assess provider change',text:''},{label:'Action',text:''}],radar:''})},
+  story:{name:'Claim story',hint:'Case timeline',kicker:'One claim. A bigger story.',title:'',
+    guide:'A short timeline that ends in what changed. No PHI or identifiers.',
+    data:()=>({steps:[{label:'Flagged',text:''},{label:'Investigated',text:''},{label:'Outcome',text:''}],lesson:''})},
+  asks:{name:'Asks & decisions',hint:'From leadership',kicker:'Decisions needed',title:'What we need from you',
+    guide:'What you need from VPs and AVPs, with a date where you can.',data:()=>({items:[{text:''}]})},
+  text:{name:'Text note',hint:'Free text',kicker:'Note',title:'',guide:'Anything else: a welcome, a team shout-out, a definition.',data:()=>({body:''})}
+};
+const sec=(type,o={})=>({id:nid(),type,on:true,status:'Draft',exec:false,clientSafe:false,kicker:TYPES[type].kicker,title:TYPES[type].title,data:TYPES[type].data(),...o});
+
+const SAMPLE=()=>({
+  brand:'Payment Integrity Monthly',month:'October 2026',asOf:'31 Oct 2026',title:'A month in perspective',theme:'harbor',illustrative:true,edition:'full',
+  headline:'105% of plan and $4.2M identified. Outpatient radiology is our biggest untapped pocket, worth about $1.8M a year.',
+  highlights:[{value:'105%',label:'Productivity vs plan'},{value:'18.5%',label:'Hitrate'},{value:'$4.2M',label:'Identified'}],
+  history:[
+    {month:'May 2026',kpis:{'Productivity vs plan':94,'Hitrate':15.8,'$ identified':3.1}},
+    {month:'June 2026',kpis:{'Productivity vs plan':97,'Hitrate':16.2,'$ identified':3.4}},
+    {month:'July 2026',kpis:{'Productivity vs plan':99,'Hitrate':16.0,'$ identified':3.9}},
+    {month:'August 2026',kpis:{'Productivity vs plan':101,'Hitrate':16.5,'$ identified':3.8}},
+    {month:'September 2026',kpis:{'Productivity vs plan':98,'Hitrate':16.9,'$ identified':3.6}}],
+  sections:[
+    sec('scorecard',{status:'Approved',exec:true,data:{flags:true,metrics:[
+      {label:'Productivity vs plan',actual:'105',target:'100',prev:'98',unit:'%',dir:'Higher is better',note:'Pre-pay reviews ran ahead of schedule'},
+      {label:'Hitrate',actual:'18.5',target:'20',prev:'16.9',unit:'%',dir:'Higher is better',note:'Up 1.6 pts after rule tuning'},
+      {label:'$ identified',actual:'4.2',target:'4.0',prev:'3.6',unit:'$M',dir:'Higher is better',note:'DRG and outpatient lead'}]}}),
+    sec('ytd',{status:'Approved',exec:true,data:{fy:'FY2026',unit:'$M',annual:'48',ytd:'38.4',recovered:'29.1',months:'10'}}),
+    sec('clients',{status:'Approved',clientSafe:true,data:{metrics:[{label:'$ identified',unit:'$M',dir:'Higher is better'},{label:'Hitrate',unit:'%',dir:'Higher is better'},{label:'Turnaround (days)',unit:'#',dir:'Lower is better'}],
+      clients:[
+        {name:'Client A',values:[{actual:'1.6',target:'1.5'},{actual:'21',target:'20'},{actual:'12',target:'14'}]},
+        {name:'Client B',values:[{actual:'1.1',target:'1.3'},{actual:'17.5',target:'19'},{actual:'15',target:'14'}]},
+        {name:'Client C',values:[{actual:'0.9',target:'0.8'},{actual:'16',target:'18'},{actual:'21',target:'15'}]},
+        {name:'Client D',values:[{actual:'0.6',target:'0.4'},{actual:'19',target:'18'},{actual:'10',target:'14'}]}]}}),
+    sec('money',{status:'Approved',data:{insight:'Outpatient radiology has the highest overpayment per finding on only 6% of claim volume. We audit it least.',metric:'Avg $ per finding',
+      rows:[{name:'Outpatient radiology',volume:'1,240',value:'2850'},{name:'Ambulatory surgery',volume:'2,980',value:'2110'},{name:'Behavioral health',volume:'4,410',value:'960'},{name:'Physical therapy',volume:'6,720',value:'540'},{name:'Lab',volume:'9,830',value:'210'}]}}),
+    sec('opportunity',{status:'Approved',exec:true,data:{value:'$1.8M / year',text:'Shift 10% of audit capacity from lab to outpatient radiology.',basis:'Based on Q3 hitrate (22%) and average finding ($2,850) at current team size.'}}),
+    sec('pipeline',{status:'Approved',clientSafe:true,data:{unit:'$M',stages:[{label:'Identified',value:'6.2',count:'38'},{label:'In progress',value:'3.9',count:'21'},{label:'Realized',value:'2.1',count:'12'}],note:'Realized this month includes the radiology modifier edit ($0.6M).'}}),
+    sec('initiatives',{status:'Approved',clientSafe:true,data:{items:[
+      {name:'ML claim prioritization model',owner:'Analytics',status:'On track',impact:'+3 pts hitrate'},
+      {name:'LLM-assisted medical record review',owner:'Clinical audit',status:'At risk',impact:'-30% review time'},
+      {name:'Radiology modifier edit',owner:'Rules team',status:'Done',impact:'$0.6M / yr'},
+      {name:'Provider outlier dashboard',owner:'Analytics',status:'On track',impact:'Live for all specialties'}]}}),
+    sec('watch',{status:'Ready',clientSafe:true,data:{source:'OIG',title:'Example: OIG review of high-level outpatient E&M billing (replace with this month\'s signal)',link:'https://oig.hhs.gov/reports/',
+      rows:[{label:'Impact on our data',text:'Our E&M level mix shifted up 4 pts this year, so the old baseline understates risk.'},
+        {label:'How we assess provider change',text:'Compare each provider\'s level 4–5 share to specialty peers, 6 months pre vs. post. Flag providers 2+ SD above peers.'},
+        {label:'Action · Clinical audit',text:'Top 25 outliers go into the November audit cycle.'}],
+      radar:'CMS proposed outpatient payment update; AI-assisted coding adoption among large provider groups.'}}),
+    sec('story',{status:'Draft',clientSafe:true,title:'A $48K infusion claim that exposed a billing pattern',data:{steps:[
+      {label:'Flagged',text:'Model scored the claim in the top 1% for units per visit.'},
+      {label:'Investigated',text:'Records showed drug units billed per vial, not per dose administered.'},
+      {label:'Found',text:'The same pattern on 140 claims from 3 related clinics.'},
+      {label:'Outcome',text:'$310K identified; new units-per-dose edit deployed.'}],
+      lesson:'One claim became a rule. The new edit is projected at $0.4M a year.'}}),
+    sec('asks',{status:'Approved',exec:true,data:{items:[{text:'Approve 2 additional radiology-certified auditors (decision by 15 Nov).'},{text:'Sponsor data access for the LLM record review pilot.'}]}})
+  ]
+});
+const BUILTIN={
+  'Full VP issue':['scorecard','ytd','clients','money','opportunity','pipeline','initiatives','watch','story','asks'],
+  'Exec one-pager':['scorecard','ytd','opportunity','asks'],
+  'Client review':['clients','pipeline','initiatives','story','text']
+};
+
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
+function normalize(s){
+  s.history=s.history||[];s.edition=s.edition||'full';s.highlights=s.highlights||[];
+  s.sections.forEach(x=>{x.id=x.id||nid();x.status=x.status||'Draft';x.exec=!!x.exec;x.clientSafe=!!x.clientSafe;if(x.type==='scorecard'&&x.data.flags===undefined)x.data.flags=true});
+  return s;
+}
+let S=store.get(KEY)||store.get(OLDKEY);
+S=S&&S.sections?normalize(S):SAMPLE();
+let ARCHIVE=store.get(ARCH)||[], LAYOUTS=store.get(TPL)||[];
+const openIds=new Set();let pendingDel=null,pendingLayout=null,pendingRestore=null,suggestion=null;
+let RS=S; // state being rendered
+
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=s=>{const n=parseFloat(String(s??'').replace(/[^0-9.\-]/g,''));return isNaN(n)?null:n};
+const get=p=>p.split('.').reduce((o,k)=>o?.[k],S);
+const set=(p,v)=>{const ks=p.split('.');const last=ks.pop();ks.reduce((o,k)=>o[k],S)[last]=v};
+const fid=p=>'f-'+p.replace(/\./g,'-');
+
+/* ---------- editions ---------- */
+function clientNames(st=S){const n=new Set();st.sections.filter(s=>s.type==='clients').forEach(s=>s.data.clients.forEach(c=>c.name&&n.add(c.name)));return [...n]}
+function edInfo(st=S){const e=st.edition||'full';return e.startsWith('client:')?{kind:'client',client:e.slice(7)}:{kind:e}}
+function visible(st=S){const e=edInfo(st);return st.sections.filter(s=>s.on&&(e.kind==='full'||(e.kind==='exec'&&s.exec)||(e.kind==='client'&&s.clientSafe)))}
+
+/* ---------- editor ---------- */
+function F(p,label,o={}){
+  const v=esc(get(p));const id=fid(p);
+  let c;
+  if(o.area)c=`<textarea id="${id}" data-p="${p}" rows="${o.rows||2}" placeholder="${esc(o.ph||'')}">${v}</textarea>`;
+  else if(o.sel)c=`<select id="${id}" data-p="${p}">${o.sel.map(x=>`<option${x===get(p)?' selected':''}>${x}</option>`).join('')}</select>`;
+  else c=`<input id="${id}" data-p="${p}" value="${v}"${o.num?' class="num" inputmode="decimal"':''} placeholder="${esc(o.ph||'')}">`;
+  return label?`<label class="f" for="${id}">${label}${c}</label>`:c;
+}
+function list(p,title,fields,addLabel,blank,max=12){
+  const a=get(p)||[];
+  return a.map((_,i)=>`<div class="item"><div class="item-h"><span>${title} ${i+1}</span><span class="tools">
+    <button class="ic" data-lmove="${p}.${i}.-1" aria-label="Move up"${i?'':' disabled'}>↑</button>
+    <button class="ic" data-lmove="${p}.${i}.1" aria-label="Move down"${i<a.length-1?'':' disabled'}>↓</button>
+    <button class="x" data-del="${p}.${i}">Remove</button></span></div>${fields(`${p}.${i}`)}</div>`).join('')
+   +(a.length<max?`<button class="add" data-add="${p}" data-blank='${esc(JSON.stringify(blank))}'>+ ${addLabel}</button>`:'');
+}
+function pasteBox(b,kind,help){const id='paste-'+b.replace(/\./g,'-');
+  return `<div class="paste"><label class="f" for="${id}">Paste from Excel<textarea id="${id}" placeholder="Copy cells in Excel, then paste here"></textarea></label>
+   <p>${help}</p><div class="actions"><button class="primary x" data-imp="${kind}|${b}|${id}">Import pasted rows</button><button class="x" data-exp="${kind}|${b}">Copy grid for Excel</button></div></div>`}
+const UNITS=['%','$M','$K','$','#'],DIRS=['Higher is better','Lower is better'];
+const ED={
+  scorecard:b=>`<label class="cbx"><input type="checkbox" data-bool="${b}.flags" ${get(b+'.flags')?'checked':''}> Call out the best and worst KPI against target</label>`+
+    list(b+'.metrics','KPI',p=>`${F(p+'.label','KPI name')}
+    <div class="row">${F(p+'.actual','Actual',{num:1})}${F(p+'.target','Target',{num:1})}${F(p+'.prev','Last month',{num:1})}</div>
+    <div class="row">${F(p+'.unit','Unit',{sel:UNITS})}${F(p+'.dir','Direction',{sel:DIRS})}</div>${F(p+'.note','So what (one line)')}`,
+    'Add KPI',{label:'',actual:'',target:'',prev:'',unit:'%',dir:DIRS[0],note:''},9),
+  ytd:b=>`<div class="row">${F(b+'.fy','Year label')}${F(b+'.unit','Unit',{sel:UNITS})}${F(b+'.months','Months elapsed',{num:1,ph:'1–12'})}</div>
+    <div class="row">${F(b+'.annual','Annual target',{num:1})}${F(b+'.ytd','Identified YTD',{num:1})}${F(b+'.recovered','Recovered YTD',{num:1})}</div>`,
+  clients:b=>{const d=get(b);
+    return `<div class="item"><div class="item-h"><span>KPI columns</span></div>${d.metrics.map((m,j)=>`<div class="row">
+      ${F(`${b}.metrics.${j}.label`,'KPI')}${F(`${b}.metrics.${j}.unit`,'Unit',{sel:UNITS})}${F(`${b}.metrics.${j}.dir`,'Direction',{sel:DIRS})}
+      <div style="display:flex;align-items:flex-end"><button class="x" data-cmdel="${b}.${j}">Remove</button></div></div>`).join('')}
+      ${d.metrics.length<6?`<button class="add" data-cmadd="${b}">+ Add KPI column</button>`:''}</div>
+    <div class="mx"><table><thead><tr><th>Client</th>${d.metrics.map(m=>`<th>${esc(m.label)}<br>actual / target</th>`).join('')}<th></th></tr></thead><tbody>
+      ${d.clients.map((c,i)=>`<tr><td>${F(`${b}.clients.${i}.name`,'')}</td>${d.metrics.map((_,j)=>`<td><div class="pair">${F(`${b}.clients.${i}.values.${j}.actual`,'',{num:1,ph:'act'})}${F(`${b}.clients.${i}.values.${j}.target`,'',{num:1,ph:'tgt'})}</div></td>`).join('')}
+      <td><button class="x" data-del="${b}.clients.${i}" aria-label="Remove ${esc(c.name)}">✕</button></td></tr>`).join('')}
+    </tbody></table></div><button class="add" data-cadd="${b}">+ Add client</button>`+
+    pasteBox(b,'clients','Columns: Client, then an actual and a target column for each KPI. A header row sets the KPI names. "Copy grid for Excel" gives you the layout with your current data.')},
+  money:b=>`${F(b+'.insight','The insight',{area:1,rows:3})}${F(b+'.metric','What the bars measure')}`+
+    list(b+'.rows','Bar',p=>`${F(p+'.name','Segment / specialty / client')}<div class="row">${F(p+'.value','Value ($)',{num:1})}${F(p+'.volume','Claim volume (optional)',{num:1})}</div>`,'Add bar',{name:'',volume:'',value:''},10)+
+    pasteBox(b,'money','Columns: Segment, Value ($), Claim volume (optional). Replaces the bars above.'),
+  opportunity:b=>`${F(b+'.value','Sized value',{ph:'$1.8M / year'})}${F(b+'.text','The move',{area:1})}${F(b+'.basis','Basis / assumptions',{area:1})}`,
+  pipeline:b=>`<div class="row">${F(b+'.unit','Unit',{sel:UNITS})}</div>`+
+    list(b+'.stages','Stage',p=>`<div class="row">${F(p+'.label','Stage')}${F(p+'.value','Value',{num:1})}${F(p+'.count','# items (optional)',{num:1})}</div>`,'Add stage',{label:'',value:'',count:''},6)+F(b+'.note','Note (optional)',{area:1}),
+  initiatives:b=>list(b+'.items','Initiative',p=>`${F(p+'.name','Initiative')}<div class="row">${F(p+'.owner','Owner')}${F(p+'.status','Status',{sel:['On track','At risk','Off track','Done','Not started']})}${F(p+'.impact','Expected impact')}</div>`,'Add initiative',{name:'',owner:'',status:'On track',impact:''},12),
+  watch:b=>`<div class="row">${F(b+'.source','Source',{sel:['OIG','CMS','Industry article','State regulator','AI & technology','Internal']})}</div>
+    ${F(b+'.title','The signal (one sentence)',{area:1})}${F(b+'.link','Link (optional)')}`+
+    list(b+'.rows','Row',p=>`${F(p+'.label','Row label')}${F(p+'.text','Text',{area:1})}`,'Add row',{label:'',text:''},6)+F(b+'.radar','Also on our radar (optional)',{area:1}),
+  story:b=>list(b+'.steps','Stage',p=>`${F(p+'.label','Stage')}${F(p+'.text','What happened',{area:1})}`,'Add stage',{label:'',text:''},7)+F(b+'.lesson','The lesson / what changed',{area:1}),
+  asks:b=>list(b+'.items','Ask',p=>F(p+'.text','',{area:1}),'Add ask',{text:''},6),
+  text:b=>F(b+'.body','Text',{area:1,rows:5})
+};
+function card(s,i,n,shown){
+  const T=TYPES[s.type];const open=openIds.has(s.id);const b=`sections.${i}`;
+  const aud=[s.exec?'Exec':'',s.clientSafe?'Client':''].filter(Boolean).join(' · ');
+  return `<div class="card${s.on?'':' off'}${s.on&&!shown?' hid':''}">
+   <div class="ch"><span class="badge">${!s.on?'off':shown?String(n).padStart(2,'0'):'–'}</span>
+    <button class="expand" data-open="${s.id}" aria-expanded="${open}"><b id="h-${s.id}">${esc(s.title||s.kicker||T.name)}</b><span>${T.name}${aud?' · '+aud:''}${s.on&&!shown?' · not in this edition':''}</span></button>
+    <span class="st ${s.status}">${s.status}</span>
+    <span class="tools">
+     <button class="ic" data-move="${i}.-1" aria-label="Move section up"${i?'':' disabled'}>↑</button>
+     <button class="ic" data-move="${i}.1" aria-label="Move section down"${i<S.sections.length-1?'':' disabled'}>↓</button>
+     <label class="switch" title="Show in newsletter"><input type="checkbox" data-on="${i}" ${s.on?'checked':''} aria-label="Show ${esc(T.name)}"><span></span></label>
+    </span></div>
+   ${pendingDel===s.id?`<div class="delbar">Delete this section and its content?<button class="danger" data-delsec="${i}">Delete</button><button data-canceldel>Cancel</button></div>`:''}
+   ${open?`<div class="cb"><p class="guide">${T.guide}</p>
+     <div class="flags">${F(b+'.status','',{sel:['Draft','Ready','Approved']})}
+       <label class="cbx"><input type="checkbox" data-bool="${b}.exec" ${s.exec?'checked':''}> In exec cut</label>
+       <label class="cbx"><input type="checkbox" data-bool="${b}.clientSafe" ${s.clientSafe?'checked':''}> Client-safe</label></div>
+     <div class="row">${F(b+'.kicker','Label')}${F(b+'.title','Heading')}</div>${ED[s.type](b+'.data')}
+     <div class="actions"><button class="x" data-dup="${i}">Duplicate</button><button class="x danger" data-askdel="${s.id}">Delete section</button></div></div>`:''}
+  </div>`;
+}
+function renderEditor(){
+  const ed=document.getElementById('editor');let n=0;
+  const conf=document.getElementById('confirmNext');const vis=new Set(visible().map(s=>s.id));
+  const layoutRows=[...Object.keys(BUILTIN).map(k=>({name:k,builtin:true,types:BUILTIN[k]})),...LAYOUTS.map((l,i)=>({name:l.name,i,types:l.sections.map(s=>s.type)}))];
+  ed.innerHTML=`
+  <div class="panel" id="checkPanel"><div class="ph"><h2>Pre-send check</h2><small id="readTime"></small></div><ul class="checks" id="checks"></ul></div>
+  <div class="panel"><div class="ph"><h2>Issue</h2><small>Masthead, headline and look</small></div>
+    <div class="row">${F('brand','Newsletter name')}${F('month','Month')}${F('asOf','Data as of',{ph:'31 Oct 2026'})}</div>
+    ${F('title','Cover title')}${F('headline','Headline (execs often read only this)',{area:1,rows:3})}
+    <button class="add" id="suggestBtn">Draft a headline from my numbers</button>
+    ${suggestion!==null?`<div class="suggest"><p>${esc(suggestion)}</p><div class="actions"><button class="primary x" id="useSug">Use this headline</button><button class="x" id="dropSug">Dismiss</button></div></div>`:''}
+    <div class="item"><div class="item-h"><span>Cover highlights (up to 4)</span></div>
+      ${S.highlights.map((h,i)=>`<div class="row">${F(`highlights.${i}.value`,'Value')}${F(`highlights.${i}.label`,'Label')}<div style="display:flex;align-items:flex-end"><button class="x" data-del="highlights.${i}">Remove</button></div></div>`).join('')}
+      ${S.highlights.length<4?`<button class="add" data-add="highlights" data-blank='{"value":"","label":""}'>+ Add highlight</button>`:''}</div>
+    <div style="font-size:12px;color:var(--muted);font-weight:500">Colour theme</div>
+    <div class="swatches">${Object.entries(THEMES).map(([k,t])=>`<button class="sw" data-theme-pick="${k}" aria-pressed="${S.theme===k}"><i style="background:linear-gradient(90deg,${t.dark} 60%,${t.accent} 60%)"></i>${t.name}</button>`).join('')}</div>
+    <label class="cbx"><input type="checkbox" data-bool="illustrative" ${S.illustrative?'checked':''}> Mark numbers as illustrative</label>
+  </div>
+  <div class="ph" style="padding:4px 2px 0"><h2>Sections</h2><small>Tap to edit · ↑↓ reorder · switch hides</small></div>
+  ${S.sections.map((s,i)=>card(s,i,vis.has(s.id)?++n:0,vis.has(s.id))).join('')}
+  <div class="panel"><div class="addbar"><select id="addType" aria-label="Section type">${Object.entries(TYPES).map(([k,t])=>`<option value="${k}">${t.name}: ${t.hint}</option>`).join('')}</select><button class="primary" id="addSec">Add section</button></div></div>
+  <div class="panel"><div class="ph"><h2>Layouts</h2><small>Switch the section line-up; matching content is kept</small></div>
+    ${pendingLayout!==null?`<div class="confirm"><p>Apply “${esc(layoutRows[pendingLayout].name)}”? Sections not in it are removed. Content in matching sections is kept.</p><button class="primary" id="yesLayout">Apply layout</button><button id="noLayout">Cancel</button></div>`:''}
+    <div class="lst">${layoutRows.map((l,k)=>`<div class="lr"><b>${esc(l.name)}</b><small>${l.types.length} sections${l.builtin?' · built-in':''}</small>
+      <button class="x" data-layout="${k}">Apply</button>${l.builtin?'':`<button class="x danger" data-dellayout="${l.i}">Delete</button>`}</div>`).join('')}</div>
+    <div class="addbar"><input id="layoutName" placeholder="Name this layout, e.g. Quarterly review" aria-label="Layout name"><button id="saveLayout">Save current layout</button></div></div>
+  <div class="panel"><div class="ph"><h2>Past issues</h2><small>Saved when you start next month</small></div>
+    ${pendingRestore!==null?`<div class="confirm"><p>Restore ${esc(ARCHIVE[pendingRestore].state.month)}? It replaces the draft you're editing now.</p><button class="primary" id="yesRestore">Restore issue</button><button id="noRestore">Cancel</button></div>`:''}
+    ${ARCHIVE.length?`<div class="lst">${ARCHIVE.map((a,k)=>`<div class="lr"><b>${esc(a.state.month)}</b><small>archived ${esc(a.savedAt)}</small><button class="x" data-acopy="${k}">Copy newsletter</button><button class="x" data-arestore="${k}">Restore</button></div>`).join('')}</div>`
+      :`<p class="empty">No archived issues yet. When you press “Start next month”, this issue is saved here and its KPIs feed the trend lines.</p>`}
+    <p class="empty">Trend lines currently use ${S.history.length} past month${S.history.length===1?'':'s'}${S.history.length?` (${esc(S.history[0].month)} to ${esc(S.history[S.history.length-1].month)})`:''}.</p></div>
+  <div class="panel backup"><div class="ph"><h2>Backup & hand-over</h2><small>Drafts live in this browser</small></div>
+    <p class="empty">To pass the draft to a colleague, copy the backup and send it to them; they paste it in here on their copy of the builder.</p>
+    <div class="actions"><button id="copyJson">Copy backup</button><button id="loadSample">Load example issue</button></div>
+    <label class="f" for="restore">Paste a backup<textarea id="restore" placeholder='{"brand": …}'></textarea></label>
+    <button id="doRestore" class="add">Restore from pasted backup</button></div>`;
+  if(conf)ed.prepend(conf);
+  updateEditionSel();
+}
+
+/* ---------- newsletter (email-safe inline styles) ---------- */
+const SERIF="Georgia,'Times New Roman',serif",SANS="Arial,Helvetica,sans-serif";
+const FG='#1b2531',MU='#5d6876',LN='#e3e7ec';
+const ST={ok:{c:'#2b7a4b',bg:'#e2f1e7'},warn:{c:'#9a6206',bg:'#fbefd6'},bad:{c:'#b03a3a',bg:'#f8e0e0'},none:{c:MU,bg:'#f1f3f5'}};
+function fmt(v,u){if(v===null||v===undefined)return '–';const n=v.toLocaleString('en-US',{maximumFractionDigits:1});
+  return u==='%'?n+'%':u==='$M'?'$'+n+'M':u==='$K'?'$'+n+'K':u==='$'?'$'+n:n}
+const nl=s=>esc(s).replace(/\n/g,'<br>');
+const ratioOf=(a,t,dir)=>(a===null||t===null||!t||!a)?null:(dir==='Lower is better'?t/a:a/t);
+function status(a,t,dir){const r=ratioOf(a,t,dir);return r===null?'none':r>=1?'ok':r>=.9?'warn':'bad'}
+const TBL=`role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"`;
+const P=(t,x='')=>t?`<p style="font:15px/1.6 ${SANS};color:${FG};margin:0 0 14px;${x}">${t}</p>`:'';
+const pct=r=>Math.round(r*100)+'%';
+
+function head(s,n,t){return `<tr><td style="padding:30px 32px 0">
+  <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+   <td valign="top" style="padding:2px 12px 0 0"><div style="width:30px;height:30px;line-height:30px;border-radius:15px;background:${t.dark};color:#fff;text-align:center;font:bold 12px ${SANS}">${String(n).padStart(2,'0')}</div></td>
+   <td valign="top"><div style="font:bold 11px ${SANS};letter-spacing:1.6px;text-transform:uppercase;color:${t.accent}">${esc(s.kicker)}</div>
+   ${s.title?`<div style="font:600 22px/1.25 ${SERIF};color:${t.dark};margin-top:3px">${s.type==='watch'&&s.data.link?`<a href="${esc(s.data.link)}" style="color:${t.dark};text-decoration:underline">${esc(s.title)}</a>`:esc(s.title)}</div>`:''}</td></tr></table>
+  </td></tr><tr><td style="padding:16px 32px 0">`}
+
+function spark(label,cur,t){
+  const pts=(RS.history||[]).map(h=>num(h.kpis?.[label])).filter(v=>v!==null).slice(-5);
+  if(cur!==null)pts.push(cur);if(pts.length<3)return '';
+  const mx=Math.max(...pts),mn=Math.min(...pts),rng=mx-mn||1;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:10px 0 0"><tr>${pts.map((v,i)=>{const h=Math.round(6+(v-mn)/rng*22);
+    return `<td valign="bottom" style="padding:0 2px 0 0;height:28px"><div style="width:9px;height:${h}px;background:${i===pts.length-1?t.accent:t.mid};border-radius:2px;font-size:0">&nbsp;</div></td>`}).join('')}
+    <td valign="bottom" style="padding-left:6px;font:11px ${SANS};color:${MU}">${pts.length}-month trend</td></tr></table>`}
+
+const R={
+  scorecard:(d,t)=>{const ms=d.metrics.filter(m=>m.label);const per=ms.length===4?2:Math.min(3,ms.length)||1;const rows=[];
+    for(let i=0;i<ms.length;i+=per)rows.push(ms.slice(i,i+per));
+    let flag='';
+    if(d.flags){const rs=ms.map(m=>({m,r:ratioOf(num(m.actual),num(m.target),m.dir)})).filter(x=>x.r!==null).sort((a,b)=>b.r-a.r);
+      if(rs.length>=2){const best=rs[0],worst=rs[rs.length-1];
+        flag=`<table ${TBL}><tr><td style="padding:0 0 14px;font:13px/1.5 ${SANS};color:${FG}">
+          <span style="color:${ST.ok.c};font-weight:bold">▲ Strongest:</span> ${esc(best.m.label)} at ${pct(best.r)} of target &nbsp;&nbsp;
+          ${worst.r<1?`<span style="color:${ST.bad.c};font-weight:bold">▼ Furthest behind:</span> ${esc(worst.m.label)} at ${pct(worst.r)} of target`:`<span style="color:${ST.ok.c};font-weight:bold">All KPIs at or above target</span>`}</td></tr></table>`}}
+    return flag+rows.map(r=>`<table ${TBL}><tr>${r.map((m,k)=>{
+      const a=num(m.actual),tg=num(m.target),p=num(m.prev);const st=status(a,tg,m.dir);const lower=m.dir==='Lower is better';
+      const ratio=ratioOf(a,tg,m.dir)||0;const fill=Math.round(Math.min(ratio,1.25)/1.25*100);
+      const d2=a!==null&&p!==null?a-p:null;const good=d2!==null&&(lower?d2<=0:d2>=0);
+      const dTxt=d2===null?'':`<span style="font:bold 11px ${SANS};color:${good?ST.ok.c:ST.bad.c};background:${good?ST.ok.bg:ST.bad.bg};border-radius:9px;padding:2px 7px">${d2>=0?'▲':'▼'} ${m.unit==='%'?Math.abs(d2).toFixed(1)+' pts':fmt(Math.abs(d2),m.unit)}</span>`;
+      return `<td valign="top" width="${Math.floor(100/per)}%" style="padding:0 ${k<r.length-1?'10px':'0'} 12px 0">
+       <div style="background:${t.tint};border-radius:8px;padding:14px 14px 12px;border-top:3px solid ${ST[st].c}">
+        <div style="font:bold 10.5px ${SANS};letter-spacing:.8px;text-transform:uppercase;color:${MU}">${esc(m.label)}</div>
+        <div style="font:600 32px/1.1 ${SERIF};color:${t.dark};margin:8px 0 10px">${fmt(a,m.unit)}</div>
+        <div style="position:relative;height:6px;background:#ffffff;border-radius:3px;margin:0 0 8px"><div style="width:${fill}%;height:6px;background:${ST[st].c};border-radius:3px"></div><div style="position:absolute;left:80%;top:-3px;width:2px;height:12px;background:${t.dark}"></div></div>
+        <div style="font:12px/1.5 ${SANS};color:${MU}">Target ${fmt(tg,m.unit)} ${dTxt}</div>
+        ${m.note?`<div style="font:12.5px/1.45 ${SANS};color:${FG};margin-top:8px">${esc(m.note)}</div>`:''}
+        ${spark(m.label,a,t)}</div></td>`}).join('')}</tr></table>`).join('')+
+      `<div style="font:11px ${SANS};color:${MU};margin:0 0 4px">Tick marks target. Top edge: green at target, amber within 10%, red below.</div>`},
+  ytd:(d,t)=>{const A=num(d.annual),Y=num(d.ytd),Rc=num(d.recovered),M=Math.min(12,Math.max(1,num(d.months)||1));
+    const run=Y!==null?Y/M*12:null;const pace=run!==null&&A?run/A:null;const st=pace===null?'none':pace>=1?'ok':pace>=.9?'warn':'bad';
+    const fill=Y!==null&&A?Math.min(100,Math.round(Y/A*100)):0;const tick=Math.round(M/12*100);const rr=Y&&Rc!==null?Rc/Y:null;
+    const cell=(v,l,c)=>`<td valign="top" width="33%" style="padding:0 10px 0 0"><div style="font:600 26px/1.1 ${SERIF};color:${c||t.dark}">${v}</div><div style="font:12px/1.4 ${SANS};color:${MU};margin-top:4px">${l}</div></td>`;
+    return `<table ${TBL}><tr><td style="background:${t.tint};border-radius:10px;padding:18px 18px 16px">
+      <table ${TBL}><tr>${cell(fmt(Y,d.unit),'Identified '+esc(d.fy)+' to date')}${cell(fmt(run,d.unit),'Projected full year at this pace',ST[st].c)}${cell(rr===null?'–':pct(rr),'Recovered ('+fmt(Rc,d.unit)+')')}</tr></table>
+      <div style="position:relative;height:10px;background:#ffffff;border-radius:5px;margin:18px 0 8px"><div style="width:${fill}%;height:10px;background:${t.dark};border-radius:5px"></div><div style="position:absolute;left:${tick}%;top:-4px;width:2px;height:18px;background:${t.accent}"></div></div>
+      <div style="font:12.5px/1.5 ${SANS};color:${FG}">${pct(Y&&A?Y/A:0)} of the ${fmt(A,d.unit)} annual target, ${M} of 12 months in. <span style="color:${t.accent};font-weight:bold">Tick</span> marks where we'd be on a straight line.${pace!==null?` <b style="color:${ST[st].c}">On pace for ${pct(pace)} of target.</b>`:''}</div>
+      </td></tr></table>`},
+  clients:(d,t,s,ctx)=>{const ms=d.metrics;let cs=d.clients.filter(c=>c.name);if(ctx.client)cs=cs.filter(c=>c.name===ctx.client);
+    const counts={ok:0,warn:0,bad:0};
+    const body=cs.map(c=>`<tr><td style="padding:10px 10px 10px 0;border-bottom:1px solid ${LN};font:bold 14px ${SANS};color:${FG}">${esc(c.name)}</td>${ms.map((m,j)=>{
+      const v=c.values[j]||{};const a=num(v.actual),tg=num(v.target);const st=status(a,tg,m.dir);if(counts[st]!==undefined)counts[st]++;
+      return `<td style="padding:4px;border-bottom:1px solid ${LN}"><div style="background:${ST[st].bg};border-radius:6px;padding:7px 8px;text-align:center">
+        <div style="font:bold 15px ${SANS};color:${ST[st].c}">${fmt(a,m.unit)}</div><div style="font:11px ${SANS};color:${MU}">of ${fmt(tg,m.unit)}</div></div></td>`}).join('')}</tr>`).join('');
+    const tot=counts.ok+counts.warn+counts.bad;
+    return `<div style="font:13px ${SANS};color:${FG};margin:0 0 12px"><b style="color:${ST.ok.c}">${counts.ok}</b> of ${tot} targets met · <b style="color:${ST.warn.c}">${counts.warn}</b> close · <b style="color:${ST.bad.c}">${counts.bad}</b> behind</div>
+     <table ${TBL}><tr><td style="padding:0 0 6px"></td>${ms.map(m=>`<td style="padding:0 4px 6px;font:bold 10.5px ${SANS};letter-spacing:.6px;text-transform:uppercase;color:${MU};text-align:center">${esc(m.label)}${m.dir==='Lower is better'?'<br><span style="font-weight:normal;letter-spacing:0;text-transform:none">lower is better</span>':''}</td>`).join('')}</tr>${body}</table><div style="height:6px"></div>`},
+  money:(d,t)=>{const rows=d.rows.filter(r=>r.name);const max=Math.max(1,...rows.map(r=>num(r.value)||0));
+    return (d.insight?`<div style="border-left:4px solid ${t.accent};padding:2px 0 2px 14px;margin:0 0 18px;font:italic 17px/1.5 ${SERIF};color:${t.dark}">${nl(d.insight)}</div>`:'')+
+     (d.metric?`<div style="font:bold 10.5px ${SANS};letter-spacing:.8px;text-transform:uppercase;color:${MU};margin:0 0 8px">${esc(d.metric)}</div>`:'')+
+     `<table ${TBL}>${rows.map((r,i)=>{const w=Math.max(3,Math.round((num(r.value)||0)/max*100));return `<tr>
+      <td style="padding:6px 12px 6px 0;width:36%;font:13.5px ${SANS};color:${FG};${i===0?'font-weight:bold':''}">${esc(r.name)}${r.volume?`<div style="font:11px ${SANS};color:${MU};font-weight:normal">${esc(r.volume)} claims</div>`:''}</td>
+      <td style="padding:6px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${w}%" style="background:${i===0?t.accent:t.mid};height:18px;border-radius:3px;font-size:0">&nbsp;</td><td style="padding-left:8px;font:bold 13px ${SANS};color:${i===0?t.accent:FG};white-space:nowrap">$${(num(r.value)||0).toLocaleString('en-US')}</td></tr></table></td></tr>`}).join('')}</table>`},
+  opportunity:(d,t)=>`<table ${TBL}><tr><td style="background:${t.dark};border-radius:10px;padding:22px 24px">
+     <div style="font:bold 10.5px ${SANS};letter-spacing:1.4px;text-transform:uppercase;color:${t.mid}">Sized opportunity</div>
+     <div style="font:600 38px/1.1 ${SERIF};color:${t.accent};margin:6px 0 10px">${esc(d.value)}</div>
+     ${d.text?`<div style="font:16px/1.5 ${SANS};color:#ffffff">${nl(d.text)}</div>`:''}
+     ${d.basis?`<div style="font:12px/1.5 ${SANS};color:${t.mid};margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.18)">${nl(d.basis)}</div>`:''}</td></tr></table>`,
+  pipeline:(d,t)=>{const st=d.stages.filter(s=>s.label);const vals=st.map(s=>num(s.value));const max=Math.max(1,...vals.map(v=>v||0));
+    return `<table ${TBL}>${st.map((s,i)=>{const v=vals[i];const w=Math.max(4,Math.round((v||0)/max*100));const last=i===st.length-1;
+      const conv=i>0&&vals[i-1]&&v!==null?`<div style="font:11px ${SANS};color:${MU};padding:0 0 4px 0">↓ ${pct(v/vals[i-1])} moved on</div>`:'';
+      return `<tr><td colspan="2" style="padding:0">${conv}</td></tr><tr>
+        <td style="padding:0 0 4px;width:70%"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${w}%" style="background:${last?t.accent:i===0?t.dark:t.mid};border-radius:4px;padding:9px 10px;font:bold 13px ${SANS};color:#ffffff;white-space:nowrap">${esc(s.label)}</td><td style="font-size:0">&nbsp;</td></tr></table></td>
+        <td style="padding:0 0 4px 12px;text-align:right;white-space:nowrap"><span style="font:600 20px ${SERIF};color:${last?t.accent:t.dark}">${fmt(v,d.unit)}</span>${s.count?`<div style="font:11px ${SANS};color:${MU}">${esc(s.count)} items</div>`:''}</td></tr>`}).join('')}</table>
+      ${d.note?`<div style="font:13px/1.5 ${SANS};color:${FG};margin:12px 0 0">${nl(d.note)}</div>`:''}`},
+  initiatives:(d,t)=>{const SC={'On track':ST.ok,'At risk':ST.warn,'Off track':ST.bad,'Done':{c:t.dark,bg:t.tint},'Not started':ST.none};
+    return `<table ${TBL}>${d.items.filter(r=>r.name).map(r=>{const c=SC[r.status]||ST.none;return `<tr>
+     <td style="padding:11px 10px 11px 0;border-bottom:1px solid ${LN}"><div style="font:bold 14px ${SANS};color:${FG}">${esc(r.name)}</div><div style="font:12px ${SANS};color:${MU};margin-top:2px">${esc(r.owner)}</div></td>
+     <td style="padding:11px 8px;border-bottom:1px solid ${LN};white-space:nowrap" valign="middle"><span style="font:bold 11px ${SANS};color:${c.c};background:${c.bg};border-radius:10px;padding:4px 10px">● ${esc(r.status)}</span></td>
+     <td style="padding:11px 0 11px 8px;border-bottom:1px solid ${LN};font:bold 13px ${SANS};color:${t.dark};text-align:right">${esc(r.impact)}</td></tr>`}).join('')}</table>`},
+  watch:(d,t)=>`<table ${TBL}><tr><td style="background:${t.tint};border-radius:10px;padding:16px 18px">
+     <span style="font:bold 11px ${SANS};color:#fff;background:${t.dark};border-radius:4px;padding:3px 8px;letter-spacing:.6px">${esc(d.source)}</span>
+     ${d.title?`<div style="font:600 17px/1.4 ${SERIF};color:${t.dark};margin:10px 0 6px">${d.link?`<a href="${esc(d.link)}" style="color:${t.dark}">${esc(d.title)}</a>`:esc(d.title)}</div>`:''}
+     <table ${TBL}>${d.rows.filter(r=>r.text).map(r=>`<tr><td valign="top" style="padding:10px 14px 0 0;width:32%;font:bold 11px/1.4 ${SANS};letter-spacing:.5px;text-transform:uppercase;color:${t.accent}">${esc(r.label)}</td><td style="padding:10px 0 0;font:14px/1.55 ${SANS};color:${FG}">${nl(r.text)}</td></tr>`).join('')}</table>
+     </td></tr></table>${d.radar?`<div style="font:12.5px/1.5 ${SANS};color:${MU};margin:10px 0 0"><b style="color:${FG}">Also on our radar:</b> ${esc(d.radar)}</div>`:''}`,
+  story:(d,t)=>{const st=d.steps.filter(s=>s.label||s.text);
+    return `<table ${TBL}>${st.map((s,i)=>`<tr>
+      <td valign="top" width="28" style="padding:0;${i<st.length-1?`background:linear-gradient(${t.mid},${t.mid}) no-repeat 13px 0/2px 100%`:''}"><div style="width:28px;height:28px;line-height:28px;border-radius:14px;background:${i===st.length-1?t.accent:'#ffffff'};border:2px solid ${i===st.length-1?t.accent:t.dark};box-sizing:border-box;text-align:center;font:bold 11px ${SANS};color:${i===st.length-1?'#fff':t.dark}">${i+1}</div></td>
+      <td style="padding:3px 0 16px 12px"><div style="font:bold 11px ${SANS};letter-spacing:.8px;text-transform:uppercase;color:${t.dark}">${esc(s.label)}</div><div style="font:14px/1.55 ${SANS};color:${FG};margin-top:2px">${esc(s.text)}</div></td></tr>`).join('')}</table>
+     ${d.lesson?`<div style="background:${t.soft};border-radius:8px;padding:14px 16px;font:italic 16px/1.5 ${SERIF};color:${t.dark}"><span style="font:bold 10.5px ${SANS};font-style:normal;letter-spacing:1.2px;text-transform:uppercase;color:${t.accent};display:block;margin-bottom:4px">The lesson</span>${nl(d.lesson)}</div>`:''}`},
+  asks:(d,t)=>`<table ${TBL}><tr><td style="border:2px solid ${t.accent};border-radius:10px;padding:14px 18px">
+     <table ${TBL}>${d.items.filter(a=>a.text).map((a,i)=>`<tr><td valign="top" width="30" style="padding:6px 0"><div style="width:22px;height:22px;line-height:22px;border-radius:4px;background:${t.accent};color:#fff;text-align:center;font:bold 12px ${SANS}">${i+1}</div></td><td style="padding:7px 0 7px 6px;font:15px/1.5 ${SANS};color:${FG}">${esc(a.text)}</td></tr>`).join('')}</table></td></tr></table>`,
+  text:(d)=>P(nl(d.body))
+};
+
+function renderNewsletter(st=S){
+  const prevRS=RS;RS=st;
+  try{
+  const t=THEMES[st.theme]||THEMES.harbor;let n=0;const e=edInfo(st);const ctx={client:e.kind==='client'?e.client:null};
+  const hl=e.kind==='client'?[]:st.highlights.filter(h=>h.value);
+  const tag=e.kind==='exec'?'Executive summary':e.kind==='client'?'Prepared for '+e.client:'';
+  const secs=visible(st).map(s=>head(s,++n,t)+R[s.type](s.data,t,s,ctx)+`</td></tr>`).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:660px;margin:0 auto;background:#ffffff;border-collapse:collapse">
+  <tr><td style="background:${t.dark};padding:28px 32px 26px">
+    <table ${TBL}><tr><td style="font:bold 11px ${SANS};letter-spacing:1.8px;text-transform:uppercase;color:${t.mid}">${esc(st.brand)}${tag?` · ${esc(tag)}`:''}</td>
+      <td style="font:bold 11px ${SANS};letter-spacing:1.8px;text-transform:uppercase;color:${t.accent};text-align:right">${esc(st.month)}</td></tr></table>
+    <div style="height:2px;background:${t.accent};width:48px;margin:18px 0 14px;font-size:0">&nbsp;</div>
+    <div style="font:600 34px/1.12 ${SERIF};color:#ffffff;margin:0 0 12px">${esc(st.title)}</div>
+    ${st.headline&&e.kind!=='client'?`<div style="font:17px/1.55 ${SANS};color:#e8edf3">${nl(st.headline)}</div>`:''}
+  </td></tr>
+  ${hl.length?`<tr><td style="background:${t.dark};padding:0 32px 26px"><table ${TBL}><tr>${hl.map((h,i)=>`<td valign="top" width="${Math.floor(100/hl.length)}%" style="padding:14px ${i<hl.length-1?'12px':'0'} 0 ${i?'14px':'0'};border-top:1px solid rgba(255,255,255,.2);${i?'border-left:1px solid rgba(255,255,255,.2);':''}">
+     <div style="font:600 28px/1.1 ${SERIF};color:${t.accent}">${esc(h.value)}</div><div style="font:12px/1.4 ${SANS};color:${t.mid};margin-top:4px">${esc(h.label)}</div></td>`).join('')}</tr></table></td></tr>`:''}
+  ${secs||`<tr><td style="padding:30px 32px;font:14px ${SANS};color:${MU}">No sections are included in this edition yet. Tick “In exec cut” or “Client-safe” on the sections you want.</td></tr>`}
+  <tr><td style="padding:32px 32px 28px"><div style="border-top:1px solid ${LN};padding-top:14px;font:12px/1.5 ${SANS};color:${MU}">${esc(st.brand)} · ${esc(st.month)}${st.asOf?` · Data as of ${esc(st.asOf)}`:''}${st.illustrative?' · Illustrative numbers':''}</div></td></tr>
+  </table>`;
+  }finally{RS=prevRS}
+}
+
+/* ---------- checks ---------- */
+const PHI=[
+  [/\b\d{3}-\d{2}-\d{4}\b/,'an SSN-like number'],
+  [/\b\d{10}\b/,'a 10-digit number (NPI or phone?)'],
+  [/\b[A-Za-z]{1,4}\d{6,}\b|\b\d{11,}\b/,'a long ID (member, claim or account number?)'],
+  [/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/,'a full date (date of birth or service?)'],
+  [/[\w.+-]+@[\w-]+\.[\w.]+/,'an email address'],
+  [/\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/,'a phone number'],
+  [/\b(Dr|Mr|Mrs|Ms)\.?\s+[A-Z][a-z]+/,'a personal or provider name'],
+  [/\b(MRN|DOB|SSN|member id|patient name)\b/i,'a PHI keyword']
+];
+function strings(o,out=[]){if(typeof o==='string')out.push(o);else if(o&&typeof o==='object')Object.values(o).forEach(v=>strings(v,out));return out}
+const HAS={scorecard:d=>d.metrics.some(m=>m.actual),ytd:d=>d.ytd,clients:d=>d.clients.some(c=>c.values.some(v=>v.actual)),money:d=>d.rows.some(r=>r.value),
+  opportunity:d=>d.value||d.text,pipeline:d=>d.stages.some(s=>s.value),initiatives:d=>d.items.some(i=>i.name),watch:d=>d.title||d.rows.some(r=>r.text),
+  story:d=>d.steps.some(s=>s.text),asks:d=>d.items.some(a=>a.text),text:d=>d.body};
+function runChecks(words){
+  const out=[];const vis=visible();const nm=s=>s.title||s.kicker||TYPES[s.type].name;
+  if(!S.headline.trim()&&edInfo().kind!=='client')out.push(['bad','The headline is empty. Execs often read only this line.']);
+  if(!S.asOf.trim())out.push(['warn','Add a “Data as of” date.']);
+  else{const dt=Date.parse(S.asOf);if(!isNaN(dt)&&(Date.now()-dt)/864e5>45)out.push(['warn',`“Data as of” (${S.asOf}) is more than 45 days old.`])}
+  vis.forEach(s=>{const d=s.data;
+    if(!HAS[s.type](d))out.push(['bad',`${nm(s)} is switched on but has no content.`]);
+    if(s.type==='scorecard'){const miss=d.metrics.filter(m=>m.label&&(!m.actual||!m.target)).map(m=>m.label);if(miss.length)out.push(['warn',`${nm(s)}: missing actual or target for ${miss.join(', ')}.`])}
+    if(s.type==='clients'){let c=0;d.clients.forEach(cl=>cl.values.forEach(v=>{if(!v.actual||!v.target)c++}));if(c)out.push(['warn',`${nm(s)}: ${c} client cell${c>1?'s are':' is'} missing an actual or target.`])}
+    if(s.type==='ytd'&&(!d.annual||!d.months))out.push(['warn',`${nm(s)}: add the annual target and months elapsed.`]);
+  });
+  const notAp=vis.filter(s=>s.status!=='Approved');
+  if(notAp.length)out.push(['warn',`${notAp.length} section${notAp.length>1?'s':''} not approved yet: ${notAp.map(nm).join(', ')}.`]);
+  const phi=[];
+  [['Headline',[S.headline,S.title]],...vis.map(s=>[nm(s),strings([s.title,s.data])])].forEach(([where,txts])=>{
+    txts.forEach(tx=>PHI.forEach(([re,label])=>{const m=String(tx).match(re);if(m&&!phi.some(p=>p.where===where&&p.label===label))phi.push({where,label,hit:m[0]})}))});
+  phi.forEach(p=>out.push(['bad',`Possible PHI in ${p.where}: ${p.label} (“${p.hit}”). Remove or mask it before sending.`]));
+  const mins=Math.max(1,Math.round(words/220));
+  if(mins>5)out.push(['warn',`About ${mins} minutes to read. Aim for 5 or less: hide or trim a section.`]);
+  return {out,mins};
+}
+
+/* ---------- headline draft ---------- */
+function draftHeadline(){
+  const vis=visible();const bits=[];
+  const sc=vis.find(s=>s.type==='scorecard');
+  if(sc){const ms=sc.data.metrics.filter(m=>num(m.actual)!==null).slice(0,2);
+    const p=ms.map(m=>{const r=ratioOf(num(m.actual),num(m.target),m.dir);return `${m.label} at ${fmt(num(m.actual),m.unit)}${r!==null?` (${pct(r)} of target)`:''}`});
+    if(p.length)bits.push(p.join(' and ')+'.')}
+  const y=vis.find(s=>s.type==='ytd');
+  if(y){const d=y.data;const Y=num(d.ytd),A=num(d.annual),M=num(d.months);if(Y!==null&&A&&M){const run=Y/M*12;bits.push(`Year to date we're on pace for ${fmt(run,d.unit)} against a ${fmt(A,d.unit)} target.`)}}
+  const c=vis.find(s=>s.type==='clients');
+  if(c){let ok=0,tot=0;c.data.clients.forEach(cl=>c.data.metrics.forEach((m,j)=>{const v=cl.values[j]||{};const st=status(num(v.actual),num(v.target),m.dir);if(st!=='none'){tot++;if(st==='ok')ok++}}));if(tot)bits.push(`${ok} of ${tot} client targets met.`)}
+  const o=vis.find(s=>s.type==='opportunity');
+  if(o&&o.data.value)bits.push(`Biggest opportunity: ${o.data.value}${o.data.text?', '+o.data.text.charAt(0).toLowerCase()+o.data.text.slice(1).replace(/\.$/,'')+'.':'.'}`);
+  return bits.join(' ')||'Add numbers to the scorecard, year-to-date or client sections first.';
+}
+
+/* ---------- paste / export ---------- */
+function parseGrid(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());const tab=lines.some(l=>l.includes('\t'));return lines.map(l=>l.split(tab?'\t':',').map(c=>c.trim()))}
+const isNumCell=c=>num(c)!==null&&/\d/.test(c);
+function importGrid(kind,b,txt){
+  const rows=parseGrid(txt);if(!rows.length)return 'Nothing to import. Copy cells in Excel and paste them in the box first.';
+  const d=get(b);
+  if(kind==='clients'){
+    let header=null;if(rows[0].slice(1).every(c=>!isNumCell(c)))header=rows.shift();
+    const k=Math.floor(((header||rows[0]||[]).length-1)/2);if(k<1||!rows.length)return 'Each row needs a client name plus actual and target columns.';
+    const ms=[];for(let j=0;j<k;j++){const old=d.metrics[j]||{unit:'%',dir:DIRS[0]};const lab=header?header[1+2*j].replace(/\s*[-–(]?\s*(actual|act|target|tgt)\)?\s*$/i,'').trim():'';ms.push({label:lab||old.label||'KPI '+(j+1),unit:old.unit,dir:old.dir})}
+    d.metrics=ms;d.clients=rows.map(r=>({name:r[0]||'',values:ms.map((_,j)=>({actual:r[1+2*j]||'',target:r[2+2*j]||''}))}));
+    return `Imported ${d.clients.length} client${d.clients.length>1?'s':''} × ${k} KPI${k>1?'s':''}.`}
+  if(kind==='money'){
+    if(rows[0]&&!isNumCell(rows[0][1]||''))rows.shift();
+    d.rows=rows.filter(r=>r[0]).map(r=>({name:r[0],value:(r[1]||'').replace(/[^0-9.\-]/g,''),volume:r[2]||''}));
+    return `Imported ${d.rows.length} bar${d.rows.length>1?'s':''}.`}
+}
+function exportGrid(kind,b){const d=get(b);
+  if(kind==='clients')return [['Client',...d.metrics.flatMap(m=>[m.label+' actual',m.label+' target'])].join('\t'),...d.clients.map(c=>[c.name,...d.metrics.flatMap((_,j)=>[c.values[j]?.actual||'',c.values[j]?.target||''])].join('\t'))].join('\n');
+  return [['Segment','Value ($)','Claim volume'].join('\t'),...d.rows.map(r=>[r.name,r.value,r.volume].join('\t'))].join('\n')}
+
+/* ---------- layouts ---------- */
+function applyLayout(entries){
+  const used=new Set();
+  S.sections=entries.map(en=>{const ex=S.sections.find(s=>s.type===en.type&&!used.has(s.id));
+    if(ex){used.add(ex.id);return ex}
+    return en.full?{...structuredClone(en.full),id:nid()}:sec(en.type)});
+}
+
+/* ---------- wiring ---------- */
+const paper=document.getElementById('paper');const ed=document.getElementById('editor');
+let saveT;
+function updateEditionSel(){
+  const sel=document.getElementById('editionSel');const names=clientNames();
+  if(S.edition.startsWith('client:')&&!names.includes(S.edition.slice(7)))S.edition='full';
+  sel.innerHTML=`<option value="full">Full issue</option><option value="exec">Exec cut</option>${names.map(n=>`<option value="client:${esc(n)}">Client: ${esc(n)}</option>`).join('')}`;
+  sel.value=S.edition;
+}
+function refresh(){
+  paper.innerHTML=renderNewsletter();
+  const words=(paper.innerText||'').split(/\s+/).filter(Boolean).length;
+  const {out,mins}=runChecks(words);
+  const bad=out.filter(o=>o[0]==='bad').length,warn=out.length-bad;
+  const chip=document.getElementById('chkChip');
+  chip.className='chk '+(bad?'bad':warn?'warn':'ok');
+  chip.textContent=out.length?`${out.length} to review`:'✓ Ready to send';
+  const ul=document.getElementById('checks');
+  if(ul)ul.innerHTML=out.length?out.map(([l,tx])=>`<li class="${l}"><b>${l==='bad'?'FIX':'CHECK'}</b><span>${esc(tx)}</span></li>`).join(''):`<li class="ok"><b>OK</b><span>Everything looks ready to send.</span></li>`;
+  const rt=document.getElementById('readTime');if(rt)rt.textContent=`About ${mins} min to read`;
+  const e=edInfo();document.getElementById('prevNote').textContent=`Live preview: ${e.kind==='full'?'full issue':e.kind==='exec'?'exec cut':'edition for '+e.client}. “Copy newsletter” pastes into Outlook or Gmail with the design intact.`;
+  clearTimeout(saveT);saveT=setTimeout(()=>{document.getElementById('saved').textContent=store.set(KEY,S)?'Draft saved in this browser':'Draft not saved (browser storage is off)'},300);
+}
+function rerender(){renderEditor();refresh()}
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.hidden=false;clearTimeout(el._t);el._t=setTimeout(()=>el.hidden=true,2600)}
+const splitIdx=p=>{const k=p.split('.');const i=+k.pop();return [k.join('.'),i]};
+function move(arr,i,d){const j=i+d;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]]}
+
+ed.addEventListener('input',e=>{const el=e.target;const p=el.dataset.p;
+  if(p){set(p,el.value);
+    if(/^sections\.\d+\.(title|kicker)$/.test(p)){const s=get(p.split('.').slice(0,2).join('.'));const h=document.getElementById('h-'+s.id);if(h)h.textContent=s.title||s.kicker||TYPES[s.type].name}
+    if(/clients\.\d+\.name$/.test(p))updateEditionSel();
+    refresh()}
+  else if(el.dataset.bool){set(el.dataset.bool,el.checked);el.dataset.bool.match(/\.(exec|clientSafe)$/)?rerender():refresh()}
+  else if(el.dataset.on!==undefined){S.sections[+el.dataset.on].on=el.checked;rerender()}});
+ed.addEventListener('change',e=>{const el=e.target;if(el.tagName==='SELECT'&&el.dataset.p){set(el.dataset.p,el.value);/\.status$/.test(el.dataset.p)&&!/items/.test(el.dataset.p)?rerender():refresh()}});
+ed.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;const D=b.dataset;
+  if(D.open){openIds.has(D.open)?openIds.delete(D.open):openIds.add(D.open);renderEditor();refresh()}
+  else if(D.move){const [i,d]=D.move.split('.').map(Number);move(S.sections,i,d);rerender()}
+  else if(D.lmove){const k=D.lmove.split('.');const d=+k.pop(),i=+k.pop();move(get(k.join('.')),i,d);rerender()}
+  else if(D.add){get(D.add).push(JSON.parse(D.blank));rerender()}
+  else if(D.del){const [p,i]=splitIdx(D.del);get(p).splice(i,1);rerender()}
+  else if(D.cmadd){const d=get(D.cmadd);d.metrics.push({label:'New KPI',unit:'%',dir:DIRS[0]});d.clients.forEach(c=>c.values.push({actual:'',target:''}));rerender()}
+  else if(D.cmdel){const [p,j]=splitIdx(D.cmdel);const d=get(p);d.metrics.splice(j,1);d.clients.forEach(c=>c.values.splice(j,1));rerender()}
+  else if(D.cadd){const d=get(D.cadd);d.clients.push({name:'Client '+String.fromCharCode(65+d.clients.length),values:d.metrics.map(()=>({actual:'',target:''}))});rerender()}
+  else if(D.imp){const [kind,bp,id]=D.imp.split('|');const msg=importGrid(kind,bp,document.getElementById(id).value);rerender();toast(msg)}
+  else if(D.exp){const [kind,bp]=D.exp.split('|');copyText(exportGrid(kind,bp),'Grid copied. Paste it into Excel, fill it in, then copy it back.')}
+  else if(D.themePick){S.theme=D.themePick;rerender()}
+  else if(D.dup){const i=+D.dup;const c=structuredClone(S.sections[i]);c.id=nid();c.status='Draft';S.sections.splice(i+1,0,c);openIds.add(c.id);rerender()}
+  else if(D.askdel){pendingDel=D.askdel;renderEditor()}
+  else if(D.canceldel!==undefined){pendingDel=null;renderEditor()}
+  else if(D.delsec){S.sections.splice(+D.delsec,1);pendingDel=null;rerender();toast('Section deleted')}
+  else if(D.layout!==undefined){pendingLayout=+D.layout;renderEditor()}
+  else if(D.dellayout!==undefined){LAYOUTS.splice(+D.dellayout,1);store.set(TPL,LAYOUTS);pendingLayout=null;renderEditor();toast('Layout deleted')}
+  else if(D.acopy!==undefined){copyHtmlRich(`<div style="background:#ffffff">${renderNewsletter(ARCHIVE[+D.acopy].state)}</div>`,'')}
+  else if(D.arestore!==undefined){pendingRestore=+D.arestore;renderEditor()}
+  else if(b.id==='yesLayout'){const rows=[...Object.keys(BUILTIN).map(k=>BUILTIN[k].map(type=>({type}))),...LAYOUTS.map(l=>l.sections.map(s=>({type:s.type,full:s})))];
+    applyLayout(rows[pendingLayout]);pendingLayout=null;rerender();toast('Layout applied')}
+  else if(b.id==='noLayout'){pendingLayout=null;renderEditor()}
+  else if(b.id==='saveLayout'){const nmv=document.getElementById('layoutName').value.trim();if(!nmv){toast('Give the layout a name first.');return}
+    LAYOUTS=LAYOUTS.filter(l=>l.name!==nmv);LAYOUTS.push({name:nmv,sections:structuredClone(S.sections)});toast(store.set(TPL,LAYOUTS)?`Layout “${nmv}” saved`:'Layout kept for this visit only (browser storage is off)');renderEditor()}
+  else if(b.id==='yesRestore'){S=normalize(structuredClone(ARCHIVE[pendingRestore].state));pendingRestore=null;rerender();toast('Issue restored')}
+  else if(b.id==='noRestore'){pendingRestore=null;renderEditor()}
+  else if(b.id==='suggestBtn'){suggestion=draftHeadline();renderEditor();refresh()}
+  else if(b.id==='useSug'){S.headline=suggestion;suggestion=null;rerender();toast('Headline updated. Edit it as needed.')}
+  else if(b.id==='dropSug'){suggestion=null;renderEditor();refresh()}
+  else if(b.id==='addSec'){const type=document.getElementById('addType').value;const s=sec(type);S.sections.push(s);openIds.add(s.id);rerender();toast(TYPES[type].name+' added at the end')}
+  else if(b.id==='copyJson')copyText(JSON.stringify(S),'Backup copied. Send it to a colleague or keep it somewhere safe.');
+  else if(b.id==='loadSample'){S=SAMPLE();rerender();toast('Example issue loaded')}
+  else if(b.id==='doRestore'){try{const d=JSON.parse(document.getElementById('restore').value);if(!d.sections)throw 0;S=normalize(d);rerender();toast('Backup restored')}catch(_){toast('That backup could not be read. Paste the full text from “Copy backup”.')}}
+});
+async function copyText(t,msg){try{await navigator.clipboard.writeText(t);toast(msg)}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast(msg)}catch(_){toast('Copy was blocked. Select the text and copy it manually.')}ta.remove()}}
+async function copyHtmlRich(html,suffix){
+  const tmp=document.createElement('div');tmp.innerHTML=html;
+  try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([tmp.innerText],{type:'text/plain'})})]);toast('Copied. Paste into your email.'+suffix)}
+  catch(e){tmp.style.cssText='position:fixed;left:-9999px;top:0';document.body.appendChild(tmp);const r=document.createRange();r.selectNodeContents(tmp);const s=getSelection();s.removeAllRanges();s.addRange(r);
+    try{document.execCommand('copy');toast('Copied. Paste into your email.'+suffix)}catch(_){toast('Copy was blocked. Select the preview and copy it manually.')}s.removeAllRanges();tmp.remove()}
+}
+const emailHtml=()=>`<div style="background:#ffffff">${renderNewsletter()}</div>`;
+const checkSuffix=()=>{const n=document.getElementById('chkChip').textContent;return n.includes('review')?` Note: ${n} in the pre-send check.`:''};
+document.getElementById('copyHtml').onclick=()=>copyText(emailHtml(),'HTML copied.'+checkSuffix());
+document.getElementById('copyRich').onclick=()=>copyHtmlRich(emailHtml(),checkSuffix());
+document.getElementById('editionSel').onchange=e=>{S.edition=e.target.value;rerender()};
+document.getElementById('chkChip').onclick=()=>{document.body.dataset.view='edit';setTabs();document.getElementById('checkPanel').scrollIntoView({behavior:'smooth',block:'start'})};
+document.getElementById('nextMonth').onclick=()=>{
+  if(document.getElementById('confirmNext'))return;
+  const c=document.createElement('div');c.className='confirm';c.id='confirmNext';
+  c.innerHTML=`<p>Start next month? This issue is saved under Past issues and its KPIs feed the trend lines. KPI actuals become “last month”, client actuals clear (targets stay), the month advances, statuses reset to Draft, and the watch item, story and asks are cleared. Layout, initiatives, pipeline and year-to-date figures carry over.</p><button class="primary" id="yesNext">Start next month</button><button id="noNext">Cancel</button>`;
+  ed.prepend(c);document.body.dataset.view='edit';setTabs();scrollTo(0,0);
+  c.querySelector('#noNext').onclick=()=>c.remove();
+  c.querySelector('#yesNext').onclick=()=>{
+    ARCHIVE.unshift({savedAt:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),state:structuredClone(S)});ARCHIVE=ARCHIVE.slice(0,24);store.set(ARCH,ARCHIVE);
+    const kpis={};S.sections.filter(s=>s.type==='scorecard').forEach(s=>s.data.metrics.forEach(m=>{const v=num(m.actual);if(v!==null&&m.label)kpis[m.label]=v}));
+    S.history=[...S.history.filter(h=>h.month!==S.month),{month:S.month,kpis}].slice(-12);
+    const dt=new Date('1 '+S.month);if(!isNaN(dt)){dt.setMonth(dt.getMonth()+1);S.month=dt.toLocaleString('en-US',{month:'long',year:'numeric'})}
+    S.headline='';S.asOf='';S.highlights.forEach(h=>h.value='');
+    S.sections.forEach(s=>{const d=s.data;s.status='Draft';
+      if(s.type==='scorecard')d.metrics.forEach(m=>{m.prev=m.actual;m.actual='';m.note=''});
+      if(s.type==='clients')d.clients.forEach(cl=>cl.values.forEach(v=>v.actual=''));
+      if(s.type==='ytd'){const m=num(d.months);if(m!==null&&m<12)d.months=String(m+1)}
+      if(s.type==='money')d.insight='';
+      if(s.type==='watch'){d.title='';d.link='';d.radar='';d.rows.forEach(r=>r.text='')}
+      if(s.type==='story'){s.title='';d.lesson='';d.steps.forEach(x=>x.text='')}
+      if(s.type==='asks')d.items=[{text:''}];
+    });
+    c.remove();rerender();toast('Ready for '+S.month+'. Last issue saved under Past issues.');
+  };
+};
+function setTabs(){const v=document.body.dataset.view;document.getElementById('tabEdit').setAttribute('aria-pressed',v==='edit');document.getElementById('tabPrev').setAttribute('aria-pressed',v==='preview')}
+document.getElementById('tabEdit').onclick=()=>{document.body.dataset.view='edit';setTabs()};
+document.getElementById('tabPrev').onclick=()=>{document.body.dataset.view='preview';setTabs();scrollTo(0,0)};
+document.body.dataset.view='edit';
+rerender();
+</script>
+
+</body></html>
