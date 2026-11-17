@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EXL Impact Lab</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+:root{--navy:#0a2342;--navy2:#123a6b;--blue:#1d6fd8;--blue2:#4a90e2;--blue-l:#eaf2fd;--ink:#1b2636;--mute:#64748b;--line:#e4e9f0;--bg:#f6f8fb;--card:#fff;--green:#15803d;--green-l:#e8f6ed;--amber:#b45309;--amber-l:#fdf4e3;--red:#c62828;--red-l:#fdecea;--violet:#6d28d9;--violet-l:#f1ebfd;--r:10px}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:14px/1.5 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+button,input,select,textarea{font:inherit;color:inherit}
+.app{display:flex;min-height:100vh}
+#side{width:248px;flex:0 0 248px;background:var(--navy);color:#cfdcf0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand .mark{font-weight:800;letter-spacing:.06em;color:#fff;font-size:17px}
+.brand .mark span{color:var(--blue2)}
+.brand .tag{font-size:11.5px;color:#9fb3d1;margin-top:3px}
+#nav{padding:10px 8px;flex:1}
+#nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#cfdcf0;text-decoration:none;font-size:13.5px;cursor:pointer;margin:1px 0}
+#nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+#nav a.on{background:var(--blue);color:#fff}
+#nav a .n{width:20px;height:20px;border-radius:5px;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 20px}
+#nav a.on .n{background:rgba(255,255,255,.22)}
+.sidefoot{padding:14px 18px;font-size:11.5px;color:#8ea4c4;border-top:1px solid rgba(255,255,255,.08)}
+.mainwrap{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{background:#fff;border-bottom:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;flex-wrap:wrap}
+.top h1{font-size:18px;margin:0;color:var(--navy);flex:1;min-width:160px}
+.top .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)}
+.top .ctl select{max-width:230px}
+.burger{display:none;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:16px}
+.proto{background:var(--amber-l);color:#7a4a0c;font-size:12.5px;padding:7px 24px;border-bottom:1px solid #f3dfb8}
+main{padding:22px 24px 48px;max-width:1440px;width:100%}
+select,input,textarea{border:1px solid #cfd8e3;border-radius:8px;padding:7px 10px;background:#fff;min-width:0;max-width:100%}
+textarea{resize:vertical}
+select:focus,input:focus,textarea:focus{outline:2px solid var(--blue2);outline-offset:-1px;border-color:transparent}
+.btn{border:1px solid #cfd8e3;background:#fff;border-radius:8px;padding:7px 13px;cursor:pointer;font-weight:600;font-size:13px;color:var(--navy2);white-space:nowrap}
+.btn:hover{background:var(--blue-l);border-color:#b9d2f3}
+.btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.pri:hover{background:#1559b3}
+.btn.dng{color:var(--red)}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn.locked{opacity:.4;cursor:not-allowed}
+.icon{border:0;background:none;cursor:pointer;color:var(--mute);padding:4px 6px;border-radius:6px}
+.icon:hover{background:var(--red-l);color:var(--red)}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.bar .grow{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0}
+.card h3{margin:0 0 12px;font-size:14px;color:var(--navy);display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;border-top:3px solid var(--blue)}
+.kpi .l{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);font-weight:600}
+.kpi .v{font-size:26px;font-weight:700;color:var(--navy);margin-top:2px;line-height:1.2}
+.kpi .s{font-size:12px;color:var(--mute)}
+.chartbox{position:relative;height:270px}
+.tblwrap{overflow-x:auto}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfd;white-space:nowrap}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr.click{cursor:pointer}
+.tbl tr.click:hover td{background:#f7faff}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl td.acts{white-space:nowrap;text-align:right}
+.tbl tr.over td{background:#fff8f7}
+.tbl.mini td,.tbl.mini th{padding:5px 6px}
+.tbl.mini input,.tbl.mini select{width:100%;padding:5px 7px}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;background:#eef1f5;color:#475569}
+.b-green{background:var(--green-l);color:var(--green)}.b-blue{background:var(--blue-l);color:var(--blue)}.b-amber{background:var(--amber-l);color:var(--amber)}.b-red{background:var(--red-l);color:var(--red)}.b-violet{background:var(--violet-l);color:var(--violet)}.b-navy{background:var(--navy);color:#fff}
+.muted{color:var(--mute)}.small{font-size:12px}
+.prog{height:7px;background:#edf1f6;border-radius:9px;overflow:hidden;min-width:60px}
+.prog i{display:block;height:100%;background:var(--blue);border-radius:9px}
+.pbar{display:flex;align-items:center;gap:8px}
+.pbar .prog{flex:1}
+.gates{display:flex;gap:4px;margin-top:6px}
+.gates span{flex:1;height:6px;border-radius:4px;background:#e2e8f0}
+.gates .g-pass{background:var(--green)}.gates .g-rev{background:#f59e0b}.gates .g-fail{background:var(--red)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.tabs a{padding:9px 14px;cursor:pointer;color:var(--mute);font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs a.on{color:var(--blue);border-color:var(--blue)}
+.agrp{font-weight:700;font-size:12px;margin-top:10px;color:var(--navy2)}
+.alertlist{list-style:none;margin:0;padding:0}
+.alertlist li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.alertlist li[data-act]{cursor:pointer}
+.alertlist li[data-act]:hover b{color:var(--blue)}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:0 0 8px}
+.empty{color:var(--mute);text-align:center;padding:24px;font-size:13px}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px;margin:10px 0}
+.meta dt{color:var(--mute)}.meta dd{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{background:#f1f4f8;border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px}
+.inactive{opacity:.6}
+.modal{position:fixed;inset:0;background:rgba(10,35,66,.45);display:flex;align-items:flex-start;justify-content:center;z-index:100;padding:4vh 16px;overflow-y:auto}
+.hidden{display:none!important}
+.mbox{background:#fff;border-radius:12px;width:100%;max-width:660px;box-shadow:0 20px 50px rgba(10,35,66,.3);display:flex;flex-direction:column;max-height:92vh}
+.mbox.wide{max-width:1060px}
+.mhead{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);gap:10px}
+.mhead h3{margin:0;font-size:16px;color:var(--navy)}
+.mhead .x{border:0;background:none;font-size:22px;cursor:pointer;color:var(--mute);line-height:1}
+#mbody{padding:18px 20px;overflow-y:auto}
+#mfoot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+#mfoot:empty{display:none}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field.full{grid-column:1/-1}
+.field>label{font-size:12px;font-weight:600;color:#334155}
+.field small{color:var(--mute);font-size:11.5px}
+.req{color:var(--red)}
+.multi{display:flex;flex-wrap:wrap;gap:6px 14px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400!important;cursor:pointer}
+.rowsfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px}
+.sum{font-size:12px;font-weight:700}.sum.ok{color:var(--green)}.sum.bad{color:var(--red)}
+.ferr{color:var(--red);font-size:13px;margin-top:10px;font-weight:600}
+.sec{margin-top:22px}
+.sec>h4{margin:0 0 8px;font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--navy2);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kv>div{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.kv b{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.scorebox{display:flex;align-items:center;gap:14px;background:var(--blue-l);border-radius:10px;padding:12px 16px;margin-top:14px;flex-wrap:wrap}
+.scorebox .big{font-size:28px;font-weight:800;color:var(--navy)}
+.quad{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.quad .q{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;min-height:130px}
+.quad .q h5{margin:0 0 8px;font-size:13px}
+.icard{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:13px}
+.icard:hover{border-color:var(--blue2);background:#f7faff}
+.note{background:var(--blue-l);border-left:3px solid var(--blue);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px}
+.note.warn{background:var(--amber-l);border-color:var(--amber)}
+.pre{white-space:pre-wrap}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1}#toast.warn{background:#9a3412}
+#print{display:none}
+td.cell{cursor:pointer;text-align:center}
+td.cell:hover{background:#f2f7ff}
+@media(max-width:900px){
+ #side{position:fixed;left:-260px;z-index:90;transition:left .2s}
+ body.nav-open #side{left:0}
+ body.nav-open::after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:80}
+ .burger{display:block}
+ main{padding:16px}.top{padding:10px 16px}.proto{padding:7px 16px}
+ .fgrid,.g2,.g3,.quad{grid-template-columns:1fr}
+ .top .ctl select{max-width:160px}
+}
+@media print{
+ body>*:not(#print){display:none!important}
+ #print{display:block!important;color:#000}
+ body{background:#fff}
+}
+.rep{font-size:12px;padding:8px}
+.rephead{display:flex;justify-content:space-between;border-bottom:2px solid #0a2342;padding-bottom:8px;margin-bottom:12px}
+.repbrand{font-weight:800;letter-spacing:.08em;color:#0a2342}
+.rep h1{font-size:18px;margin:2px 0}.rep h2{font-size:14px;margin:18px 0 6px;color:#0a2342}
+.rep table{width:100%;border-collapse:collapse;margin-bottom:6px}
+.rep th,.rep td{border:1px solid #ccd5e0;padding:4px 6px;text-align:left;vertical-align:top}
+.rep th{background:#eef2f7}
+.repfoot{margin-top:18px;font-size:10.5px;color:#555;border-top:1px solid #ccc;padding-top:6px}
+</style>
+<style>
+.ctrl{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.ctrl:last-child{border:0}
+.ctrl .ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex:0 0 22px;color:#fff}
+.ctrl .ic.ok{background:var(--green)}.ctrl .ic.no{background:#d97706}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.flow .st{background:var(--blue-l);border:1px solid #c9dcf6;border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;color:var(--navy2);text-align:center}
+.flow .st small{display:block;font-weight:400;color:var(--mute)}
+.flow .ar{color:var(--mute);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.rules{display:flex;flex-wrap:wrap;gap:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside id="side">
+    <div class="brand"><div class="mark">EXL <span>IMPACT LAB</span></div><div class="tag">Evaluation & Governance Framework</div></div>
+    <nav id="nav"></nav>
+    <div class="sidefoot">Learn. Contribute. Build What's Next.<br>Prototype · data stored in this browser</div>
+  </aside>
+  <div class="mainwrap">
+    <header class="top">
+      <button class="burger" data-act="burger" aria-label="Menu">☰</button>
+      <h1 id="vtitle"></h1>
+      <div class="ctl">Batch <select id="progSel" data-chg="prog"></select></div>
+      <div class="ctl">View as <select id="roleSel" data-chg="role"></select></div>
+    </header>
+    <div class="proto" id="protoNote"></div>
+    <main id="main"></main>
+  </div>
+</div>
+<div id="modal" class="modal hidden"><div class="mbox"><div class="mhead"><h3 id="mtitle"></h3><button class="x" data-act="closeModal" aria-label="Close">×</button></div><div id="mbody"></div><div id="mfoot"></div></div></div>
+<div id="toast"></div>
+<div id="print"></div>
+<input type="file" id="importFile" accept=".json,application/json" class="hidden" data-chg="importFile">
+<noscript>This app needs JavaScript enabled.</noscript>
+<script>
+'use strict';
+/* ================= Utilities ================= */
+const KEY='exl-impact-lab-framework-v2',VERSION=2;
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=p=>p+'-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const iso=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+const today=()=>iso(new Date());
+const addDays=(s,n)=>{const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return iso(d)};
+const daysBetween=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);
+const fmtDate=s=>s?new Date(s.slice(0,10)+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—';
+const fmtTs=s=>s?new Date(s).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+const pct=(n,d)=>d?Math.round(n/d*100):0;
+const f1=n=>n==null||isNaN(n)?'—':(+n).toFixed(1);
+const sumW=a=>+((a||[]).reduce((s,x)=>s+(+x.weight||0),0)).toFixed(2);
+let tt;function toast(m,k){const t=$('#toast');t.textContent=m;t.className='show'+(k?' '+k:'');clearTimeout(tt);tt=setTimeout(()=>t.className='',2800)}
+
+/* ================= Sample data ================= */
+function seed(){
+  const T=today(),start=addDays(T,-49);
+  const cfg={
+    dims:[{id:'d_tech',name:'Technical execution',weight:25,source:'project'},{id:'d_bus',name:'Business contribution',weight:25,source:'direct'},{id:'d_own',name:'Ownership and accountability',weight:20,source:'direct'},{id:'d_learn',name:'Learning agility',weight:15,source:'direct'},{id:'d_collab',name:'Collaboration and communication',weight:15,source:'direct'}],
+    scale:{max:5,labels:['Unsatisfactory','Below expectations','Meets expectations','Exceeds expectations','Outstanding']},
+    bands:{exceptional:85,strong:70,developing:55},
+    potentialDims:[{id:'pd_init',name:'Initiative'},{id:'pd_adapt',name:'Adaptability'},{id:'pd_ps',name:'Problem-solving'},{id:'pd_la',name:'Learning agility'},{id:'pd_ind',name:'Independence'}],
+    talent:{perfThreshold:70,potThreshold:3.5},
+    governance:{evalApproval:true,requireComments:true,independentFinal:true,approvalSlaDays:5,feedbackCadenceDays:14,calibrationTolerance:8},
+    roles:[{id:'rl1',role:'Mentor',responsibilities:'Weekly guidance, mentor feedback, Week 3 and Week 6 evaluations'},{id:'rl2',role:'Evaluator',responsibilities:'Independent scoring, final-review evaluation, calibration with mentors'},{id:'rl3',role:'Project Owner',responsibilities:'Owns project technical metrics, gives project-owner feedback'},{id:'rl4',role:'HR Reviewer',responsibilities:'Approves evaluations, potential assessment, hiring-consideration recommendations'}]
+  };
+  const people=[['po1','Ananya Rao','Project Owner'],['po2','Vikram Mehta','Project Owner'],['po3','Sarah Thompson','Project Owner'],['po4','Rajesh Iyer','Project Owner'],['m1','Priya Nair','Mentor'],['m2','Arjun Kapoor','Mentor'],['m3','Meera Pillai','Mentor'],['m4','David Chen','Mentor'],['ev1','Kavita Sharma','Evaluator'],['ev2','Rahul Bose','Evaluator'],['hr1','Neha Gupta','HR Reviewer']]
+    .map(([id,name,role])=>({id,name,role,email:name.toLowerCase().replace(/\s+/g,'.')+'@example.com',responsibilities:cfg.roles.find(r=>r.role===role).responsibilities,active:true}));
+  const programmes=[
+    {id:'prg1',name:'Impact Lab – Cohort 1 (2026)',start,durationWeeks:10,end:addDays(start,69),cohortSize:12,status:'Active',checkpoints:[{id:'c1w3',name:'Week 3 review',week:3,weight:15},{id:'c1w6',name:'Week 6 review',week:6,weight:25},{id:'c1w10',name:'Week 10 final review',week:10,weight:60}]},
+    {id:'prg2',name:'Impact Lab – Cohort 2 (2027)',start:addDays(T,75),durationWeeks:10,end:addDays(T,75+69),cohortSize:16,status:'Planned',checkpoints:[{id:'c2w3',name:'Week 3 review',week:3,weight:15},{id:'c2w6',name:'Week 6 review',week:6,weight:25},{id:'c2w10',name:'Week 10 final review',week:10,weight:60}]}
+  ];
+  const mk=(id,name,code,owner,mentors,metrics)=>({id,programmeId:'prg1',name,code,ownerId:owner,mentorIds:mentors,techMetrics:metrics.map(([n,w],i)=>({id:id+'_tm'+i,name:n,weight:w})),active:true});
+  const projects=[
+    mk('tic','Transparency in Coverage','TIC','po1',['m1'],[['Data extraction',30],['Processing accuracy',30],['Data quality',20],['Analytical insights',20]]),
+    mk('cat','Internal Data Catalogue & Cross-Pollination','CAT','po2',['m2'],[['Asset discovery',25],['Metadata quality',30],['Classification',25],['Reusability',20]]),
+    mk('pol','Payer Policy Extraction','POL','po3',['m3'],[['Precision',30],['Recall',30],['Classification',20],['SME validation',20]]),
+    mk('tda','Table-Driven Architecture','TDA','po4',['m4'],[['Configurability',30],['Reusability',25],['Reliability',25],['Maintainability',20]])
+  ];
+  const IN=[
+    ['i1','Aditi Verma','IIT Madras','B.Tech Computer Science','tic','m1',[4,4,5,4],[4,4,4,5],[5,5,5,4],[5,4,5,5],[5,5,4,5,4],['Strongly consider','Consistently exceeds expectations and leads pipeline design. Recommend a pre-placement discussion, subject to business demand.'],'Approved',['Designed the chunked parser that unblocked large payer files','Delegate more and document design decisions earlier']],
+    ['i2','Rohan Das','NIT Trichy','B.Tech Information Technology','tic','m1',[3,3,4,3],[3,4,3,3],[4,3,4,4],[4,4,3,4],[3,3,3,3,3],['Not assessed',''],'Approved',['Reliable on data-quality rule implementation','Raise blockers sooner']],
+    ['i10','Riya Menon','Christ University','M.Sc Data Science','tic','m1',[3,4,4,4],[4,3,4,3],null,null,null,['Not assessed',''],null,['Strong visual storytelling','Strengthen SQL performance tuning']],
+    ['i3','Ishaan Malhotra','BITS Pilani','B.E. Computer Science','cat','m2',[3,3,4,3],[3,3,3,3],[3,3,4,3],[3,3,3,4],[4,4,4,4,3],['Consider','Fast learner; would benefit from a further structured rotation before any hiring decision.'],'Submitted',['Curious and quick to pick up the taxonomy','Attention to detail on metadata fields']],
+    ['i4','Sneha Kulkarni','IIM Indore (IPM)','Integrated Programme in Management','cat','m2',[4,4,4,4],[4,4,5,4],[5,4,5,5],[5,5,4,5],[4,5,4,5,4],['Strongly consider','Drove adoption of the metadata standard across two teams. Strong candidate for analyst roles.'],'Approved',['Drove the metadata standard through two teams','Quantify business impact in updates']],
+    ['i5','Karthik Subramanian','Anna University','B.E. Electronics & Communication','pol','m3',[4,4,3,4],[4,4,4,3],[4,4,4,4],[4,4,4,4],[3,4,3,4,3],['Consider','Reliable executor; build more independent problem framing.'],'Approved',['Dependable delivery on extraction rules','Frame problems independently']],
+    ['i6','Fatima Sheikh','Jamia Millia Islamia','M.Tech Artificial Intelligence','pol','m3',[4,5,4,4],[4,5,4,4],[4,5,5,4],[5,4,4,5],[5,4,5,4,5],['Strongly consider','Built the precision/recall evaluation harness. High potential for GenAI delivery roles.'],'Approved',['Built the evaluation harness the team now uses','Share work-in-progress earlier with SMEs']],
+    ['i9','Nikhil Bansal','Delhi University','B.Sc Statistics','pol','m3',[2,2,3,2],[2,3,2,2],[2,3,3,3],[3,2,2,3],[3,2,3,3,2],['Not at this time','Development plan agreed with the mentor for the remaining weeks.'],'Approved',['Good statistical intuition on sampling','Meet deadlines and communicate progress proactively']],
+    ['i7','Aman Joshi','VIT Vellore','B.Tech Computer Science','tda','m4',[2,3,3,3],[3,2,3,3],[3,3,4,3],[3,3,3,3],[4,4,3,4,3],['Not assessed',''],'Submitted',['Picks up unfamiliar code quickly','Test coverage before raising pull requests']],
+    ['i8','Tanvi Reddy','IIIT Hyderabad','B.Tech Computer Science','tda','m4',[4,4,4,4],[4,4,4,4],[4,4,4,5],[4,4,5,4],[4,3,4,4,3],['Consider','Solid engineering fundamentals; good fit for platform engineering teams.'],'Submitted',['Clean, well-tested config table design','Take on more ambiguity']]
+  ];
+  const interns=[],evaluations=[],feedback=[],audit=[];
+  const L=(ts,role,event,detail)=>audit.push({id:uid('a'),ts,role,event,detail});
+  L(start+'T09:00:00','Administrator','Framework published','Scorecard v1 (5 dimensions), checkpoints 15/25/60, approval workflow on');
+  IN.forEach((r,j)=>{
+    const [id,name,college,degree,pj,mentor,w3,t3,w6,t6,pt,hr,st6,fb]=r,P=projects.find(p=>p.id===pj);
+    interns.push({id,programmeId:'prg1',name,email:name.toLowerCase().replace(/\s+/g,'.')+'@example.com',college,degree,projectId:pj,mentorId:mentor,status:'Active',startDate:start,potential:pt?Object.fromEntries(cfg.potentialDims.map((d,k)=>[d.id,pt[k]])):null,hr:{consideration:hr[0],recommendation:hr[1]}});
+    const mkEv=(cp,w,t,status,date,by)=>{const e={id:'ev_'+id+'_'+cp,internId:id,checkpointId:cp,evaluatorId:by,date,submittedOn:date,status,ratings:{d_bus:w[0],d_own:w[1],d_learn:w[2],d_collab:w[3]},tech:Object.fromEntries(P.techMetrics.map((m,k)=>[m.id,t[k]])),comments:'Evidence reviewed in checkpoint meeting with mentor and project owner.'};
+      L(date+'T11:00:00','Mentor','Evaluation submitted',`${name} – ${cp.endsWith('w3')?'Week 3':'Week 6'} review`);
+      if(status==='Approved'){e.approvedOn=addDays(date,2);e.approvedBy='HR Reviewer';L(e.approvedOn+'T15:00:00','HR Reviewer','Evaluation approved',`${name} – ${cp.endsWith('w3')?'Week 3':'Week 6'} review`)}evaluations.push(e)};
+    mkEv('c1w3',w3,t3,'Approved',addDays(start,21),mentor);
+    if(w6)mkEv('c1w6',w6,t6,st6,addDays(start,42),j%2?'ev1':mentor);
+    const late=['i9','i7'].includes(id);
+    feedback.push({id:'fb_'+id,internId:id,byId:mentor,type:'Mentor feedback',date:addDays(T,late?-20:-(3+j%5)),rating:Math.round(avg(w6||w3)),strengths:fb[0],improvements:fb[1]});
+  });
+  audit.sort((a,b)=>b.ts.localeCompare(a.ts));
+  return {version:VERSION,role:'Administrator',activeProgrammeId:'prg1',config:cfg,people,programmes,projects,interns,evaluations,feedback,audit};
+}
+
+/* ================= State ================= */
+let S,VIEW='overview',CH={},FORM=null,EVF=null;const MS=[];
+const FILT={interns:{q:'',project:'',band:''},ev:{tab:'matrix',project:''},gov:{tab:'controls'},setup:{tab:'scorecard'},rep:{intern:''}};
+function load(){try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);if(d&&d.version===VERSION&&d.config){S=d;return}}}catch(e){}S=seed();save()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Could not save to browser storage','warn')}}
+function log(event,detail){S.audit.unshift({id:uid('a'),ts:new Date().toISOString(),role:S.role,event,detail});if(S.audit.length>500)S.audit.length=500}
+
+/* ================= Roles (prototype) ================= */
+const ROLES={'Administrator':['config','evaluate','approve','hr','feedback'],'Mentor':['evaluate','feedback'],'Evaluator':['evaluate'],'HR Reviewer':['approve','hr'],'Leadership (view only)':[]};
+const can=p=>(ROLES[S.role]||[]).includes(p);
+function need(p){if(can(p))return true;toast(`The “${S.role}” view can't do this. Switch “View as” (prototype only).`,'warn');return false}
+const btn=(label,act,id='',perm='',cls='')=>`<button type="button" class="btn ${cls}${perm&&!can(perm)?' locked':''}" data-act="${act}" data-id="${esc(id)}"${perm?` data-perm="${perm}"`:''}>${label}</button>`;
+
+/* ================= Lookups ================= */
+const byId=(c,id)=>S[c].find(x=>x.id===id);
+const pname=id=>byId('people',id)?.name||'—';
+const iname=id=>byId('interns',id)?.name||'—';
+const P=()=>S.programmes.find(p=>p.id===S.activeProgrammeId)||S.programmes[0]||{id:'',name:'No batch',checkpoints:[],start:today(),end:today(),durationWeeks:0,cohortSize:0};
+const projs=all=>S.projects.filter(p=>p.programmeId===P().id&&(all||p.active));
+const interns=()=>S.interns.filter(i=>i.programmeId===P().id);
+const projName=id=>byId('projects',id)?.name||'Unassigned';
+const projCode=id=>byId('projects',id)?.code||'—';
+const cps=()=>P().checkpoints||[];
+const cpDue=(c,prog=P())=>addDays(prog.start,c.week*7);
+const cpName=id=>S.programmes.flatMap(p=>p.checkpoints).find(c=>c.id===id)?.name||'Checkpoint';
+const O={people:role=>S.people.filter(p=>p.active&&(!role||[].concat(role).includes(p.role))).map(p=>[p.id,role&&!Array.isArray(role)?p.name:`${p.name} · ${p.role}`]),projects:()=>projs().map(p=>[p.id,p.name]),interns:()=>interns().map(i=>[i.id,i.name]),programmes:()=>S.programmes.map(p=>[p.id,p.name]),list:a=>a.map(x=>[x,x])};
+const HIRE=['Not assessed','Strongly consider','Consider','Not at this time'];
+const TCATS=['High impact / High potential','Strong execution / Developing potential','High potential / Developing execution','Below current expectations'];
+const TCOL=['#15803d','#1d6fd8','#7c3aed','#c62828'];
+const BANDS=['Exceptional','Strong','Developing','Needs improvement'];
+const BCOL=['#15803d','#1d6fd8','#d97706','#c62828'];
+
+/* ================= Scoring engine ================= */
+function techRating(ev,proj){if(!proj||!proj.techMetrics?.length||!ev.tech)return null;let w=0,s=0;proj.techMetrics.forEach(m=>{const r=+ev.tech[m.id];if(r){s+=r*m.weight;w+=m.weight}});return w?s/w:null}
+function dimRating(ev,d){if(d.source==='project'){const t=techRating(ev,byId('projects',byId('interns',ev.internId)?.projectId));if(t!=null)return t}return +ev.ratings?.[d.id]||null}
+function evalScore(ev){const max=S.config.scale.max;let w=0,s=0;S.config.dims.forEach(d=>{const r=dimRating(ev,d);if(r!=null){s+=d.weight*r/max;w+=d.weight}});return w?s/w*100:null}
+const evalFor=(iid,cpid)=>S.evaluations.find(e=>e.internId===iid&&e.checkpointId===cpid);
+const final=e=>e&&e.status!=='Draft';
+function internScore(i){const cp=byId('programmes',i.programmeId)?.checkpoints||[];let w=0,s=0,done=0;const per={};cp.forEach(c=>{const ev=evalFor(i.id,c.id),sc=final(ev)?evalScore(ev):null;per[c.id]=sc;if(sc!=null){s+=sc*c.weight;w+=c.weight;done++}});return{score:w?s/w:null,provisional:done<cp.length,done,total:cp.length,per}}
+function band(s){if(s==null)return null;const b=S.config.bands;return s>=b.exceptional?{n:BANDS[0],c:'green'}:s>=b.strong?{n:BANDS[1],c:'blue'}:s>=b.developing?{n:BANDS[2],c:'amber'}:{n:BANDS[3],c:'red'}}
+function potScore(i){if(!i.potential)return null;const v=S.config.potentialDims.map(d=>+i.potential[d.id]).filter(Boolean);return v.length?avg(v):null}
+function talent(i){const sc=internScore(i).score,pt=potScore(i);if(sc==null||pt==null)return'Not yet assessed';const t=S.config.talent,hp=pt>=t.potThreshold,he=sc>=t.perfThreshold;return hp&&he?TCATS[0]:he?TCATS[1]:hp?TCATS[2]:TCATS[3]}
+function incompleteEvals(ints){const T=today(),out=[];ints.filter(i=>i.status==='Active').forEach(i=>{const prog=byId('programmes',i.programmeId);(prog?.checkpoints||[]).forEach(c=>{if(cpDue(c,prog)<T&&!final(evalFor(i.id,c.id)))out.push({i,c})})});return out}
+function evalCoverage(ints){const T=today();let due=0,done=0;ints.filter(i=>i.status==='Active').forEach(i=>{const prog=byId('programmes',i.programmeId);(prog?.checkpoints||[]).forEach(c=>{if(cpDue(c,prog)<T){due++;if(final(evalFor(i.id,c.id)))done++}})});return{due,done}}
+const progEvals=()=>{const ids=new Set(interns().map(i=>i.id));return S.evaluations.filter(e=>ids.has(e.internId))};
+const pending=()=>progEvals().filter(e=>e.status==='Submitted');
+const ageOf=e=>daysBetween(e.submittedOn||e.date,today());
+function mentorEngagement(list){const cad=S.config.governance.feedbackCadenceDays,T=today(),cov=list.filter(i=>S.feedback.some(f=>f.internId===i.id&&daysBetween(f.date,T)<=cad));return{pct:pct(cov.length,list.length),cov:cov.length,total:list.length,missing:list.filter(i=>!cov.includes(i))}}
+function calibration(){const evs=progEvals().filter(final),all=avg(evs.map(evalScore).filter(x=>x!=null)),tol=S.config.governance.calibrationTolerance,g={};evs.forEach(e=>{(g[e.evaluatorId]=g[e.evaluatorId]||[]).push(evalScore(e))});
+  return Object.entries(g).map(([id,a])=>{const m=avg(a.filter(x=>x!=null));return{id,name:pname(id),role:byId('people',id)?.role||'',n:a.length,avg:m,diff:m-all,flag:a.length>=2&&Math.abs(m-all)>tol}}).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff))}
+function controls(){const g=S.config.governance,ints=interns().filter(i=>i.status==='Active'),out=[],add=(name,ok,detail,go)=>out.push({name,ok:!!ok,detail,go});
+  const ds=sumW(S.config.dims);add('Scorecard weights total 100%',ds===100,`Currently ${ds}%`,'setup:scorecard');
+  const cs=sumW(cps());add('Checkpoint weights total 100%',cps().length&&cs===100,cps().length?`Currently ${cs}% across ${cps().length} checkpoints`:'No checkpoints configured','setup:batches');
+  const bad=projs().filter(p=>sumW(p.techMetrics)!==100);add('Every project’s technical metrics total 100%',!bad.length,bad.length?`Invalid: ${bad.map(p=>p.code).join(', ')}`:`${projs().length} projects valid`,'setup:projects');
+  const noM=ints.filter(i=>!i.mentorId||!i.projectId);add('Every active intern has a project and a mentor',!noM.length,noM.length?noM.map(i=>i.name).join(', '):`${ints.length} interns covered`,'interns');
+  const inc=incompleteEvals(ints);add('No overdue checkpoint evaluations',!inc.length,inc.length?`${inc.length} overdue: ${inc.map(x=>x.i.name).join(', ')}`:'All due evaluations submitted','ev:matrix');
+  if(g.evalApproval){const late=pending().filter(e=>ageOf(e)>g.approvalSlaDays);add(`HR approvals within ${g.approvalSlaDays}-day SLA`,!late.length,late.length?`${late.length} waiting longer than ${g.approvalSlaDays} days`:`${pending().length} pending, all within SLA`,'ev:approvals')}
+  const eng=mentorEngagement(ints);add(`Mentor feedback at least every ${g.feedbackCadenceDays} days`,eng.cov===eng.total,eng.missing.length?`Missing: ${eng.missing.map(i=>i.name).join(', ')}`:`${eng.cov}/${eng.total} interns covered`,'gov:people');
+  const cal=calibration().filter(r=>r.flag);add(`Evaluator calibration within ±${g.calibrationTolerance} points of cohort average`,!cal.length,cal.length?`Outside tolerance: ${cal.map(r=>`${r.name} (${r.diff>0?'+':''}${r.diff.toFixed(1)})`).join(', ')}`:'All evaluators within tolerance','ev:calibration');
+  if(g.requireComments){const no=progEvals().filter(e=>final(e)&&!e.comments);add('Every submitted evaluation has evidence / comments',!no.length,no.length?`${no.length} without evidence`:'Evidence recorded for all','ev:matrix')}
+  return out}
+
+/* ================= UI helpers ================= */
+const BC={Active:'green',Planned:'blue',Completed:'green',Archived:'',Withdrawn:'red','On hold':'amber',Submitted:'violet',Draft:'',Approved:'green',New:'','Strongly consider':'green',Consider:'blue','Not at this time':'red','Not assessed':'',Overdue:'red',Upcoming:'blue',Complete:'green'};
+function badge(t,c){const k=c!==undefined?c:BC[t];return `<span class="badge${k?' b-'+k:''}">${esc(t)}</span>`}
+function scoreBadge(s,prov){const b=band(s);return b?`<b>${f1(s)}</b> ${badge(b.n,b.c)}${prov?' <span class="small muted" title="Not all checkpoints evaluated">prov.</span>':''}`:'<span class="muted">—</span>'}
+function talentBadge(c){return badge(c,['green','blue','violet','red'][TCATS.indexOf(c)]??'')}
+const kpi=(l,v,s,c)=>`<div class="kpi" style="border-top-color:${c||'var(--blue)'}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s||''}</div></div>`;
+const progBar=v=>`<div class="pbar"><div class="prog"><i style="width:${Math.min(100,Math.max(0,v))}%"></i></div><b class="small">${v}%</b></div>`;
+const sel=(chg,val,options,blank)=>`<select data-chg="${chg}">${blank!=null?`<option value="">${esc(blank)}</option>`:''}${options.map(([a,b])=>`<option value="${esc(a)}"${String(a)===String(val)?' selected':''}>${esc(b)}</option>`).join('')}</select>`;
+const tabs=(key,list)=>`<div class="tabs">${list.map(([k,l])=>`<a class="${FILT[key].tab===k?'on':''}" data-act="tab" data-id="${key}:${k}">${l}</a>`).join('')}</div>`;
+const table=(heads,rows,empty)=>`<div class="tblwrap"><table class="tbl"><thead><tr>${heads.map(h=>`<th${h.startsWith('#')?' class="num"':''}>${esc(h.replace(/^#/,''))}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${heads.length}"><div class="empty">${empty||'No records'}</div></td></tr>`}</tbody></table></div>`;
+const stars=r=>`<span style="color:#d97706">${'★'.repeat(r||0)}</span><span style="color:#cbd5e1">${'★'.repeat(Math.max(0,5-(r||0)))}</span>`;
+
+/* ================= Charts ================= */
+const BASE={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:10,usePointStyle:true,font:{size:11}}}}};
+function mkChart(id,cfg){const el=document.getElementById(id);if(!el)return;if(!window.Chart){el.parentElement.innerHTML='<div class="empty">Charts need an internet connection to load Chart.js. All figures are still in the tables.</div>';return}if(CH[id]){CH[id].destroy();delete CH[id]}CH[id]=new Chart(el,cfg)}
+function dropCharts(scope){for(const k in CH){const c=CH[k].canvas;if(!c||!c.isConnected||c.closest(scope)){CH[k].destroy();delete CH[k]}}}
+const thrPlugin={id:'thr',afterDraw(c){const t=S.config.talent,{ctx,chartArea:a,scales:{x,y}}=c;if(!x||!y||!a)return;ctx.save();ctx.setLineDash([5,4]);ctx.strokeStyle='#94a3b8';ctx.beginPath();const px=x.getPixelForValue(t.perfThreshold),py=y.getPixelForValue(t.potThreshold);ctx.moveTo(px,a.top);ctx.lineTo(px,a.bottom);ctx.moveTo(a.left,py);ctx.lineTo(a.right,py);ctx.stroke();ctx.restore()}};
+function talentChart(id,ints){const pts=ints.map(i=>({i,s:internScore(i).score,p:potScore(i)})).filter(o=>o.s!=null&&o.p!=null);
+  mkChart(id,{type:'scatter',data:{datasets:TCATS.map((c,k)=>({label:c,data:pts.filter(o=>talent(o.i)===c).map(o=>({x:+o.s.toFixed(1),y:+o.p.toFixed(2),id:o.i.id,n:o.i.name})),backgroundColor:TCOL[k],pointRadius:7,pointHoverRadius:9}))},plugins:[thrPlugin],
+  options:{...BASE,scales:{x:{min:20,max:100,title:{display:true,text:'Performance score'}},y:{min:1,max:S.config.scale.max,title:{display:true,text:'Potential'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:8,usePointStyle:true,font:{size:10.5}}},tooltip:{callbacks:{label:c=>`${c.raw.n}: performance ${c.raw.x}, potential ${c.raw.y}`}}},onClick:(e,els,ch)=>{if(els[0])openIntern(ch.data.datasets[els[0].datasetIndex].data[els[0].index].id)}}})}
+
+/* ================= Modal stack ================= */
+function openModal(m){MS.push(m);showModal()}
+function showModal(){dropCharts('#mbody');const m=MS[MS.length-1];if(!m){$('#modal').classList.add('hidden');$('#mbody').innerHTML='';$('#mfoot').innerHTML='';return}const r=m.render();$('#mtitle').textContent=typeof m.title==='function'?m.title():m.title;$('#mbody').innerHTML=r.body;$('#mfoot').innerHTML=r.foot||'';$('#modal .mbox').className='mbox'+(m.wide?' wide':'');$('#modal').classList.remove('hidden');m.after&&m.after()}
+function closeModal(){const m=MS.pop();if(m?.kind==='form')FORM=null;if(m?.kind==='eval')EVF=null;showModal()}
+function closeAll(){MS.length=0;FORM=null;EVF=null;showModal()}
+function refresh(){render();if(MS.length)showModal()}
+
+/* ================= Generic form ================= */
+const opts=o=>typeof o==='function'?o():o;
+function fieldHTML(f,v){const id='f_'+f.k,req=f.req?' <span class="req">*</span>':'';let c;
+  if(f.t==='checkbox')return `<div class="field${f.full?' full':''}"><label class="chk"><input type="checkbox" id="${id}" name="${f.k}"${v?' checked':''}> ${esc(f.l)}</label>${f.help?`<small>${esc(f.help)}</small>`:''}</div>`;
+  if(f.t==='textarea')c=`<textarea id="${id}" name="${f.k}" rows="${f.rows||3}">${esc(v)}</textarea>`;
+  else if(f.t==='select')c=`<select id="${id}" name="${f.k}">${f.noBlank?'':'<option value="">— Select —</option>'}${opts(f.o).map(([a,b])=>`<option value="${esc(a)}"${String(a)===String(v??'')?' selected':''}>${esc(b)}</option>`).join('')}</select>`;
+  else if(f.t==='multi')c=`<div class="multi">${opts(f.o).map(([a,b])=>`<label class="chk"><input type="checkbox" name="${f.k}" value="${esc(a)}"${(v||[]).includes(a)?' checked':''}> ${esc(b)}</label>`).join('')||'<span class="muted small">No options — add people first</span>'}</div>`;
+  else if(f.t==='rows')c=`<div data-rows="${f.k}">${rowsInner(f,v||[])}</div>`;
+  else if(f.t==='tags')c=`<input id="${id}" name="${f.k}" value="${esc((v||[]).join(', '))}" placeholder="Comma-separated">`;
+  else c=`<input id="${id}" name="${f.k}" type="${f.t||'text'}" value="${esc(v)}"${f.min!=null?` min="${f.min}"`:''}${f.max!=null?` max="${f.max}"`:''}${f.t==='number'?` step="${f.step||'any'}"`:''}>`;
+  return `<div class="field${f.full||['textarea','rows','multi'].includes(f.t)?' full':''}"><label for="${id}">${esc(f.l)}${req}</label>${c}${f.help?`<small>${esc(f.help)}</small>`:''}</div>`}
+function rowsInner(f,rows){return `<div class="tblwrap"><table class="tbl mini"><thead><tr>${f.cols.map(c=>`<th>${esc(c.l)}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r,i)=>`<tr data-rid="${esc(r.id||uid('r'))}">${f.cols.map(c=>`<td>${c.o?`<select data-c="${c.k}">${opts(c.o).map(([a,b])=>`<option value="${esc(a)}"${String(a)===String(r[c.k]??'')?' selected':''}>${esc(b)}</option>`).join('')}</select>`:`<input data-c="${c.k}" type="${c.t||'text'}" value="${esc(r[c.k])}"${c.t==='number'?' step="any"':''}>`}</td>`).join('')}<td><button type="button" class="icon" data-act="rowDel" data-id="${f.k}" data-idx="${i}" title="Remove">✕</button></td></tr>`).join('')||`<tr><td colspan="${f.cols.length+1}" class="muted small">No rows yet</td></tr>`}</tbody></table></div><div class="rowsfoot"><button type="button" class="btn sm" data-act="rowAdd" data-id="${f.k}">+ Add row</button>${f.sum?`<span class="sum" data-sum="${f.k}"></span>`:''}</div>`}
+function readRows(k){const box=document.querySelector(`[data-rows="${k}"]`);if(!box||!FORM)return[];const f=FORM.fields.find(x=>x.k===k);return [...box.querySelectorAll('tbody tr[data-rid]')].map(tr=>{const r={id:tr.dataset.rid};tr.querySelectorAll('[data-c]').forEach(inp=>{const c=f.cols.find(x=>x.k===inp.dataset.c);r[inp.dataset.c]=c&&c.t==='number'?(inp.value===''?null:+inp.value):inp.value.trim()});return r})}
+function rowsRedraw(k,rows){document.querySelector(`[data-rows="${k}"]`).innerHTML=rowsInner(FORM.fields.find(x=>x.k===k),rows);updSums()}
+function updSums(){if(!FORM)return;FORM.fields.filter(f=>f.t==='rows'&&f.sum).forEach(f=>{const el=document.querySelector(`[data-sum="${f.k}"]`);if(!el)return;const s=readRows(f.k).reduce((a,r)=>a+(+r[f.sum]||0),0),ok=Math.abs(s-100)<.01;el.textContent=`Total ${+s.toFixed(2)}% ${ok?'✓':'— must equal 100%'}`;el.className='sum '+(ok?'ok':'bad')})}
+function openForm(o){FORM={fields:o.fields,onSave:o.onSave,title:o.title};const data=o.data||{};openModal({kind:'form',title:o.title,wide:o.wide,render:()=>({body:`${o.intro?`<div class="note">${o.intro}</div>`:''}<form id="gform" class="fgrid" autocomplete="off">${o.fields.map(f=>fieldHTML(f,data[f.k])).join('')}</form><div id="ferr" class="ferr"></div>`,foot:`<button type="button" class="btn" data-act="closeModal">Cancel</button><button type="button" class="btn pri" data-act="formSave">Save</button>`}),after:updSums})}
+function formSave(){if(!FORM)return;const d={},errs=[];
+  FORM.fields.forEach(f=>{const q=`#gform [name="${f.k}"]`;
+    if(f.t==='multi')d[f.k]=$$(q+':checked').map(x=>x.value);else if(f.t==='checkbox')d[f.k]=$(q).checked;else if(f.t==='rows')d[f.k]=readRows(f.k);
+    else if(f.t==='tags')d[f.k]=$(q).value.split(',').map(s=>s.trim()).filter(Boolean);else if(f.t==='number'){const v=$(q).value;d[f.k]=v===''?null:+v}else d[f.k]=$(q).value.trim();
+    const v=d[f.k];
+    if(f.req&&(v==null||v===''||(Array.isArray(v)&&!v.length)))errs.push(`${f.l} is required.`);
+    if(f.t==='email'&&v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))errs.push(`${f.l} is not a valid email address.`);
+    if(f.t==='number'&&v!=null&&((f.min!=null&&v<f.min)||(f.max!=null&&v>f.max)))errs.push(`${f.l} must be between ${f.min??'–'} and ${f.max??'–'}.`);
+    if(f.t==='rows'){v.forEach((r,i)=>f.cols.forEach(c=>{if(c.req&&(r[c.k]==null||r[c.k]===''))errs.push(`${f.l}: row ${i+1} needs “${c.l}”.`)}));
+      if(f.sum&&v.length){const s=v.reduce((a,r)=>a+(+r[f.sum]||0),0);if(Math.abs(s-100)>.01)errs.push(`${f.l}: weights total ${+s.toFixed(2)}% — they must equal 100%.`);if(v.some(r=>!(+r[f.sum]>0)))errs.push(`${f.l}: every weight must be greater than 0.`)}}});
+  if(!errs.length){const e=FORM.onSave(d);if(e)errs.push(e)}
+  if(errs.length){$('#ferr').innerHTML=errs.map(esc).join('<br>');return}
+  log('Record saved',FORM.title);save();MS.pop();FORM=null;render();showModal();toast('Saved')}
+
+/* ================= Forms ================= */
+function editIntern(id){const i=id?byId('interns',id):null;
+  openForm({title:i?'Edit intern – '+i.name:'Register intern',wide:true,data:i?clone(i):{programmeId:P().id,status:'Active',startDate:P().start||today()},fields:[
+    {k:'name',l:'Full name',req:1},{k:'email',l:'Email',t:'email',req:1},{k:'college',l:'College / university',req:1},{k:'degree',l:'Degree'},
+    {k:'programmeId',l:'Batch',t:'select',o:O.programmes,req:1,noBlank:1},{k:'projectId',l:'Project',t:'select',o:()=>S.projects.filter(p=>p.active).map(p=>[p.id,`${p.name} (${byId('programmes',p.programmeId)?.name||''})`]),req:1},
+    {k:'mentorId',l:'Mentor',t:'select',o:()=>O.people('Mentor'),help:'Blank = the project’s first mentor'},{k:'status',l:'Status',t:'select',o:O.list(['Active','On hold','Completed','Withdrawn']),req:1,noBlank:1},{k:'startDate',l:'Start date',t:'date',req:1}],
+  onSave:v=>{if(S.interns.some(x=>x.id!==id&&x.email.toLowerCase()===v.email.toLowerCase()))return'Another intern already uses this email.';
+    const pr=byId('projects',v.projectId);if(pr&&pr.programmeId!==v.programmeId)return'The selected project belongs to a different batch.';
+    if(!v.mentorId&&pr?.mentorIds[0])v.mentorId=pr.mentorIds[0];
+    if(i)Object.assign(i,v);else S.interns.push({id:uid('int'),...v,potential:null,hr:{consideration:'Not assessed',recommendation:''}})}})}
+function editPerson(id){const p=id?byId('people',id):null;
+  openForm({title:p?'Edit person – '+p.name:'Add person',data:p?clone(p):{active:true,role:'Mentor'},fields:[{k:'name',l:'Full name',req:1},{k:'role',l:'Governance role',t:'select',o:O.list(['Mentor','Evaluator','Project Owner','HR Reviewer']),req:1,noBlank:1},{k:'email',l:'Email',t:'email',req:1},{k:'active',l:'Active',t:'checkbox'},{k:'responsibilities',l:'Responsibilities',t:'textarea',help:'Blank = the default for the role'}],
+  onSave:v=>{if(!v.responsibilities)v.responsibilities=S.config.roles.find(r=>r.role===v.role)?.responsibilities||'';if(p)Object.assign(p,v);else S.people.push({id:uid('ppl'),...v})}})}
+function editProject(id){const p=id?byId('projects',id):null;
+  openForm({title:p?'Edit project – '+p.name:'Add project',wide:true,data:p?clone(p):{programmeId:P().id,active:true,mentorIds:[],techMetrics:[{id:uid('tm'),name:'Quality of work',weight:50},{id:uid('tm'),name:'Delivery reliability',weight:50}]},
+  intro:'Projects matter here only for evaluation: each one defines the technical metrics that make up the Technical execution score.',fields:[
+    {k:'name',l:'Project name',req:1},{k:'code',l:'Short code',req:1},{k:'programmeId',l:'Batch',t:'select',o:O.programmes,req:1,noBlank:1},{k:'ownerId',l:'Project owner',t:'select',o:()=>O.people('Project Owner'),req:1},
+    {k:'mentorIds',l:'Mentors',t:'multi',o:()=>O.people('Mentor')},
+    {k:'techMetrics',l:'Technical evaluation metrics',t:'rows',sum:'weight',req:1,cols:[{k:'name',l:'Metric',req:1},{k:'weight',l:'Weight %',t:'number',req:1}]},{k:'active',l:'Active',t:'checkbox'}],
+  onSave:v=>{v.code=v.code.toUpperCase();if(p)Object.assign(p,v);else S.projects.push({id:uid('prj'),...v})}})}
+function editProgramme(id){const p=id?byId('programmes',id):null;
+  const fields=[{k:'name',l:'Batch name',req:1,full:1},{k:'start',l:'Start date',t:'date',req:1},{k:'durationWeeks',l:'Duration (weeks)',t:'number',req:1,min:1,max:52,step:1},{k:'cohortSize',l:'Planned cohort size',t:'number',req:1,min:1,step:1},{k:'status',l:'Status',t:'select',o:O.list(['Planned','Active','Completed','Archived']),req:1,noBlank:1},
+    {k:'checkpoints',l:'Review checkpoints & weights',t:'rows',sum:'weight',req:1,cols:[{k:'name',l:'Checkpoint',req:1},{k:'week',l:'Week',t:'number',req:1},{k:'weight',l:'Weight %',t:'number',req:1}]}];
+  if(!p)fields.push({k:'copyFrom',l:'Copy projects & metrics from',t:'select',o:O.programmes,help:'Optional — reuse an earlier batch’s set-up'});
+  openForm({title:p?'Edit batch – '+p.name:'Create batch',wide:true,data:p?clone(p):{status:'Planned',durationWeeks:10,cohortSize:10,start:today(),checkpoints:[{id:uid('cp'),name:'Week 3 review',week:3,weight:15},{id:uid('cp'),name:'Week 6 review',week:6,weight:25},{id:uid('cp'),name:'Week 10 final review',week:10,weight:60}]},fields,
+  onSave:v=>{if(v.checkpoints.some(c=>!(c.week>=1)||c.week>v.durationWeeks))return'Each checkpoint week must be between 1 and the batch duration.';
+    v.end=addDays(v.start,v.durationWeeks*7-1);const copy=v.copyFrom;delete v.copyFrom;
+    if(p)Object.assign(p,v);else{const np={id:uid('prg'),...v};S.programmes.push(np);if(copy)S.projects.filter(x=>x.programmeId===copy).forEach(x=>{const c=clone(x);c.id=uid('prj');c.programmeId=np.id;c.techMetrics.forEach(m=>m.id=uid('tm'));S.projects.push(c)})}}})}
+function editFeedback(id,preset){const r=id?byId('feedback',id):null;
+  openForm({title:r?'Edit feedback':'Add feedback',data:r?clone(r):{type:'Mentor feedback',date:today(),...preset},fields:[{k:'internId',l:'Intern',t:'select',o:O.interns,req:1},{k:'byId',l:'Given by',t:'select',o:()=>O.people(['Mentor','Project Owner','Evaluator']),req:1},{k:'type',l:'Type',t:'select',o:O.list(['Mentor feedback','Project owner review']),req:1,noBlank:1},{k:'date',l:'Date',t:'date',req:1},{k:'rating',l:'Overall rating',t:'select',o:[[5,'5 – Outstanding'],[4,'4 – Exceeds'],[3,'3 – Meets'],[2,'2 – Below'],[1,'1 – Unsatisfactory']],req:1},{k:'strengths',l:'Strengths',t:'textarea'},{k:'improvements',l:'Development areas',t:'textarea'}],
+  onSave:v=>{v.rating=+v.rating;if(r)Object.assign(r,v);else S.feedback.push({id:uid('fb'),...v})}})}
+function editPotential(iid){const i=byId('interns',iid),max=S.config.scale.max,lab=S.config.scale.labels,ro=()=>Array.from({length:max},(_,k)=>[String(k+1),`${k+1}${lab[k]?' – '+lab[k]:''}`]);
+  const d={consideration:i.hr.consideration,recommendation:i.hr.recommendation};S.config.potentialDims.forEach(pd=>d['p_'+pd.id]=i.potential?.[pd.id]??'');
+  openForm({title:'Potential & HR review – '+i.name,wide:true,intro:'Potential is assessed separately from performance. Hiring consideration is an HR recommendation only — completing the internship does <b>not</b> mean selection for employment.',data:d,
+  fields:[...S.config.potentialDims.map(pd=>({k:'p_'+pd.id,l:pd.name,t:'select',o:ro})),{k:'consideration',l:'Future hiring consideration',t:'select',o:O.list(HIRE),req:1,noBlank:1},{k:'recommendation',l:'HR recommendation',t:'textarea',full:1}],
+  onSave:v=>{const vals=S.config.potentialDims.map(pd=>v['p_'+pd.id]);if(vals.some(x=>x)&&vals.some(x=>!x))return'Rate every potential dimension, or leave them all blank.';
+    i.potential=vals.every(x=>x)?Object.fromEntries(S.config.potentialDims.map(pd=>[pd.id,+v['p_'+pd.id]])):null;i.hr={consideration:v.consideration,recommendation:v.recommendation}}})}
+function editDims(){openForm({title:'Scorecard dimensions & weights',wide:true,intro:'Weights must total 100%. A dimension scored from <b>project technical metrics</b> uses each project’s own metrics; add custom criteria as new rows.',data:{dims:clone(S.config.dims)},fields:[{k:'dims',l:'Dimensions',t:'rows',sum:'weight',req:1,cols:[{k:'name',l:'Dimension',req:1},{k:'weight',l:'Weight %',t:'number',req:1},{k:'source',l:'Scored by',o:[['direct','Direct rating'],['project','Project technical metrics']]}]}],onSave:v=>{S.config.dims=v.dims.map(r=>({id:r.id,name:r.name,weight:+r.weight,source:r.source||'direct'}))}})}
+function editScale(){openForm({title:'Rating scale',data:{max:S.config.scale.max,labels:S.config.scale.labels},fields:[{k:'max',l:'Scale runs from 1 to',t:'number',req:1,min:3,max:10,step:1},{k:'labels',l:'Label for each point (1 → max)',t:'tags',full:1}],onSave:v=>{
+  if(v.labels.length&&v.labels.length!==v.max)return`Provide exactly ${v.max} labels, or leave them blank.`;
+  const hi=Math.max(0,...S.evaluations.flatMap(e=>[...Object.values(e.ratings||{}),...Object.values(e.tech||{})].map(Number)),...S.interns.flatMap(i=>Object.values(i.potential||{}).map(Number)));
+  if(hi>v.max)return`Existing ratings go up to ${hi}; the maximum cannot be lower.`;S.config.scale={max:v.max,labels:v.labels}}})}
+function editBands(){openForm({title:'Performance bands',data:{...S.config.bands},fields:[{k:'exceptional',l:'Exceptional – from',t:'number',req:1,min:0,max:100},{k:'strong',l:'Strong – from',t:'number',req:1,min:0,max:100},{k:'developing',l:'Developing – from',t:'number',req:1,min:0,max:100}],onSave:v=>{if(!(v.exceptional>v.strong&&v.strong>v.developing))return'Thresholds must descend: Exceptional > Strong > Developing.';S.config.bands=v}})}
+function editTalentRules(){openForm({title:'Talent rules',wide:true,data:{...S.config.talent,pd:clone(S.config.potentialDims)},fields:[{k:'perfThreshold',l:'Performance threshold (0–100)',t:'number',req:1,min:0,max:100},{k:'potThreshold',l:`Potential threshold (1–${S.config.scale.max})`,t:'number',req:1,min:1,max:S.config.scale.max},{k:'pd',l:'Potential dimensions (equally weighted)',t:'rows',req:1,cols:[{k:'name',l:'Dimension',req:1}]}],
+  onSave:v=>{S.config.talent={perfThreshold:v.perfThreshold,potThreshold:v.potThreshold};S.config.potentialDims=v.pd.map(r=>({id:r.id,name:r.name}))}})}
+function editGov(){const g=S.config.governance;openForm({title:'Governance rules',wide:true,data:{...g,roles:clone(S.config.roles)},fields:[
+  {k:'evalApproval',l:'HR Reviewer must approve evaluations before they count as final',t:'checkbox',full:1},{k:'requireComments',l:'Evidence / comments required to submit an evaluation',t:'checkbox',full:1},{k:'independentFinal',l:'Final checkpoint must be scored by someone other than the intern’s mentor',t:'checkbox',full:1},
+  {k:'approvalSlaDays',l:'Approval SLA (days)',t:'number',req:1,min:1,max:30,step:1},{k:'feedbackCadenceDays',l:'Mentor feedback cadence (days)',t:'number',req:1,min:1,max:60,step:1},{k:'calibrationTolerance',l:'Calibration tolerance (± score points)',t:'number',req:1,min:1,max:30},
+  {k:'roles',l:'Role responsibilities',t:'rows',cols:[{k:'role',l:'Role',req:1},{k:'responsibilities',l:'Responsibilities'}]}],
+  onSave:v=>{const roles=v.roles;delete v.roles;S.config.governance=v;S.config.roles=roles;if(!v.evalApproval)S.evaluations.forEach(e=>{if(e.status==='Submitted'){e.status='Approved';e.approvedOn=today();e.approvedBy='Auto (approval off)'}})}})}
+function editMetrics(pid){const p=byId('projects',pid);openForm({title:'Technical metrics – '+p.name,data:{m:clone(p.techMetrics)},fields:[{k:'m',l:'Metrics',t:'rows',sum:'weight',req:1,cols:[{k:'name',l:'Metric',req:1},{k:'weight',l:'Weight %',t:'number',req:1}]}],onSave:v=>{p.techMetrics=v.m.map(r=>({id:r.id,name:r.name,weight:+r.weight}))}})}
+
+/* ================= Evaluation form ================= */
+function openEval(iid,cpid){const ints=interns().filter(i=>i.status!=='Withdrawn');if(!ints.length){toast('Register interns first','warn');return}if(!cps().length){toast('Configure checkpoints first','warn');return}
+  EVF={iid:iid||ints[0].id,cpid:cpid||cps()[0].id};openModal({kind:'eval',title:'Checkpoint evaluation',wide:true,render:evRender,after:evLive})}
+const isFinalCp=id=>{const c=cps();return c.length&&id===[...c].sort((a,b)=>b.week-a.week)[0].id};
+function evRender(){const ints=interns(),i=byId('interns',EVF.iid);if(!i)return{body:'<div class="empty">Intern not found</div>'};
+  const proj=byId('projects',i.projectId),ex=evalFor(EVF.iid,EVF.cpid),e=ex||{ratings:{},tech:{},evaluatorId:isFinalCp(EVF.cpid)&&S.config.governance.independentFinal?'':i.mentorId||'',date:today(),comments:''},max=S.config.scale.max,lab=S.config.scale.labels,g=S.config.governance;
+  const rs=(attr,id,val)=>`<select ${attr}="${id}"><option value="">–</option>${Array.from({length:max},(_,k)=>`<option value="${k+1}"${+val===k+1?' selected':''}>${k+1}${lab[k]?' – '+esc(lab[k]):''}</option>`).join('')}</select>`;
+  const rows=S.config.dims.map(d=>{if(d.source==='project'&&proj?.techMetrics.length)return `<tr><td><b>${esc(d.name)}</b><div class="small muted">From ${esc(proj.name)} metrics</div></td><td class="num">${d.weight}%</td><td><b data-dimout="${d.id}">–</b></td></tr>`+proj.techMetrics.map(m=>`<tr><td style="padding-left:26px">↳ ${esc(m.name)} <span class="muted small">(${m.weight}%)</span></td><td></td><td>${rs('data-tm',m.id,e.tech?.[m.id])}</td></tr>`).join('');
+    return `<tr><td><b>${esc(d.name)}</b></td><td class="num">${d.weight}%</td><td>${rs('data-dim',d.id,e.ratings?.[d.id])}</td></tr>`}).join('');
+  const rules=[g.evalApproval&&'HR approval required',g.requireComments&&'Evidence required',g.independentFinal&&'Independent final review'].filter(Boolean);
+  return{body:`${!can('evaluate')?'<div class="note warn">Your current role can view but not edit evaluations.</div>':''}
+  <div class="fgrid"><div class="field"><label>Intern</label><select data-chg="evIntern">${ints.map(x=>`<option value="${x.id}"${x.id===EVF.iid?' selected':''}>${esc(x.name)} · ${esc(projCode(x.projectId))}</option>`).join('')}</select></div>
+  <div class="field"><label>Checkpoint</label><select data-chg="evCp">${cps().map(c=>`<option value="${c.id}"${c.id===EVF.cpid?' selected':''}>${esc(c.name)} (${c.weight}%) · due ${fmtDate(cpDue(c))}</option>`).join('')}</select></div>
+  <div class="field"><label>Evaluator <span class="req">*</span></label><select id="evBy"><option value="">— Select —</option>${O.people(['Mentor','Evaluator','Project Owner']).map(([a,b])=>`<option value="${a}"${a===e.evaluatorId?' selected':''}>${esc(b)}</option>`).join('')}</select></div>
+  <div class="field"><label>Date <span class="req">*</span></label><input type="date" id="evDate" value="${esc(e.date)}"></div></div>
+  <div class="bar small" style="margin:12px 0 8px">Status ${badge(ex?ex.status:'New')} <span class="muted">Mentor: ${esc(pname(i.mentorId))}</span><span class="grow"></span><span class="rules">${rules.map(r=>badge(r,'navy')).join('')}</span></div>
+  ${table(['Dimension','#Weight',`Rating (1–${max})`],[rows])}
+  <div class="field full" style="margin-top:12px"><label>Evidence & comments${g.requireComments?' <span class="req">*</span>':''}</label><textarea id="evComments" rows="3" placeholder="What did the intern deliver? What evidence supports the ratings?">${esc(e.comments)}</textarea></div>
+  <div class="scorebox"><div><div class="small muted">Weighted score (out of 100)</div><div class="big" id="evScore">—</div></div><div id="evBand"></div><div class="small muted" id="evComp" style="margin-left:auto"></div></div><div id="ferr" class="ferr"></div>`,
+  foot:`<button type="button" class="btn" data-act="closeModal">Close</button>${btn('Save draft','evSave','Draft','evaluate')}${btn(g.evalApproval?'Submit for approval':'Submit','evSave','Submit','evaluate','pri')}${ex&&ex.status==='Submitted'?btn('Return','returnEval',ex.id,'approve')+btn('Approve','approveEval',ex.id,'approve','pri'):''}`}}
+function evRead(){const r={},t={};$$('#mbody [data-dim]').forEach(s=>{if(s.value)r[s.dataset.dim]=+s.value});$$('#mbody [data-tm]').forEach(s=>{if(s.value)t[s.dataset.tm]=+s.value});return{internId:EVF.iid,checkpointId:EVF.cpid,ratings:r,tech:t,evaluatorId:$('#evBy')?.value||'',date:$('#evDate')?.value||'',comments:($('#evComments')?.value||'').trim()}}
+function evCompleteness(ev){const proj=byId('projects',byId('interns',ev.internId)?.projectId);let need=0,have=0;S.config.dims.forEach(d=>{if(d.source==='project'&&proj?.techMetrics.length)proj.techMetrics.forEach(m=>{need++;if(ev.tech[m.id])have++});else{need++;if(ev.ratings[d.id])have++}});return{need,have}}
+function evLive(){if(!EVF||!$('#evScore'))return;const ev=evRead(),sc=evalScore(ev),proj=byId('projects',byId('interns',ev.internId)?.projectId);$$('[data-dimout]').forEach(el=>{const t=techRating(ev,proj);el.textContent=t==null?'–':t.toFixed(2)});$('#evScore').textContent=sc==null?'—':sc.toFixed(1);const b=band(sc);$('#evBand').innerHTML=b?badge(b.n,b.c):'';const c=evCompleteness(ev);$('#evComp').textContent=`${c.have}/${c.need} ratings entered`}
+function evSave(mode){const ev=evRead(),errs=[],g=S.config.governance,i=byId('interns',ev.internId);
+  if(!ev.evaluatorId)errs.push('Select an evaluator.');if(!ev.date)errs.push('Enter the evaluation date.');
+  if(mode==='Submit'){const c=evCompleteness(ev);if(c.have<c.need)errs.push(`All ratings are required to submit (${c.have}/${c.need}). Save as draft to finish later.`);
+    if(g.requireComments&&!ev.comments)errs.push('Governance rule: add evidence / comments before submitting.');
+    if(g.independentFinal&&isFinalCp(ev.checkpointId)&&ev.evaluatorId===i.mentorId)errs.push('Governance rule: the final review must be scored by someone other than the intern’s mentor.')}
+  const ex=evalFor(ev.internId,ev.checkpointId);if(ex?.status==='Approved'&&!can('approve'))errs.push('This evaluation is approved; only HR or an administrator can change it.');
+  if(errs.length){$('#ferr').innerHTML=errs.map(esc).join('<br>');return}
+  const status=mode==='Draft'?'Draft':(g.evalApproval?'Submitted':'Approved'),rec={...ev,status,submittedOn:status==='Draft'?'':today(),approvedOn:status==='Approved'?today():'',approvedBy:status==='Approved'?S.role:''};
+  if(ex)Object.assign(ex,rec);else S.evaluations.push({id:uid('ev'),...rec});
+  log(status==='Draft'?'Evaluation draft saved':'Evaluation submitted',`${i.name} – ${cpName(ev.checkpointId)} – score ${f1(evalScore(ev))}`);
+  save();MS.pop();EVF=null;render();showModal();toast(status==='Draft'?'Draft saved':status==='Submitted'?'Submitted for HR approval':'Evaluation recorded')}
+function setEvalStatus(id,status){const e=byId('evaluations',id);if(!e)return;e.status=status;if(status==='Approved'){e.approvedOn=today();e.approvedBy=S.role}log(status==='Approved'?'Evaluation approved':'Evaluation returned',`${iname(e.internId)} – ${cpName(e.checkpointId)}`);save();if(MS.length&&MS[MS.length-1].kind==='eval'){MS.pop();EVF=null}refresh();toast(status==='Approved'?'Evaluation approved':'Returned to evaluator as draft')}
+
+/* ================= Views ================= */
+function vOverview(){if(!S.programmes.length)return`<div class="card empty">No batches yet. ${btn('Create batch','addProgramme','','config','pri')}</div>`;
+  const ints=interns(),act=ints.filter(i=>i.status==='Active'),sc=ints.map(i=>internScore(i).score).filter(x=>x!=null),cov=evalCoverage(ints),pend=pending(),inc=incompleteEvals(ints),ctl=controls(),okc=ctl.filter(c=>c.ok).length,g=S.config.governance;
+  const hp=ints.filter(i=>talent(i)===TCATS[0]).length,pipe=ints.filter(i=>['Consider','Strongly consider'].includes(i.hr.consideration)).length;
+  const items=[...pend.map(e=>['openEvalFor',`${e.internId}|${e.checkpointId}`,`Approve: ${iname(e.internId)} – ${cpName(e.checkpointId)}`,`Submitted ${ageOf(e)} days ago${ageOf(e)>g.approvalSlaDays?' · past SLA':''}`,ageOf(e)>g.approvalSlaDays?'#c62828':'#6d28d9']),
+    ...inc.map(({i,c})=>['openEvalFor',`${i.id}|${c.id}`,`Overdue: ${i.name} – ${c.name}`,`Due ${fmtDate(cpDue(c))}`,'#c62828']),
+    ...progEvals().filter(e=>e.status==='Draft').map(e=>['openEvalFor',`${e.internId}|${e.checkpointId}`,`Draft open: ${iname(e.internId)} – ${cpName(e.checkpointId)}`,`By ${pname(e.evaluatorId)}`,'#64748b']),
+    ...ctl.filter(c=>!c.ok&&!/overdue|approvals/i.test(c.name)).map(c=>['goto',c.go,c.name,c.detail,'#d97706'])];
+  const cpRows=cps().map(c=>{const due=cpDue(c),done=act.filter(i=>final(evalFor(i.id,c.id))).length,ap=act.filter(i=>evalFor(i.id,c.id)?.status==='Approved').length;return `<tr><td><b>${esc(c.name)}</b></td><td class="num">${c.weight}%</td><td>${fmtDate(due)}</td><td style="min-width:120px">${progBar(pct(done,act.length))}</td><td class="num">${ap}/${act.length}</td><td>${due>=today()?badge('Upcoming'):done<act.length?badge(`${act.length-done} overdue`,'red'):badge('Complete')}</td></tr>`});
+  return `<div class="bar"><span class="muted small">${esc(P().name)} · ${fmtDate(P().start)} – ${fmtDate(P().end)}</span><span class="grow"></span>${btn('+ New evaluation','evalNew','','evaluate','pri sm')}${btn('Programme report','repProg','','','sm')}</div>
+  <div class="kpis">${kpi('Active interns',act.length,`${ints.length} in batch · ${projs().length} projects`)}${kpi('Avg performance',sc.length?f1(avg(sc)):'—',sc.length?band(avg(sc)).n:'No evaluations yet','#15803d')}${kpi('Evaluations completed',cov.due?pct(cov.done,cov.due)+'%':'—',`${cov.done}/${cov.due} due evaluations submitted`)}${kpi('Pending approval',pend.length,`SLA ${g.approvalSlaDays} days`,'#6d28d9')}${kpi('Governance controls',`${okc}/${ctl.length}`,'controls passing',okc===ctl.length?'#15803d':'#d97706')}${kpi('High impact / potential',hp,`${pipe} in HR hiring pipeline`,'#0a2342')}</div>
+  <div class="grid g2"><div class="card"><h3>Needs attention ${badge(String(items.length),items.length?'red':'green')}</h3>${items.length?`<ul class="alertlist">${items.slice(0,9).map(([a,id,t,s,c])=>`<li data-act="${a}" data-id="${esc(id)}"><span class="dot" style="background:${c}"></span><div><b>${esc(t)}</b><div class="small muted">${esc(s)}</div></div></li>`).join('')}${items.length>9?`<li class="small muted">+ ${items.length-9} more</li>`:''}</ul>`:'<div class="empty">All clear.</div>'}</div>
+  <div class="card"><h3>Checkpoint progress</h3>${table(['Checkpoint','#Weight','Due','Submitted','#Approved','Status'],cpRows,'No checkpoints')}</div>
+  <div class="card"><h3>Performance bands <span class="small muted">Click to list interns</span></h3><div class="chartbox"><canvas id="c_seg"></canvas></div></div>
+  <div class="card"><h3>Talent matrix <span class="small muted">Click a point to open</span></h3><div class="chartbox"><canvas id="c_tal"></canvas></div></div>
+  <div class="card" style="grid-column:1/-1"><h3>Average score by project & checkpoint</h3><div class="chartbox"><canvas id="c_cp"></canvas></div></div></div>`}
+function aOverview(){const ints=interns(),pj=projs();
+  const labels=[...BANDS,'Not scored'],counts=labels.map((b,k)=>ints.filter(i=>{const s=internScore(i).score;return k===4?s==null:band(s)?.n===b}).length);
+  mkChart('c_seg',{type:'doughnut',data:{labels,datasets:[{data:counts,backgroundColor:[...BCOL,'#cbd5e1'],borderWidth:2}]},options:{...BASE,cutout:'60%',plugins:{legend:{position:'right',labels:{boxWidth:10,usePointStyle:true}}},onClick:(e,els)=>{if(els[0]){const l=labels[els[0].index];Object.assign(FILT.interns,{band:l==='Not scored'?'none':l,project:'',q:''});go('interns')}}}});
+  talentChart('c_tal',ints);
+  mkChart('c_cp',{type:'bar',data:{labels:pj.map(p=>p.name),datasets:cps().map((c,k)=>({label:c.name,backgroundColor:['#9ec5f4','#4a90e2','#0a2342','#6d28d9','#15803d'][k%5],borderRadius:4,data:pj.map(p=>{const v=ints.filter(i=>i.projectId===p.id).map(i=>{const e=evalFor(i.id,c.id);return final(e)?evalScore(e):null}).filter(x=>x!=null);return v.length?+avg(v).toFixed(1):null})}))},options:{...BASE,scales:{y:{min:0,max:100}}}})}
+
+function vEvals(){const t=FILT.ev.tab;let body='';
+  if(t==='matrix'){const f=FILT.ev.project,ints=interns().filter(i=>i.status!=='Withdrawn'&&(!f||i.projectId===f)),T=today();
+    const rows=ints.map(i=>{const s=internScore(i);return `<tr><td><b data-act="openIntern" data-id="${i.id}" style="cursor:pointer">${esc(i.name)}</b><div class="small muted">${esc(projCode(i.projectId))} · ${esc(pname(i.mentorId))}</div></td>${cps().map(c=>{const e=evalFor(i.id,c.id),due=cpDue(c);return `<td class="cell" data-act="openEvalFor" data-id="${i.id}|${c.id}">${e?`<b>${f1(evalScore(e))}</b><br>${badge(e.status)}`:due<T?badge('Overdue'):`<span class="small muted">Due ${fmtDate(due)}</span>`}</td>`}).join('')}<td>${scoreBadge(s.score,s.provisional)}</td><td>${talentBadge(talent(i))}</td></tr>`});
+    body=`<div class="note"><b>How scores work:</b> checkpoint score = Σ (dimension weight × rating ÷ ${S.config.scale.max}) → out of 100. Technical execution comes from each project’s own metrics. Overall = ${cps().map(c=>`${esc(c.name)} ${c.weight}%`).join(' + ')} (re-normalised until all are done). Click any cell to evaluate or review.</div>
+    <div class="bar">${sel('evProject',f,O.projects(),'All projects')}<span class="grow"></span>${btn('Export CSV','exp','evaluations','','sm')}${btn('+ New evaluation','evalNew','','evaluate','pri')}</div>
+    <div class="card">${table(['Intern',...cps().map(c=>`${c.name} (${c.weight}%)`),'Overall','Talent'],rows,'No interns')}</div>`}
+  else if(t==='approvals'){const pend=pending().sort((a,b)=>ageOf(b)-ageOf(a)),g=S.config.governance;
+    body=`<div class="note">${g.evalApproval?`Submitted evaluations are not final until an HR Reviewer approves them. SLA: ${g.approvalSlaDays} days.`:'Approval step is <b>off</b> — submitted evaluations count immediately. Turn it on in Governance → Rules.'}</div>
+    <div class="card">${table(['Intern','Checkpoint','Evaluator','Submitted','#Age','#Score',''],pend.map(e=>`<tr${ageOf(e)>g.approvalSlaDays?' class="over"':''}><td><b>${esc(iname(e.internId))}</b></td><td>${esc(cpName(e.checkpointId))}</td><td>${esc(pname(e.evaluatorId))}</td><td>${fmtDate(e.submittedOn||e.date)}</td><td class="num">${ageOf(e)}d${ageOf(e)>g.approvalSlaDays?' '+badge('Past SLA','red'):''}</td><td class="num">${scoreBadge(evalScore(e))}</td><td class="acts">${btn('Review','openEvalFor',`${e.internId}|${e.checkpointId}`,'','sm')} ${btn('Return','returnEval',e.id,'approve','sm')} ${btn('Approve','approveEval',e.id,'approve','sm pri')}</td></tr>`),'Nothing waiting for approval')}</div>`}
+  else{const cal=calibration(),all=avg(progEvals().filter(final).map(evalScore).filter(x=>x!=null)),tol=S.config.governance.calibrationTolerance;
+    const pj=projs().map(p=>{const v=progEvals().filter(e=>final(e)&&byId('interns',e.internId)?.projectId===p.id).map(evalScore).filter(x=>x!=null);return{p,n:v.length,a:avg(v)}});
+    body=`<div class="note">Calibration checks that different evaluators and projects score consistently. Flags appear when an evaluator’s average is more than ±${tol} points from the cohort average (${f1(all)}) with at least 2 evaluations. A flag prompts a calibration discussion — it does not prove bias.</div>
+    <div class="grid g2"><div class="card"><h3>By evaluator</h3>${table(['Evaluator','Role','#Evals','#Avg score','#vs cohort','Status'],cal.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.role)}</td><td class="num">${r.n}</td><td class="num">${f1(r.avg)}</td><td class="num">${r.diff>0?'+':''}${f1(r.diff)}</td><td>${r.flag?badge('Review','amber'):r.n<2?badge('Too few'):badge('Within range','green')}</td></tr>`),'No submitted evaluations')}</div>
+    <div class="card"><h3>By project</h3>${table(['Project','#Evals','#Avg score','#vs cohort'],pj.map(r=>`<tr><td>${esc(r.p.name)}</td><td class="num">${r.n}</td><td class="num">${f1(r.a)}</td><td class="num">${r.a==null?'—':(r.a-all>0?'+':'')+f1(r.a-all)}</td></tr>`))}</div></div>`}
+  return tabs('ev',[['matrix','Evaluation matrix'],['approvals',`Approval queue (${pending().length})`],['calibration','Calibration']])+body}
+
+function internRows(){const F=FILT.interns,q=F.q.toLowerCase();return interns().filter(i=>{const s=internScore(i).score;return(!F.project||i.projectId===F.project)&&(!F.band||(F.band==='none'?s==null:band(s)?.n===F.band))&&(!q||[i.name,i.college,i.email,projName(i.projectId),pname(i.mentorId)].join(' ').toLowerCase().includes(q))})}
+function internTable(){return table(['Intern','Project','Mentor','Status','#Evals','Score','#Potential','Talent',''],internRows().map(i=>{const s=internScore(i),p=potScore(i);return `<tr class="click" data-act="openIntern" data-id="${i.id}"><td><b>${esc(i.name)}</b><div class="small muted">${esc(i.college)}</div></td><td>${esc(projCode(i.projectId))}</td><td>${esc(pname(i.mentorId))}</td><td>${badge(i.status)}</td><td class="num">${s.done}/${s.total}</td><td>${scoreBadge(s.score,s.provisional)}</td><td class="num">${p==null?'—':p.toFixed(1)}</td><td>${talentBadge(talent(i))}</td><td class="acts">${btn('Evaluate','evalIntern',i.id,'evaluate','sm')} ${btn('Edit','editIntern',i.id,'config','sm')} ${btn('✕','delIntern',i.id,'config','sm dng')}</td></tr>`}),'No interns match')}
+function vInterns(){const F=FILT.interns;return `<div class="bar"><input placeholder="Search name, college, mentor…" value="${esc(F.q)}" data-inp="intQ" style="min-width:220px">${sel('intProject',F.project,O.projects(),'All projects')}${sel('intBand',F.band,[...O.list(BANDS),['none','Not scored']],'All bands')}<span class="grow"></span>${btn('Export CSV','exp','interns','','sm')}${btn('+ Register intern','addIntern','','config','pri')}</div><div class="card" id="intTbl">${internTable()}</div>`}
+function openIntern(id){openModal({title:()=>byId('interns',id)?.name||'Intern',wide:true,render:()=>internDetail(id),after:()=>internCharts(id)})}
+function internDetail(id){const i=byId('interns',id);if(!i)return{body:'<div class="empty">Intern not found</div>'};
+  const s=internScore(i),pt=potScore(i),prog=byId('programmes',i.programmeId),cpl=prog?.checkpoints||[],dims=S.config.dims;
+  const evRows=cpl.map(c=>{const e=evalFor(id,c.id);if(!e)return `<tr><td><b>${esc(c.name)}</b></td><td colspan="${dims.length+2}" class="small muted">${cpDue(c,prog)<today()?badge('Overdue'):'Due '+fmtDate(cpDue(c,prog))}</td><td>${btn('Evaluate','openEvalFor',`${id}|${c.id}`,'evaluate','sm')}</td></tr>`;
+    return `<tr><td><b>${esc(c.name)}</b><div class="small muted">${fmtDate(e.date)} · ${esc(pname(e.evaluatorId))}</div></td>${dims.map(d=>`<td class="num">${f1(dimRating(e,d))}</td>`).join('')}<td>${scoreBadge(evalScore(e))}</td><td>${badge(e.status)}</td><td>${btn('Open','openEvalFor',`${id}|${c.id}`,'','sm')}</td></tr>`});
+  const fb=S.feedback.filter(f=>f.internId===id).sort((a,b)=>b.date.localeCompare(a.date));
+  return{body:`<div class="kv"><div><b>Project</b>${esc(projName(i.projectId))}</div><div><b>Mentor</b>${esc(pname(i.mentorId))}</div><div><b>College</b>${esc(i.college)}</div><div><b>Status</b>${badge(i.status)}</div><div><b>Overall score</b>${scoreBadge(s.score,s.provisional)}</div><div><b>Checkpoints</b>${s.done}/${s.total} evaluated</div><div><b>Potential</b>${pt==null?'Not assessed':pt.toFixed(2)}</div><div><b>Talent</b>${talentBadge(talent(i))}</div></div>
+  <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Score by checkpoint</h3><div class="chartbox" style="height:210px"><canvas id="c_ip1"></canvas></div></div><div class="card"><h3>Latest dimension ratings</h3><div class="chartbox" style="height:210px"><canvas id="c_ip2"></canvas></div></div></div>
+  <div class="sec"><h4>Evaluation history</h4>${table(['Checkpoint',...dims.map(d=>'#'+d.name.split(' ')[0]),'Score','Status',''],evRows,'No checkpoints')}</div>
+  <div class="sec"><h4>Feedback ${btn('+ Add','addFeedback',id,'feedback','sm')}</h4>${fb.map(f=>`<div class="card" style="margin-bottom:8px;padding:10px 14px"><div class="small"><b>${esc(pname(f.byId))}</b> · ${esc(f.type)} · ${fmtDate(f.date)} · ${stars(f.rating)}</div>${f.strengths?`<div class="small"><b>Strengths:</b> ${esc(f.strengths)}</div>`:''}${f.improvements?`<div class="small"><b>Development:</b> ${esc(f.improvements)}</div>`:''}</div>`).join('')||'<div class="empty">No feedback yet</div>'}</div>
+  <div class="sec"><h4>Potential & HR ${btn('Assess','editPotential',id,'hr','sm')}</h4>${i.potential?`<div class="chips">${S.config.potentialDims.map(d=>`<span class="chip">${esc(d.name)}: <b>${i.potential[d.id]??'—'}</b></span>`).join('')}</div>`:'<div class="muted small">Potential not yet assessed.</div>'}<p class="small"><b>Hiring consideration:</b> ${badge(i.hr.consideration)} ${esc(i.hr.recommendation||'')}</p></div>`,
+  foot:`${btn('Edit','editIntern',id,'config')}${btn('Evaluate','evalIntern',id,'evaluate')}${btn('Print report','repIntern',id)}<button type="button" class="btn pri" data-act="closeModal">Close</button>`}}
+function internCharts(id){const i=byId('interns',id);if(!i)return;const cpl=byId('programmes',i.programmeId)?.checkpoints||[],s=internScore(i);
+  mkChart('c_ip1',{type:'bar',data:{labels:cpl.map(c=>c.name),datasets:[{data:cpl.map(c=>s.per[c.id]==null?null:+s.per[c.id].toFixed(1)),backgroundColor:cpl.map(c=>{const b=band(s.per[c.id]);return b?BCOL[BANDS.indexOf(b.n)]:'#cbd5e1'}),borderRadius:4}]},options:{...BASE,plugins:{legend:{display:false}},scales:{y:{min:0,max:100}}}});
+  const last=[...cpl].reverse().map(c=>evalFor(id,c.id)).find(final);
+  if(last)mkChart('c_ip2',{type:'radar',data:{labels:S.config.dims.map(d=>d.name.split(' ').slice(0,2).join(' ')),datasets:[{data:S.config.dims.map(d=>dimRating(last,d)),backgroundColor:'rgba(29,111,216,.18)',borderColor:'#1d6fd8',pointBackgroundColor:'#1d6fd8'}]},options:{...BASE,plugins:{legend:{display:false}},scales:{r:{min:0,max:S.config.scale.max,ticks:{stepSize:1}}}}});
+  else{const c=$('#c_ip2');if(c)c.parentElement.innerHTML='<div class="empty">No submitted evaluations yet</div>'}}
+
+function vTalent(){const ints=interns(),groups={};[...TCATS,'Not yet assessed'].forEach(c=>groups[c]=[]);ints.forEach(i=>groups[talent(i)].push(i));
+  const card=i=>`<div class="icard" data-act="openIntern" data-id="${i.id}"><div><b>${esc(i.name)}</b><div class="small muted">${esc(projCode(i.projectId))}</div></div><div style="text-align:right"><div class="small">Perf <b>${f1(internScore(i).score)}</b> · Pot <b>${potScore(i)?.toFixed(1)??'—'}</b></div>${badge(i.hr.consideration)}</div></div>`;
+  const q=k=>`<div class="q" style="border-top:3px solid ${TCOL[k]}"><h5>${TCATS[k]} <span class="muted">(${groups[TCATS[k]].length})</span></h5>${groups[TCATS[k]].map(card).join('')||'<div class="muted small">None</div>'}</div>`;
+  return `<div class="note warn">Talent categories and hiring consideration are <b>advisory inputs for HR</b>. Completing the internship is not selection for employment; any hiring decision follows EXL’s standard recruitment process.</div>
+  <div class="grid g2"><div class="card"><h3>Performance × potential <span class="small muted">Dashed lines = thresholds (${S.config.talent.perfThreshold} / ${S.config.talent.potThreshold})</span></h3><div class="chartbox" style="height:340px"><canvas id="c_tal2"></canvas></div></div>
+  <div class="card"><h3>Talent segments</h3><div class="quad">${q(2)}${q(0)}${q(3)}${q(1)}</div>${groups['Not yet assessed'].length?`<div class="small muted" style="margin-top:10px">Not yet assessed: ${groups['Not yet assessed'].map(i=>`<a style="cursor:pointer;color:var(--blue)" data-act="editPotential" data-id="${i.id}" data-perm="hr">${esc(i.name)}</a>`).join(', ')}</div>`:''}</div></div>
+  <div class="card" style="margin-top:16px"><h3>HR review register ${btn('Export CSV','exp','interns','','sm')}</h3>${table(['Intern','Score','#Potential','Category','Consideration','HR recommendation',''],ints.map(i=>{const s=internScore(i);return `<tr><td><b data-act="openIntern" data-id="${i.id}" style="cursor:pointer">${esc(i.name)}</b><div class="small muted">${esc(projCode(i.projectId))}</div></td><td>${scoreBadge(s.score,s.provisional)}</td><td class="num">${potScore(i)?.toFixed(2)??'—'}</td><td>${talentBadge(talent(i))}</td><td>${badge(i.hr.consideration)}</td><td class="small">${esc(i.hr.recommendation||'—')}</td><td>${btn('Assess','editPotential',i.id,'hr','sm')}</td></tr>`}))}</div>`}
+
+function vGov(){const t=FILT.gov.tab,g=S.config.governance;let body='';
+  if(t==='controls'){const ctl=controls(),ok=ctl.filter(c=>c.ok).length;
+    body=`<div class="grid g2"><div class="card"><h3>Governance controls ${badge(`${ok}/${ctl.length} passing`,ok===ctl.length?'green':'amber')}</h3>${ctl.map(c=>`<div class="ctrl"><span class="ic ${c.ok?'ok':'no'}">${c.ok?'✓':'!'}</span><div style="flex:1"><b class="small">${esc(c.name)}</b><div class="small muted">${esc(c.detail)}</div></div>${c.ok?'':`<button type="button" class="btn sm" data-act="goto" data-id="${c.go}">Fix</button>`}</div>`).join('')}</div>
+    <div class="card"><h3>Evaluation workflow ${btn('Edit rules','editGov','','config','sm')}</h3><div class="flow"><div class="st">Draft<small>Mentor / evaluator</small></div><span class="ar">→</span><div class="st">Submitted<small>${g.requireComments?'evidence required':'ratings complete'}</small></div><span class="ar">→</span>${g.evalApproval?`<div class="st">HR approval<small>within ${g.approvalSlaDays} days</small></div><span class="ar">→</span>`:''}<div class="st" style="background:var(--green-l);border-color:#bfe3cb">Final<small>counts in scores</small></div></div>
+    <ul class="small"><li>HR approval: <b>${g.evalApproval?'required':'off'}</b> · returned evaluations go back to draft</li><li>Evidence on submit: <b>${g.requireComments?'required':'optional'}</b></li><li>Independent final review: <b>${g.independentFinal?'on':'off'}</b> (mentor cannot score the final checkpoint)</li><li>Mentor feedback cadence: every <b>${g.feedbackCadenceDays}</b> days</li><li>Calibration tolerance: ±<b>${g.calibrationTolerance}</b> points</li><li>Framework changes (scorecard, weights, rules): <b>Administrator only</b>, logged in the audit trail</li></ul></div></div>`}
+  else if(t==='people'){const ints=interns().filter(i=>i.status==='Active'),cad=g.feedbackCadenceDays,T=today();
+    body=`<div class="bar"><span class="muted small">Roles decide who can evaluate, approve and change the framework.</span><span class="grow"></span>${btn('Export CSV','exp','people','','sm')}${btn('+ Add person','addPerson','','config','pri')}</div>
+    <div class="card" style="margin-bottom:16px">${table(['Name','Role','Assigned','#Evals done','Feedback (last '+cad+'d)','Status',''],S.people.map(p=>{const mine=ints.filter(i=>i.mentorId===p.id),ev=progEvals().filter(e=>final(e)&&e.evaluatorId===p.id).length,cov=mine.filter(i=>S.feedback.some(f=>f.internId===i.id&&f.byId===p.id&&daysBetween(f.date,T)<=cad)).length;
+      return `<tr class="${p.active?'':'inactive'}"><td><b>${esc(p.name)}</b><div class="small muted">${esc(p.email)}</div></td><td>${badge(p.role,'blue')}</td><td class="small">${p.role==='Mentor'?`${mine.length} mentees`:p.role==='Project Owner'?esc(S.projects.filter(x=>x.ownerId===p.id).map(x=>x.code).join(', ')||'—'):'—'}</td><td class="num">${ev}</td><td>${p.role==='Mentor'&&mine.length?(cov===mine.length?badge(`${cov}/${mine.length} covered`,'green'):badge(`${cov}/${mine.length} covered`,'amber')):'—'}</td><td>${p.active?badge('Active','green'):badge('Inactive')}</td><td class="acts">${btn('Edit','editPerson',p.id,'config','sm')} ${btn(p.active?'Deactivate':'Activate','togPerson',p.id,'config','sm')}</td></tr>`}))}</div>
+    <div class="card"><h3>Role responsibilities ${btn('Edit','editGov','','config','sm')}</h3>${table(['Role','Responsibilities','App permissions'],S.config.roles.map(r=>`<tr><td><b>${esc(r.role)}</b></td><td class="small">${esc(r.responsibilities)}</td><td class="small">${esc((ROLES[r.role]||[]).join(', ')||'view')}</td></tr>`))}</div>`}
+  else{body=`<div class="bar"><span class="muted small">Every evaluation action and framework change is recorded with the role that made it.</span><span class="grow"></span>${btn('Export CSV','exp','audit','','sm')}</div><div class="card">${table(['When','Role','Event','Detail'],S.audit.slice(0,100).map(a=>`<tr><td class="small">${fmtTs(a.ts)}</td><td>${badge(a.role,'blue')}</td><td><b>${esc(a.event)}</b></td><td class="small">${esc(a.detail)}</td></tr>`),'No activity yet')}</div>`}
+  return tabs('gov',[['controls','Controls & workflow'],['people','People & roles'],['audit','Audit trail']])+body}
+
+function vSetup(){const t=FILT.setup.tab;let body='';
+  if(t==='scorecard'){const d=S.config.dims,sum=sumW(d),b=S.config.bands;
+    body=`<div class="grid g2"><div class="card"><h3>Scorecard dimensions ${btn('Edit','editDims','','config','sm')}</h3>${table(['Dimension','#Weight','Scored by'],d.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.weight}%</td><td>${x.source==='project'?badge('Project metrics','violet'):badge('Direct rating')}</td></tr>`).concat(`<tr><td><b>Total</b></td><td class="num"><b>${sum}%</b></td><td>${sum===100?badge('Valid','green'):badge('Must be 100%','red')}</td></tr>`))}</div>
+    <div class="card"><h3>Rating scale ${btn('Edit','editScale','','config','sm')}</h3>${table(['Rating','Meaning','#Points earned'],Array.from({length:S.config.scale.max},(_,k)=>`<tr><td><b>${k+1}</b></td><td>${esc(S.config.scale.labels[k]||'')}</td><td class="num">${Math.round((k+1)/S.config.scale.max*100)}% of weight</td></tr>`))}</div>
+    <div class="card"><h3>Performance bands ${btn('Edit','editBands','','config','sm')}</h3>${table(['Band','Score range'],[`<tr><td>${badge('Exceptional','green')}</td><td>${b.exceptional}–100</td></tr>`,`<tr><td>${badge('Strong','blue')}</td><td>${b.strong} to below ${b.exceptional}</td></tr>`,`<tr><td>${badge('Developing','amber')}</td><td>${b.developing} to below ${b.strong}</td></tr>`,`<tr><td>${badge('Needs improvement','red')}</td><td>below ${b.developing}</td></tr>`])}</div>
+    <div class="card"><h3>Talent rules ${btn('Edit','editTalentRules','','config','sm')}</h3><p class="small">Potential is rated on: ${S.config.potentialDims.map(x=>`<span class="chip">${esc(x.name)}</span>`).join(' ')}</p>${table(['Category','Rule'],[[0,'≥','≥'],[1,'≥','<'],[2,'<','≥'],[3,'<','<']].map(([k,a,c])=>`<tr><td>${talentBadge(TCATS[k])}</td><td class="small">Performance ${a} ${S.config.talent.perfThreshold} and potential ${c} ${S.config.talent.potThreshold}</td></tr>`))}</div></div>`}
+  else if(t==='batches')body=`<div class="bar"><span class="muted small">Each batch has its own dates and review checkpoints. New batches can copy projects and metrics from an earlier one.</span><span class="grow"></span>${btn('+ Create batch','addProgramme','','config','pri')}</div><div class="card">${table(['Batch','Dates','#Cohort','Checkpoints (weight · due)','Status',''],S.programmes.map(p=>{const n=S.interns.filter(i=>i.programmeId===p.id).length,cs=sumW(p.checkpoints);return `<tr><td><b>${esc(p.name)}</b>${p.id===P().id?' '+badge('Current','navy'):''}</td><td class="small">${fmtDate(p.start)} – ${fmtDate(p.end)}<br>${p.durationWeeks} weeks</td><td class="num">${n}/${p.cohortSize}</td><td class="small">${p.checkpoints.map(c=>`${esc(c.name)} · ${c.weight}% · ${fmtDate(cpDue(c,p))}`).join('<br>')}${cs!==100?'<br>'+badge('Weights ≠ 100%','red'):''}</td><td>${badge(p.status)}</td><td class="acts">${p.id===P().id?'':btn('Switch','setActiveProg',p.id,'','sm')} ${btn('Edit','editProgramme',p.id,'config','sm')} ${btn('✕','delProgramme',p.id,'config','sm dng')}</td></tr>`}))}</div>`;
+  else body=`<div class="bar"><span class="muted small">Projects only define who owns the work and how technical execution is measured.</span><span class="grow"></span>${btn('+ Add project','addProject','','config','pri')}</div><div class="card">${table(['Project','Owner','Mentors','#Interns','Technical metrics','Status',''],projs(true).map(p=>`<tr class="${p.active?'':'inactive'}"><td><b>${esc(p.name)}</b> ${badge(p.code,'blue')}</td><td>${esc(pname(p.ownerId))}</td><td class="small">${esc(p.mentorIds.map(pname).join(', ')||'—')}</td><td class="num">${S.interns.filter(i=>i.projectId===p.id).length}</td><td><div class="chips">${p.techMetrics.map(m=>`<span class="chip">${esc(m.name)} ${m.weight}%</span>`).join('')}</div>${sumW(p.techMetrics)!==100?badge('Weights ≠ 100%','red'):''}</td><td>${p.active?badge('Active','green'):badge('Inactive')}</td><td class="acts">${btn('Edit','editProject',p.id,'config','sm')} ${btn(p.active?'Deactivate':'Activate','togProject',p.id,'config','sm')}</td></tr>`),'No projects in this batch')}</div>`;
+  return tabs('setup',[['scorecard','Scorecard & rules'],['batches','Batches & checkpoints'],['projects','Projects & technical metrics']])+body}
+
+function vReports(){const ex=[['interns','Interns & scores'],['evaluations','All evaluations'],['feedback','Feedback'],['controls','Governance controls'],['audit','Audit trail'],['people','People & roles']];
+  return `<div class="grid g2"><div class="card"><h3>Programme report</h3><p class="small muted">Leadership summary: scores, bands, talent segments, governance controls and checkpoint completion. Opens the print dialog — choose “Save as PDF”.</p>${btn('Generate programme report','repProg','','','pri')}</div>
+  <div class="card"><h3>Individual report</h3><p class="small muted">An intern’s checkpoint scores, dimension ratings, feedback and HR recommendation.</p><div class="bar">${sel('repIntern',FILT.rep.intern,O.interns(),'Select intern…')}${btn('Generate','repIntern','','','pri')}</div></div>
+  <div class="card"><h3>CSV exports</h3><div class="bar">${ex.map(([k,l])=>btn(l,'exp',k,'','sm')).join('')}</div></div>
+  <div class="card"><h3>Data</h3><p class="small muted">Data is saved automatically in this browser and survives a refresh. Use a backup to move it to another browser.</p><div class="bar">${btn('Export JSON backup','backup','','','sm')}${btn('Import backup','importJSON','','config','sm')}${btn('Reset to sample data','reset','','config','sm dng')}</div></div>
+  <div class="card" style="grid-column:1/-1"><h3>Security notice</h3><p class="small">The “View as” switch <b>simulates</b> role-based access for demonstration. It is not access control: anyone with this file can switch roles and edit browser data. A production deployment needs SSO, server-side authorisation, a tamper-proof audit log and controls for intern personal data.</p></div></div>`}
+
+/* ================= Exports & reports ================= */
+function download(fn,txt,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type}));a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+function csv(name,rows){if(!rows.length){toast('Nothing to export','warn');return}const cols=Object.keys(rows[0]),q=v=>{v=v==null?'':String(v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};download(name+'.csv','﻿'+[cols.map(q).join(','),...rows.map(r=>cols.map(c=>q(r[c])).join(','))].join('\r\n'),'text/csv;charset=utf-8');toast(`Exported ${rows.length} rows`)}
+function exportCSV(kind){const ints=interns(),iids=new Set(ints.map(i=>i.id));const T={
+  interns:()=>ints.map(i=>{const s=internScore(i);return{Name:i.name,Email:i.email,College:i.college,Batch:byId('programmes',i.programmeId)?.name,Project:projName(i.projectId),Mentor:pname(i.mentorId),Status:i.status,'Checkpoints evaluated':`${s.done}/${s.total}`,'Performance score':s.score==null?'':s.score.toFixed(1),Band:band(s.score)?.n||'',Provisional:s.provisional?'Yes':'No','Potential score':potScore(i)?.toFixed(2)??'','Talent category':talent(i),'Hiring consideration':i.hr.consideration,'HR recommendation':i.hr.recommendation}}),
+  evaluations:()=>S.evaluations.filter(e=>iids.has(e.internId)).map(e=>{const i=byId('interns',e.internId),proj=byId('projects',i.projectId),r={Intern:i.name,Project:projName(i.projectId),Checkpoint:cpName(e.checkpointId),Evaluator:pname(e.evaluatorId),Date:e.date,Status:e.status};S.config.dims.forEach(d=>{const v=dimRating(e,d);r[d.name]=v==null?'':+v.toFixed(2)});r['Technical metrics']=(proj?.techMetrics||[]).map(m=>`${m.name}: ${e.tech?.[m.id]??'-'}`).join('; ');const sc=evalScore(e);r.Score=sc==null?'':sc.toFixed(1);r.Band=band(sc)?.n||'';r.Evidence=e.comments;r['Approved on']=e.approvedOn||'';return r}),
+  feedback:()=>S.feedback.filter(f=>iids.has(f.internId)).map(f=>({Date:f.date,Intern:iname(f.internId),From:pname(f.byId),Type:f.type,Rating:f.rating,Strengths:f.strengths,'Development areas':f.improvements})),
+  controls:()=>controls().map(c=>({Control:c.name,Status:c.ok?'Pass':'Attention',Detail:c.detail})),
+  audit:()=>S.audit.map(a=>({When:a.ts,Role:a.role,Event:a.event,Detail:a.detail})),
+  people:()=>S.people.map(p=>({Name:p.name,Role:p.role,Email:p.email,Active:p.active?'Yes':'No',Responsibilities:p.responsibilities}))};
+  csv(`exl_impact_lab_${kind}_${today()}`,T[kind]())}
+function printHTML(title,html){$('#print').innerHTML=`<div class="rep"><div class="rephead"><div><div class="repbrand">EXL IMPACT LAB</div><h1>${esc(title)}</h1></div><div class="small" style="text-align:right">Generated ${fmtDate(today())}<br>${esc(P().name)}</div></div>${html}<p class="repfoot">Internal use only. Hiring consideration is an HR recommendation and does not constitute an offer or selection for employment.</p></div>`;setTimeout(()=>window.print(),60)}
+const rtab=(h,rows)=>`<table><thead><tr>${h.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${h.length}">None</td></tr>`}</tbody></table>`;
+function reportProgramme(){const ints=interns(),sc=ints.map(i=>internScore(i).score).filter(x=>x!=null),cov=evalCoverage(ints),ctl=controls();
+  printHTML('Programme evaluation report',`<h2>Summary</h2>${rtab(['Metric','Value'],[['Batch',esc(P().name)],['Interns',`${ints.length} (${ints.filter(i=>i.status==='Active').length} active)`],['Average performance',sc.length?f1(avg(sc))+' – '+band(avg(sc)).n:'—'],['Evaluations completed',`${cov.done}/${cov.due}`],['Pending approval',pending().length],['Governance controls passing',`${ctl.filter(c=>c.ok).length}/${ctl.length}`]])}
+  <h2>Scorecard</h2>${rtab(['Dimension','Weight'],S.config.dims.map(d=>[esc(d.name),d.weight+'%']))}<p>Checkpoints: ${cps().map(c=>`${esc(c.name)} ${c.weight}%`).join(', ')}</p>
+  <h2>Interns</h2>${rtab(['Intern','Project',...cps().map(c=>c.name),'Overall','Band','Potential','Talent category','Hiring consideration'],ints.map(i=>{const s=internScore(i);return[esc(i.name),esc(projCode(i.projectId)),...cps().map(c=>f1(s.per[c.id])),f1(s.score)+(s.provisional?' (prov.)':''),band(s.score)?.n||'—',potScore(i)?.toFixed(2)??'—',talent(i),i.hr.consideration]}))}
+  <h2>Governance controls</h2>${rtab(['Control','Status','Detail'],ctl.map(c=>[esc(c.name),c.ok?'Pass':'Attention',esc(c.detail)]))}
+  <h2>Evaluator calibration</h2>${rtab(['Evaluator','Evaluations','Average','vs cohort'],calibration().map(r=>[esc(r.name),r.n,f1(r.avg),f1(r.diff)]))}`)}
+function reportIntern(id){const i=byId('interns',id);if(!i){toast('Select an intern first','warn');return}const s=internScore(i),cpl=byId('programmes',i.programmeId)?.checkpoints||[],dims=S.config.dims;
+  printHTML('Individual evaluation report – '+i.name,`<h2>Profile</h2>${rtab(['Field','Value'],[['Name',esc(i.name)],['College',esc(i.college)],['Project',esc(projName(i.projectId))],['Mentor',esc(pname(i.mentorId))],['Overall score',f1(s.score)+(s.provisional?` (provisional, ${s.done}/${s.total} checkpoints)`:'')],['Band',band(s.score)?.n||'—'],['Potential',potScore(i)?.toFixed(2)??'Not assessed'],['Talent category',talent(i)]])}
+  <h2>Checkpoint evaluations</h2>${rtab(['Checkpoint','Weight','Evaluator',...dims.map(d=>d.name),'Score','Status'],cpl.map(c=>{const e=evalFor(i.id,c.id);return e?[esc(c.name),c.weight+'%',esc(pname(e.evaluatorId)),...dims.map(d=>f1(dimRating(e,d))),f1(evalScore(e)),e.status]:[esc(c.name),c.weight+'%','—',...dims.map(()=>'—'),'—','Not evaluated']}))}
+  <h2>Evidence</h2>${rtab(['Checkpoint','Comments'],cpl.map(c=>evalFor(i.id,c.id)).filter(Boolean).map(e=>[esc(cpName(e.checkpointId)),esc(e.comments)]))}
+  <h2>Feedback</h2>${rtab(['Date','From','Rating','Strengths','Development areas'],S.feedback.filter(f=>f.internId===id).map(f=>[fmtDate(f.date),esc(pname(f.byId)),f.rating+'/5',esc(f.strengths),esc(f.improvements)]))}
+  <h2>HR recommendation</h2><p><b>${esc(i.hr.consideration)}</b> — ${esc(i.hr.recommendation||'—')}</p>`)}
+
+/* ================= Actions ================= */
+function delIntern(id){const i=byId('interns',id);if(!confirm(`Delete ${i.name} and their evaluations and feedback?`))return;S.interns=S.interns.filter(x=>x.id!==id);S.evaluations=S.evaluations.filter(e=>e.internId!==id);S.feedback=S.feedback.filter(f=>f.internId!==id);log('Intern deleted',i.name);save();closeAll();render();toast('Intern deleted')}
+function delProgramme(id){const p=byId('programmes',id);if(S.interns.some(i=>i.programmeId===id)){toast('Move or remove this batch’s interns first','warn');return}if(!confirm(`Delete batch “${p.name}” and its projects?`))return;S.projects=S.projects.filter(x=>x.programmeId!==id);S.programmes=S.programmes.filter(x=>x.id!==id);if(S.activeProgrammeId===id)S.activeProgrammeId=S.programmes[0]?.id||'';log('Batch deleted',p.name);save();render()}
+const ACT={
+  go:id=>go(id),burger:()=>document.body.classList.toggle('nav-open'),closeModal:()=>closeModal(),formSave:()=>formSave(),
+  goto:id=>{closeAll();const [v,t]=id.split(':');const map={setup:'setup',ev:'evaluations',gov:'governance',interns:'interns'};if(t)FILT[v].tab=t;go(map[v])},
+  rowAdd:k=>{const r=readRows(k);r.push({id:uid('r')});rowsRedraw(k,r)},rowDel:(k,el)=>{const r=readRows(k);r.splice(+el.dataset.idx,1);rowsRedraw(k,r)},
+  tab:id=>{const [v,t]=id.split(':');FILT[v].tab=t;render()},
+  openIntern:id=>openIntern(id),addIntern:()=>editIntern(),editIntern:id=>editIntern(id),delIntern:id=>delIntern(id),
+  evalNew:()=>openEval(),evalIntern:id=>openEval(id),openEvalFor:id=>{const [a,b]=id.split('|');openEval(a,b)},evSave:m=>evSave(m),
+  approveEval:id=>setEvalStatus(id,'Approved'),returnEval:id=>setEvalStatus(id,'Draft'),
+  addFeedback:iid=>editFeedback(null,iid?{internId:iid,byId:byId('interns',iid)?.mentorId||''}:{}),editPotential:id=>editPotential(id),
+  addPerson:()=>editPerson(),editPerson:id=>editPerson(id),togPerson:id=>{const p=byId('people',id);p.active=!p.active;log(p.active?'Person activated':'Person deactivated',p.name);save();render()},
+  addProject:()=>editProject(),editProject:id=>editProject(id),togProject:id=>{const p=byId('projects',id);p.active=!p.active;log(p.active?'Project activated':'Project deactivated',p.name);save();render()},editMetrics:id=>editMetrics(id),
+  addProgramme:()=>editProgramme(),editProgramme:id=>editProgramme(id),delProgramme:id=>delProgramme(id),
+  setActiveProg:id=>{S.activeProgrammeId=id;FILT.interns.project=FILT.ev.project=FILT.rep.intern='';save();closeAll();render();toast('Switched to '+P().name)},
+  editDims,editScale,editBands,editTalentRules,editGov,
+  exp:k=>exportCSV(k),repProg:()=>reportProgramme(),repIntern:id=>reportIntern(id||FILT.rep.intern),
+  backup:()=>{download(`exl_impact_lab_backup_${today()}.json`,JSON.stringify(S,null,2),'application/json');toast('Backup downloaded')},
+  importJSON:()=>$('#importFile').click(),
+  reset:()=>{if(!confirm('Replace all data with the sample dataset?'))return;S=seed();save();closeAll();render();toast('Sample data restored')}
+};
+const CHG={
+  prog:el=>ACT.setActiveProg(el.value),role:el=>{S.role=el.value;save();render();if(MS.length)showModal();toast('Now viewing as: '+el.value)},
+  intProject:el=>{FILT.interns.project=el.value;render()},intBand:el=>{FILT.interns.band=el.value;render()},evProject:el=>{FILT.ev.project=el.value;render()},repIntern:el=>{FILT.rep.intern=el.value},
+  evIntern:el=>{EVF.iid=el.value;showModal()},evCp:el=>{EVF.cpid=el.value;showModal()},
+  importFile:el=>{const f=el.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||d.version!==VERSION||!d.config||!Array.isArray(d.interns))throw 0;S=d;log('Backup imported',f.name);save();closeAll();render();toast('Backup imported')}catch(e){toast('Not a valid Impact Lab backup','warn')}el.value=''};r.readAsText(f)}
+};
+const INP={intQ:el=>{FILT.interns.q=el.value;$('#intTbl').innerHTML=internTable()}};
+document.addEventListener('click',e=>{if(e.target===document.body&&document.body.classList.contains('nav-open')){document.body.classList.remove('nav-open');return}if(e.target.id==='modal'){closeModal();return}const el=e.target.closest('[data-act]');if(!el||!ACT[el.dataset.act])return;e.preventDefault();if(el.dataset.perm&&!need(el.dataset.perm))return;ACT[el.dataset.act](el.dataset.id,el)});
+document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(el&&CHG[el.dataset.chg])CHG[el.dataset.chg](el)});
+document.addEventListener('input',e=>{const el=e.target.closest('[data-inp]');if(el&&INP[el.dataset.inp])INP[el.dataset.inp](el);if(e.target.closest('#mbody')){updSums();evLive()}});
+document.addEventListener('submit',e=>{e.preventDefault();if(e.target.id==='gform')formSave()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MS.length)closeModal()});
+
+/* ================= Render ================= */
+const NAV=[['overview','Overview',vOverview,aOverview],['evaluations','Evaluations',vEvals],['interns','Interns',vInterns],['talent','Talent & HR',vTalent,()=>talentChart('c_tal2',interns())],['governance','Governance',vGov],['setup','Framework Setup',vSetup],['reports','Reports',vReports]];
+function go(v){VIEW=v;document.body.classList.remove('nav-open');render();window.scrollTo(0,0)}
+function render(){dropCharts('#main');const v=NAV.find(n=>n[0]===VIEW)||NAV[0],pc=pending().length;
+  $('#nav').innerHTML=NAV.map(([k,l],i)=>`<a class="${k===v[0]?'on':''}" data-act="go" data-id="${k}"><span class="n">${i+1}</span>${l}${k==='evaluations'&&pc?` <span class="badge b-violet" style="margin-left:auto">${pc}</span>`:''}</a>`).join('');
+  $('#progSel').innerHTML=S.programmes.map(p=>`<option value="${p.id}"${p.id===P().id?' selected':''}>${esc(p.name)}</option>`).join('')||'<option>No batches</option>';
+  $('#roleSel').innerHTML=Object.keys(ROLES).map(r=>`<option${r===S.role?' selected':''}>${r}</option>`).join('');
+  $('#protoNote').innerHTML=`<b>Prototype role view:</b> ${esc(S.role)} — ${ROLES[S.role].length?'can '+ROLES[S.role].join(', '):'read-only'}. Simulated access only, not enterprise security.`;
+  $('#vtitle').textContent=v[1];$('#main').innerHTML=v[2]();if(v[3])v[3]()}
+if(window.Chart){Chart.defaults.font.family='"Segoe UI",-apple-system,Roboto,Arial,sans-serif';Chart.defaults.color='#475569'}
+load();render();
+</script>
+</body>
+</html>
