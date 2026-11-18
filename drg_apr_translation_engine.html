@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MS-DRG → APR-DRG Concept Translation Engine (Synthetic PoC)</title>
+<style>
+:root{--bg:#f4f6f8;--panel:#fff;--ink:#1c2733;--mute:#5b6b7b;--line:#dde3e9;--pri:#0f5b78;--pri2:#e6f1f5;--acc:#2a7f62;--warn:#b7791f;--bad:#b23b3b;--violet:#5b4b9a;--orig:#0f5b78;--tran:#c27c2c;--r:8px}
+*{box-sizing:border-box}
+body{margin:0;font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+header{position:sticky;top:0;z-index:20;background:#0d2f3f;color:#fff;display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap}
+header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+.syn{background:#f2c94c;color:#3a2a00;font-weight:700;font-size:11px;padding:3px 9px;border-radius:4px;letter-spacing:.6px}
+.synline{font-size:11.5px;color:#cfe3ec}
+header .sp{flex:1}
+.layout{display:flex;min-height:calc(100vh - 44px)}
+nav{width:218px;flex:none;background:#fff;border-right:1px solid var(--line);padding:10px 8px;position:sticky;top:44px;height:calc(100vh - 44px);overflow:auto}
+nav a{display:flex;gap:8px;align-items:center;padding:7px 10px;border-radius:6px;color:var(--ink);text-decoration:none;cursor:pointer;font-size:13px}
+nav a:hover{background:var(--pri2)}
+nav a.on{background:var(--pri);color:#fff}
+nav a .n{width:18px;text-align:right;color:var(--mute);font-size:11px}
+nav a.on .n{color:#cfe3ec}
+main{flex:1;min-width:0;padding:16px 20px 60px}
+h2{font-size:18px;margin:2px 0 4px}
+.sub{color:var(--mute);margin:0 0 14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h3 .r{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.kpi .l{font-size:11.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px}
+.kpi .v{font-size:22px;font-weight:650;margin-top:2px}
+.kpi .s{font-size:11.5px;color:var(--mute)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f7f9fb;font-weight:600;color:#33475b;position:sticky;top:0;cursor:default;white-space:nowrap}
+th.s{cursor:pointer}
+th.s:hover{color:var(--pri)}
+tr.sel td{background:#eef6f9}
+tr:hover td{background:#fafcfd}
+.tw{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:6px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+button,.btn{font:inherit;font-size:12.5px;border:1px solid var(--pri);background:var(--pri);color:#fff;border-radius:6px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+button.sec{background:#fff;color:var(--pri)}
+button.gh{background:transparent;border-color:var(--line);color:var(--ink)}
+button.bad{background:#fff;color:var(--bad);border-color:#e3b4b4}
+button.ok{background:var(--acc);border-color:var(--acc)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.sm{padding:2px 7px;font-size:11.5px}
+input,select,textarea{font:inherit;font-size:12.5px;border:1px solid #c9d3dc;border-radius:6px;padding:5px 7px;background:#fff;color:var(--ink)}
+textarea{width:100%;min-height:62px;resize:vertical}
+input[type=number]{width:80px}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--mute)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.b-hi{background:#e3f3ec;color:#1d6b4f;border-color:#bfe3d3}
+.b-part{background:#e8f0fb;color:#2a5aa0;border-color:#c8d9f2}
+.b-multi{background:#efeafa;color:#5b4b9a;border-color:#d9cff2}
+.b-sme{background:#fdf3e2;color:#9a5b0b;border-color:#f3dcb3}
+.b-ins{background:#f1f1f1;color:#555;border-color:#ddd}
+.b-not{background:#fbe9e9;color:#a33;border-color:#efc6c6}
+.b-prov{background:#fff4d6;color:#7a5600;border-color:#f0dc9c}
+.b-emp{background:#e3f3ec;color:#1d6b4f}
+.b-st{background:#eef2f6;color:#33475b}
+.note{background:#f7f9fb;border-left:3px solid var(--pri);padding:8px 10px;border-radius:4px;color:#33475b;font-size:12.5px;margin:8px 0}
+.warn{background:#fff8ec;border-left:3px solid var(--warn);padding:8px 10px;border-radius:4px;font-size:12.5px;margin:6px 0}
+.err{background:#fdf0f0;border-left:3px solid var(--bad);padding:8px 10px;border-radius:4px;font-size:12.5px;margin:6px 0}
+.mute{color:var(--mute)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.bar{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px}
+.bar .lb{width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .tr{flex:1;background:#eef2f5;border-radius:3px;height:14px;position:relative;min-width:60px}
+.bar .fl{height:100%;border-radius:3px;background:var(--pri)}
+.bar .vl{width:70px;text-align:right;font-variant-numeric:tabular-nums}
+.cmp .tr{height:9px;margin:1px 0}
+.legend{display:flex;gap:14px;font-size:11.5px;color:var(--mute);margin:4px 0 6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.stack{display:flex;height:12px;border-radius:3px;overflow:hidden;min-width:90px;background:#eef2f5}
+.s1{background:#cfe5ee}.s2{background:#7fb6cc}.s3{background:#2f7f9f}.s4{background:#0d3f55}
+.heat td{text-align:center;font-size:11px;padding:4px;min-width:38px}
+.tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+.tabs button{background:#fff;color:var(--ink);border-color:var(--line)}
+.tabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.cond{display:grid;grid-template-columns:150px 110px 1fr 28px;gap:6px;margin:4px 0;align-items:center}
+.grp{border:1px dashed #b9c6d2;border-radius:6px;padding:8px;margin:6px 0;background:#fbfcfd}
+.grp .gh{font-size:11.5px;color:var(--mute);margin-bottom:4px;display:flex;justify-content:space-between}
+.or{font-size:11px;font-weight:700;color:var(--violet);text-align:center;margin:2px 0}
+.gen{border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0;background:#fff}
+.gen.prov{border-color:#f0dc9c}
+.gen .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gen .hd b{font-size:14px}
+.expl ol{margin:6px 0 0 18px;padding:0}
+.expl li{margin:4px 0}
+.side{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.side>div{padding:8px 10px;border-bottom:1px solid var(--line)}
+.side .h{background:#f7f9fb;font-weight:600}
+.pill{display:inline-block;background:#eef2f6;border-radius:4px;padding:1px 6px;margin:1px 2px;font-size:11.5px}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px}
+.flow span{background:var(--pri2);border:1px solid #c6dde7;border-radius:6px;padding:5px 8px}
+.flow em{color:var(--mute);font-style:normal}
+.toast{position:fixed;bottom:18px;right:18px;background:#0d2f3f;color:#fff;padding:9px 14px;border-radius:6px;z-index:99;font-size:12.5px;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.on{opacity:1}
+svg text{font-family:inherit}
+details summary{cursor:pointer;color:var(--pri);font-size:12.5px}
+@media (max-width:900px){header{position:static}.synline{font-size:10.5px}.layout{flex-direction:column}nav{width:auto;height:auto;position:static;display:flex;overflow-x:auto;gap:2px;padding:6px}nav a{white-space:nowrap}main{padding:12px}.g2{grid-template-columns:1fr}.cond{grid-template-columns:1fr 1fr}.bar .lb{width:100px}.side{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>MS-DRG → APR-DRG Concept Translation Engine</h1>
+  <span class="syn" id="synBadge">SYNTHETIC DATA</span>
+  <span class="synline" id="synLine">Fictional demo data — DRG relationships, MCC/CC flags and SOI levels are not official CMS or 3M/Solventum grouper logic.</span>
+  <span class="sp"></span>
+  <button class="sec sm" onclick="A.resetSample()">Reset to sample data</button>
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+/* =====================================================================
+   MODULE 0 — SYNTHETIC SAMPLE DATA (deterministic, seeded)
+   All DRG relationships, MCC/CC flags, SOI levels, weights and outcomes
+   below are FICTIONAL demo values. They are NOT official CMS or 3M/Solventum
+   grouper logic and must not be used for coding or payment.
+   ===================================================================== */
+const SYN = (function () {
+  function rng(seed) { let a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  const GV_MS = 'MS-DRG v42 (synthetic demo)', GV_APR = 'APR-DRG v41 (synthetic demo)';
+  const BASE = 6500;
+
+  const MS = [
+    ['870', 'Septicemia or severe sepsis with MV >96 hours', 4.30],
+    ['871', 'Septicemia or severe sepsis without MV >96 hours with MCC', 1.87],
+    ['872', 'Septicemia or severe sepsis without MV >96 hours without MCC', 1.02],
+    ['189', 'Pulmonary edema and respiratory failure', 1.22],
+    ['190', 'Chronic obstructive pulmonary disease with MCC', 1.16],
+    ['191', 'Chronic obstructive pulmonary disease with CC', 0.93],
+    ['192', 'Chronic obstructive pulmonary disease without CC/MCC', 0.74],
+    ['193', 'Simple pneumonia and pleurisy with MCC', 1.31],
+    ['194', 'Simple pneumonia and pleurisy with CC', 0.89],
+    ['195', 'Simple pneumonia and pleurisy without CC/MCC', 0.70],
+    ['204', 'Respiratory signs and symptoms', 0.72],
+    ['291', 'Heart failure and shock with MCC', 1.33],
+    ['292', 'Heart failure and shock with CC', 0.89],
+    ['293', 'Heart failure and shock without CC/MCC', 0.66],
+    ['308', 'Cardiac arrhythmia and conduction disorders with MCC', 1.14],
+    ['309', 'Cardiac arrhythmia and conduction disorders with CC', 0.79],
+    ['310', 'Cardiac arrhythmia and conduction disorders without CC/MCC', 0.56],
+    ['602', 'Cellulitis with MCC', 1.43],
+    ['603', 'Cellulitis without MCC', 0.86],
+    ['682', 'Renal failure with MCC', 1.49],
+    ['683', 'Renal failure with CC', 0.93],
+    ['684', 'Renal failure without CC/MCC', 0.62],
+    ['689', 'Kidney and urinary tract infections with MCC', 1.11],
+    ['690', 'Kidney and urinary tract infections without MCC', 0.80],
+    ['864', 'Fever and inflammatory conditions', 0.86],
+    ['865', 'Viral illness with MCC', 1.29],
+    ['866', 'Viral illness without MCC', 0.71]
+  ];
+  const APR = [
+    ['720', 'Septicemia and disseminated infections', 1.40],
+    ['721', 'Post-operative, post-traumatic and other device infections', 1.55],
+    ['723', 'Viral illness', 0.62],
+    ['133', 'Pulmonary edema and respiratory failure', 1.10],
+    ['137', 'Major respiratory infections and inflammations', 1.20],
+    ['139', 'Other pneumonia', 0.90],
+    ['140', 'Chronic obstructive pulmonary disease', 0.85],
+    ['141', 'Asthma', 0.62],
+    ['144', 'Respiratory signs, symptoms and minor diagnoses', 0.60],
+    ['194', 'Heart failure', 0.95],
+    ['201', 'Cardiac arrhythmia and conduction disorders', 0.72],
+    ['383', 'Cellulitis and other skin infections', 0.80],
+    ['460', 'Renal failure', 0.92],
+    ['463', 'Kidney and urinary tract infections', 0.76],
+    ['861', 'Signs, symptoms and other factors influencing health status', 0.66]
+  ];
+  const SOI_MULT = [0.62, 0.82, 1.22, 2.35];
+
+  // [code, description, demo MS flag, demo APR secondary SOI level, demo ROM level]
+  const DX = [
+    ['A41.9', 'Sepsis, unspecified organism', 'MCC', 3, 3], ['A41.51', 'Sepsis due to Escherichia coli', 'MCC', 3, 3],
+    ['A41.01', 'Sepsis due to methicillin susceptible Staphylococcus aureus', 'MCC', 3, 3], ['A41.89', 'Other specified sepsis', 'MCC', 3, 3],
+    ['A40.0', 'Sepsis due to streptococcus, group A', 'MCC', 3, 3], ['T81.44XA', 'Sepsis following a procedure, initial encounter', 'MCC', 3, 3],
+    ['J44.1', 'Chronic obstructive pulmonary disease with (acute) exacerbation', 'CC', 2, 2], ['J44.0', 'Chronic obstructive pulmonary disease with acute lower respiratory infection', 'CC', 2, 2],
+    ['J43.9', 'Emphysema, unspecified', '', 1, 1], ['J45.901', 'Unspecified asthma with (acute) exacerbation', 'CC', 2, 1],
+    ['J18.9', 'Pneumonia, unspecified organism', 'MCC', 3, 3], ['J15.1', 'Pneumonia due to Pseudomonas', 'MCC', 3, 3],
+    ['J13', 'Pneumonia due to Streptococcus pneumoniae', 'MCC', 3, 3], ['J15.212', 'Pneumonia due to methicillin resistant Staphylococcus aureus', 'MCC', 3, 3],
+    ['J69.0', 'Pneumonitis due to inhalation of food and vomit', 'MCC', 3, 3], ['J96.01', 'Acute respiratory failure with hypoxia', 'MCC', 3, 3],
+    ['J96.02', 'Acute respiratory failure with hypercapnia', 'MCC', 3, 3], ['J96.21', 'Acute and chronic respiratory failure with hypoxia', 'MCC', 3, 3],
+    ['J81.0', 'Acute pulmonary edema', 'MCC', 3, 3], ['R06.00', 'Dyspnea, unspecified', '', 1, 1],
+    ['I50.21', 'Acute systolic (congestive) heart failure', 'MCC', 3, 3], ['I50.23', 'Acute on chronic systolic (congestive) heart failure', 'MCC', 3, 3],
+    ['I50.31', 'Acute diastolic (congestive) heart failure', 'MCC', 3, 3], ['I50.33', 'Acute on chronic diastolic (congestive) heart failure', 'MCC', 3, 3],
+    ['I50.9', 'Heart failure, unspecified', 'CC', 2, 1], ['I11.0', 'Hypertensive heart disease with heart failure', 'CC', 2, 2],
+    ['I13.0', 'Hypertensive heart and chronic kidney disease with heart failure and stage 1-4 CKD', 'CC', 2, 2], ['I48.91', 'Unspecified atrial fibrillation', '', 1, 1],
+    ['I48.0', 'Paroxysmal atrial fibrillation', '', 1, 1], ['R57.0', 'Cardiogenic shock', 'MCC', 4, 4],
+    ['N17.9', 'Acute kidney failure, unspecified', 'CC', 2, 2], ['N17.0', 'Acute kidney failure with tubular necrosis', 'MCC', 3, 3],
+    ['N18.6', 'End stage renal disease', 'MCC', 3, 3], ['N18.4', 'Chronic kidney disease, stage 4 (severe)', 'CC', 2, 2],
+    ['N39.0', 'Urinary tract infection, site not specified', 'CC', 2, 1], ['N10', 'Acute pyelonephritis', 'CC', 2, 1],
+    ['L03.115', 'Cellulitis of right lower limb', 'CC', 2, 1], ['L03.116', 'Cellulitis of left lower limb', 'CC', 2, 1],
+    ['B34.9', 'Viral infection, unspecified', '', 1, 1], ['R50.9', 'Fever, unspecified', '', 1, 1],
+    ['R65.20', 'Severe sepsis without septic shock', 'MCC', 3, 3], ['R65.21', 'Severe sepsis with septic shock', 'MCC', 4, 4],
+    ['G93.41', 'Metabolic encephalopathy', 'MCC', 3, 3], ['E43', 'Unspecified severe protein-calorie malnutrition', 'MCC', 3, 3],
+    ['E44.0', 'Moderate protein-calorie malnutrition', 'CC', 2, 1], ['D65', 'Disseminated intravascular coagulation', 'MCC', 4, 4],
+    ['E87.1', 'Hypo-osmolality and hyponatremia', 'CC', 2, 2], ['E87.20', 'Acidosis, unspecified', 'CC', 2, 2],
+    ['E86.0', 'Dehydration', '', 1, 1], ['D69.6', 'Thrombocytopenia, unspecified', '', 2, 2],
+    ['D64.9', 'Anemia, unspecified', '', 1, 1], ['E11.9', 'Type 2 diabetes mellitus without complications', '', 1, 1],
+    ['I10', 'Essential (primary) hypertension', '', 1, 1], ['E78.5', 'Hyperlipidemia, unspecified', '', 1, 1],
+    ['K72.00', 'Acute and subacute hepatic failure without coma', 'MCC', 4, 4], ['R41.82', 'Altered mental status, unspecified', '', 1, 1]
+  ];
+  const DXM = {}; DX.forEach(d => DXM[d[0]] = { code: d[0], desc: d[1], ms: d[2], soi: d[3], rom: d[4] });
+  const PX = { '5A1955Z': 'Respiratory ventilation, greater than 96 consecutive hours', '5A1945Z': 'Respiratory ventilation, 24-96 consecutive hours', '0BH17EZ': 'Insertion of endotracheal airway into trachea, via natural opening', '02HV33Z': 'Insertion of infusion device into superior vena cava, percutaneous', '30233N1': 'Transfusion of nonautologous red blood cells into peripheral vein, percutaneous', '5A1D70Z': 'Performance of urinary filtration, intermittent, less than 6 hours per day' };
+
+  const FAM = {
+    SEPSIS: { w: 26, pdx: [['A41.9', 45], ['A41.51', 18], ['A41.01', 10], ['A41.89', 9], ['A40.0', 5], ['T81.44XA', 13]], ms: ['871', '872'], apr: p => p === 'T81.44XA' ? '721' : '720', los: 3.4, minSoi: 2,
+      sec: [['R65.20', .32], ['R65.21', .10], ['G93.41', .20], ['N17.9', .30], ['N17.0', .06], ['E87.1', .18], ['E87.20', .18], ['D69.6', .14], ['D65', .03], ['J96.01', .14], ['E43', .08], ['E44.0', .10], ['J18.9', .14], ['N39.0', .18], ['K72.00', .03], ['R41.82', .18], ['E86.0', .22]],
+      px: [['02HV33Z', .18], ['5A1945Z', .06], ['30233N1', .08]] },
+    PNEU: { w: 15, pdx: [['J18.9', 55], ['J15.1', 10], ['J13', 10], ['J15.212', 10], ['J69.0', 15]], ms: ['193', '194', '195'], apr: p => ['J15.1', 'J15.212', 'J69.0'].includes(p) ? '137' : '139', los: 3.0,
+      sec: [['J96.01', .18], ['J44.1', .15], ['E87.1', .15], ['N17.9', .14], ['G93.41', .08], ['E86.0', .2], ['D69.6', .05], ['E44.0', .07], ['E43', .05], ['I50.9', .10], ['R41.82', .10]], px: [['0BH17EZ', .04]] },
+    COPD: { w: 12, pdx: [['J44.1', 55], ['J44.0', 25], ['J43.9', 8], ['J45.901', 12]], ms: ['190', '191', '192'], apr: p => p === 'J45.901' ? '141' : '140', los: 2.6,
+      sec: [['J96.01', .10], ['J96.02', .14], ['J96.21', .08], ['I50.9', .12], ['I48.91', .10], ['E87.1', .06], ['J18.9', .06]], px: [] },
+    RESP: { w: 8, pdx: [['J96.01', 50], ['J96.02', 20], ['J96.21', 20], ['J81.0', 10]], ms: ['189'], apr: () => '133', los: 3.4,
+      sec: [['J44.1', .30], ['J18.9', .18], ['I50.23', .10], ['G93.41', .10], ['N17.9', .15], ['E87.20', .2]], px: [['5A1945Z', .25], ['0BH17EZ', .25]] },
+    HF: { w: 15, pdx: [['I50.23', 20], ['I50.33', 20], ['I50.21', 10], ['I50.31', 10], ['I11.0', 20], ['I13.0', 20]], ms: ['291', '292', '293'], apr: () => '194', los: 3.0,
+      sec: [['N17.9', .25], ['N18.4', .15], ['N18.6', .05], ['E87.1', .15], ['I48.91', .25], ['J96.01', .10], ['J81.0', .05], ['R57.0', .03], ['E43', .03]], px: [] },
+    ARR: { w: 5, pdx: [['I48.91', 60], ['I48.0', 40]], ms: ['308', '309', '310'], apr: () => '201', los: 2.0, sec: [['I50.9', .2], ['E87.1', .05], ['N17.9', .05], ['I50.23', .08], ['J96.01', .05], ['N17.0', .03]], px: [] },
+    RENAL: { w: 7, pdx: [['N17.9', 70], ['N17.0', 30]], ms: ['682', '683', '684'], apr: () => '460', los: 3.0, sec: [['N18.4', .2], ['N18.6', .1], ['E87.20', .2], ['E87.1', .15], ['E86.0', .3], ['G93.41', .05], ['E43', .04]], px: [['5A1D70Z', .15]] },
+    UTI: { w: 5, pdx: [['N39.0', 60], ['N10', 40]], ms: ['689', '690'], apr: () => '463', los: 2.6, sec: [['E86.0', .3], ['N17.9', .2], ['G93.41', .1], ['R41.82', .2], ['E87.1', .1], ['E43', .05], ['N17.0', .04]], px: [] },
+    CELL: { w: 5, pdx: [['L03.115', 50], ['L03.116', 50]], ms: ['602', '603'], apr: () => '383', los: 3.0, sec: [['N17.9', .1], ['E44.0', .05], ['E43', .06], ['G93.41', .06], ['N17.0', .03]], px: [] },
+    VIRAL: { w: 1.5, pdx: [['B34.9', 1]], ms: ['865', '866'], apr: () => '723', los: 2.0, sec: [['E86.0', .3], ['E87.1', .1], ['J96.01', .1]], px: [] },
+    FEVER: { w: 0.8, pdx: [['R50.9', 1]], ms: ['864'], apr: () => '861', los: 1.6, sec: [['E86.0', .2]], px: [] },
+    DYSP: { w: 0.8, pdx: [['R06.00', 1]], ms: ['204'], apr: () => '144', los: 1.5, sec: [], px: [] }
+  };
+  const GENERAL = [['I10', .45], ['E78.5', .35], ['E11.9', .25], ['D64.9', .15], ['E86.0', .08], ['I48.91', .07], ['N18.4', .04], ['E87.1', .04]];
+  const CHALLENGED = new Set(['G93.41', 'E43', 'J96.01', 'J96.02', 'R65.20', 'N17.0', 'J18.9', 'I50.23', 'I50.33']);
+  const MSW = {}; MS.forEach(m => MSW[m[0]] = m[2]);
+
+  // Fictional, simplified SOI logic (NOT 3M logic): highest secondary level,
+  // reduced by one if a single high-level diagnosis has no supporting diagnoses,
+  // elevated when many high-level diagnoses co-exist or very elderly with many comorbidities.
+  function soiCalc(levels, age, minSoi) {
+    let soi = 1;
+    if (levels.length) {
+      const L = [...levels].sort((a, b) => b - a), top = L[0];
+      soi = top;
+      if (top >= 3 && L.slice(1).filter(l => l >= top - 1).length === 0) soi = top - 1;
+      if (top === 3 && L.filter(l => l >= 3).length >= 3) soi = 4;
+      if (age >= 85 && soi >= 2 && soi < 4 && L.filter(l => l >= 2).length >= 3) soi += 1;
+    }
+    return Math.max(minSoi || 1, Math.min(4, soi));
+  }
+  function msGroup(F, sdx) {
+    const mcc = sdx.filter(d => DXM[d].ms === 'MCC'), cc = sdx.filter(d => DXM[d].ms === 'CC');
+    let ms = F.ms[0];
+    if (F.ms.length === 3) ms = mcc.length ? F.ms[0] : cc.length ? F.ms[1] : F.ms[2];
+    else if (F.ms.length === 2) ms = mcc.length ? F.ms[0] : F.ms[1];
+    return { ms, mcc, cc };
+  }
+
+  function genClaims(n) {
+    const r = rng(20261118);
+    const pickW = arr => { let s = 0; arr.forEach(x => s += x[1]); let x = r() * s; for (const [it, w] of arr) { if ((x -= w) <= 0) return it; } return arr[arr.length - 1][0]; };
+    const famW = Object.keys(FAM).map(k => [k, FAM[k].w]);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const fam = pickW(famW), F = FAM[fam], pdx = pickW(F.pdx);
+      const sec = new Set();
+      F.sec.forEach(([c, p]) => { if (c !== pdx && r() < p) sec.add(c); });
+      GENERAL.forEach(([c, p]) => { if (c !== pdx && r() < p) sec.add(c); });
+      const sdx = [...sec];
+      const age = Math.min(97, Math.round(30 + r() * 45 + r() * 22));
+      const px = []; F.px.forEach(([c, p]) => { if (r() < p) px.push(c); });
+      const g = msGroup(F, sdx);
+      const apr = F.apr(pdx);
+      const soi = soiCalc(sdx.map(d => DXM[d].soi), age, F.minSoi);
+      let rom = soiCalc(sdx.map(d => DXM[d].rom), age, 1); if (age >= 80 && rom >= 2 && rom < 4) rom++;
+      let los = Math.max(1, Math.round(F.los + (soi - 1) * 1.25 + r() * 3.2 - 1.6 + (px.includes('5A1945Z') ? 2 : 0)));
+      if (r() < 0.06) los += 6 + Math.floor(r() * 8);
+      const ds = (rom === 4 && r() < 0.25) ? '20' : pickW([['01', 60], ['06', 16], ['03', 15], ['02', 4]]);
+      const audited = r() < 0.5;
+      let p = 0.05;
+      if (g.mcc.length === 1 && CHALLENGED.has(g.mcc[0])) p += 0.35; else if (g.mcc.length === 1) p += 0.12;
+      if (los <= 4) p += 0.08; if (g.mcc.length >= 2) p -= 0.02;
+      const finding = audited && r() < p;
+      let over = 0, sme = '', ovt = '';
+      if (finding) {
+        const target = g.mcc[0] || g.cc[0];
+        const ns = target ? msGroup(F, sdx.filter(d => d !== target)).ms : g.ms;
+        let delta = MSW[g.ms] - MSW[ns]; if (delta <= 0.05) delta = MSW[g.ms] * 0.12;
+        over = Math.round(delta * BASE * (0.9 + r() * 0.2));
+        sme = r() < 0.85 ? 'Y' : 'N';
+        ovt = sme === 'Y' ? (r() < 0.12 ? 'Y' : 'N') : 'N';
+      }
+      const paid = Math.round(MSW[g.ms] * BASE * (0.95 + r() * 0.1));
+      out.push({
+        claim_id: 'SYN-' + String(100001 + i), ms_drg: g.ms, apr_drg: apr, principal_dx: pdx, secondary_dx: sdx.join('|'), procedures: px.join('|'),
+        mcc_codes: g.mcc.join('|'), cc_codes: g.cc.join('|'), mcc_count: String(g.mcc.length), cc_count: String(g.cc.length), soi: String(soi), rom: String(rom),
+        los: String(los), age: String(age), discharge_status: ds, paid_amount: String(paid), audited: audited ? 'Y' : 'N', finding: audited ? (finding ? 'Y' : 'N') : '',
+        overpayment_amount: String(over), sme_confirmed: sme, appeal_overturned: ovt
+      });
+    }
+    return out;
+  }
+
+  function aprDxFromClaims(claims) {
+    const by = {};
+    claims.forEach(c => {
+      const a = c.apr_drg; by[a] = by[a] || { P: {}, S: new Set() };
+      const P = by[a].P; P[c.principal_dx] = P[c.principal_dx] || { soi: {}, rom: {} };
+      P[c.principal_dx].soi[c.soi] = (P[c.principal_dx].soi[c.soi] || 0) + 1;
+      P[c.principal_dx].rom[c.rom] = (P[c.principal_dx].rom[c.rom] || 0) + 1;
+      c.secondary_dx.split('|').filter(Boolean).forEach(d => by[a].S.add(d));
+    });
+    const mode = o => Object.entries(o).sort((x, y) => y[1] - x[1])[0][0];
+    const rows = [];
+    Object.keys(by).sort().forEach(a => {
+      Object.keys(by[a].P).sort().forEach(d => rows.push({ apr_drg: a, diagnosis_code: d, diagnosis_description: DXM[d].desc, dx_role: 'P', soi: mode(by[a].P[d].soi), rom: mode(by[a].P[d].rom) }));
+      [...by[a].S].sort().forEach(d => rows.push({ apr_drg: a, diagnosis_code: d, diagnosis_description: DXM[d].desc, dx_role: 'S', soi: String(DXM[d].soi), rom: String(DXM[d].rom) }));
+    });
+    return rows;
+  }
+
+  const CONCEPTS = [
+    ['C001', '871', 'Select DRG 871 with exactly one MCC and LOS less than 12.', '=1', '', '', '', '<12', ''],
+    ['C002', '871', 'Select DRG 871 with exactly one MCC where the MCC is G93.41 metabolic encephalopathy.', '=1', '', 'MCC is G93.41', '', '', ''],
+    ['C003', '871', 'Select DRG 871 with exactly one MCC and LOS less than 5.', '=1', '', '', '', '<5', ''],
+    ['C004', '871', 'Select DRG 871 with exactly one MCC and secondary diagnosis includes R65.20 and LOS less than 8.', '=1', '', 'secondary diagnosis includes R65.20', '', '<8', ''],
+    ['C005', '871, 872', 'Select DRG 871 or 872 with principal diagnosis A41.9 and LOS less than 4.', '', '', 'principal diagnosis A41.9', '', '<4', ''],
+    ['C006', '291', 'Select DRG 291 with exactly one MCC and LOS less than 4.', '=1', '', '', '', '<4', ''],
+    ['C007', '291', 'Select DRG 291 with exactly one MCC where secondary diagnosis includes J96.01.', '=1', '', 'secondary diagnosis includes J96.01', '', '', ''],
+    ['C008', '193', 'Select DRG 193 with exactly one MCC and LOS less than 5.', '=1', '', '', '', '<5', ''],
+    ['C009', '193', 'Select DRG 193 with secondary diagnosis includes E43 and MCC count = 1.', '=1', '', 'secondary diagnosis includes E43', '', '', ''],
+    ['C010', '190', 'Select DRG 190 with exactly one MCC and LOS less than 4.', '=1', '', '', '', '<4', ''],
+    ['C011', '682', 'Select DRG 682 with exactly one MCC and LOS between 2 and 5.', '=1', '', '', '', 'between 2 and 5', ''],
+    ['C012', '189', 'Select DRG 189 with LOS less than 3 and exclude procedure 5A1945Z.', '', '', '', 'exclude procedure 5A1945Z', '<3', ''],
+    ['C013', '689', 'Select DRG 689 with exactly one MCC and age >= 65.', '=1', '', '', '', '', 'age >= 65'],
+    ['C014', '602', 'Select DRG 602 with exactly one MCC and LOS less than 4.', '=1', '', '', '', '<4', ''],
+    ['C015', '871', 'Select DRG 871 with at least 2 MCC and LOS less than 4.', '>=2', '', '', '', '<4', ''],
+    ['C016', '292', 'Select DRG 292 with exactly one CC and no MCC and LOS less than 3.', '=0', '=1', '', '', '<3', ''],
+    ['C017', '308', 'Select DRG 308 with exactly one MCC.', '=1', '', '', '', '', ''],
+    ['C018', '871', 'Select DRG 871 with exactly one MCC AND secondary diagnosis includes N17.0 OR secondary diagnosis includes E43.', '=1', '', '', '', '', ''],
+    ['C019', '865', 'Select DRG 865 with exactly one MCC and LOS less than 3.', '=1', '', '', '', '<3', ''],
+    ['C020', '864', 'Select DRG 864 with LOS less than 2 and discharge status 01.', '', '', '', '', '<2', 'discharge status 01'],
+    ['C021', '998', 'Select DRG 998 with exactly one MCC.', '=1', '', '', '', '', '']
+  ].map(r => ({ concept_id: r[0], ms_drg: r[1], concept_description: r[2], mcc_condition: r[3], cc_condition: r[4], diagnosis_conditions: r[5], procedure_conditions: r[6], los_conditions: r[7], additional_filters: r[8] }));
+
+  function build() {
+    const claims = genClaims(1500);
+    return {
+      ms: MS.map(m => ({ ms_drg: m[0], ms_drg_description: m[1], grouper_version: GV_MS, relative_weight: m[2].toFixed(2) })),
+      apr: APR.map(a => ({ apr_drg: a[0], apr_drg_description: a[1], grouper_version: GV_APR, rw_soi1: (a[2] * SOI_MULT[0]).toFixed(3), rw_soi2: (a[2] * SOI_MULT[1]).toFixed(3), rw_soi3: (a[2] * SOI_MULT[2]).toFixed(3), rw_soi4: (a[2] * SOI_MULT[3]).toFixed(3) })),
+      concepts: CONCEPTS.map(c => Object.assign({}, c)),
+      aprdx: aprDxFromClaims(claims),
+      claims
+    };
+  }
+  return { build, DXM, PX, IMPLICIT: {
+    '870': { field: 'px', op: 'includes any', value: ['5A1955Z'], note: 'MS-DRG 870 is defined by mechanical ventilation >96 hours; APR 720 does not split on ventilation, so the requirement is made explicit.' },
+    '871': { field: 'px', op: 'excludes', value: ['5A1955Z'], note: 'MS-DRG 871 is defined as "without MV >96 hours"; APR 720 does not split on ventilation, so the exclusion is made explicit.' },
+    '872': { field: 'px', op: 'excludes', value: ['5A1955Z'], note: 'MS-DRG 872 is defined as "without MV >96 hours"; APR 720 does not split on ventilation, so the exclusion is made explicit.' }
+  } };
+})();
+
+</script>
+<script>
+/* =====================================================================
+   TRANSLATION ENGINE — modular, UI-independent functions
+   B: parse  C: relationships  D: diagnosis  E: severity  F: generate
+   G: validate  H: performance  I: classify
+   ===================================================================== */
+const ENG = (function () {
+  const E = {};
+  const U = s => String(s == null ? '' : s).trim();
+  const normCode = c => U(c).toUpperCase().replace(/\./g, '');
+  const splitList = s => U(s).split(/[|;,]/).map(x => x.trim()).filter(Boolean);
+  const num = v => { if (v === '' || v == null) return null; const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const yn = v => { const s = U(v).toUpperCase(); if (['Y', 'YES', '1', 'TRUE'].includes(s)) return true; if (['N', 'NO', '0', 'FALSE'].includes(s)) return false; return null; };
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const countBy = (arr, f) => { const m = {}; arr.forEach(x => { const k = f(x); if (k == null) return; (Array.isArray(k) ? k : [k]).forEach(kk => m[kk] = (m[kk] || 0) + 1); }); return m; };
+  const distSim = (a, b) => { const sa = Object.values(a).reduce((x, y) => x + y, 0), sb = Object.values(b).reduce((x, y) => x + y, 0); if (!sa || !sb) return 0; let s = 0; new Set([...Object.keys(a), ...Object.keys(b)]).forEach(k => s += Math.min((a[k] || 0) / sa, (b[k] || 0) / sb)); return s; };
+  E.U = U; E.normCode = normCode; E.clone = clone; E.countBy = countBy; E.distSim = distSim; E.splitList = splitList;
+
+  /* ---------------- field metadata ---------------- */
+  const FIELDS = {
+    ms_drg: { l: 'MS-DRG', t: 'code' }, apr_drg: { l: 'APR-DRG', t: 'code' },
+    mcc_count: { l: 'MCC count', t: 'num' }, cc_count: { l: 'CC count', t: 'num' }, mcc_code: { l: 'MCC diagnosis', t: 'list' },
+    pdx: { l: 'Principal dx', t: 'dx' }, sdx: { l: 'Secondary dx', t: 'list' }, px: { l: 'Procedure (PCS)', t: 'list' },
+    los: { l: 'LOS (days)', t: 'num' }, age: { l: 'Age', t: 'num' }, discharge_status: { l: 'Discharge status', t: 'code' },
+    soi: { l: 'APR SOI', t: 'num' }, rom: { l: 'APR ROM', t: 'num' }, soi_drivers: { l: 'SOI-level secondary dx count', t: 'num' }
+  };
+  const OPS = { code: ['in', 'not in'], dx: ['in', 'not in'], list: ['includes any', 'excludes'], num: ['=', '!=', '<', '<=', '>', '>=', 'between', 'in'] };
+  E.FIELDS = FIELDS; E.OPS = OPS;
+
+  /* ---------------- Module A support: prepare indexes ---------------- */
+  E.prepare = function (DS) {
+    const IX = { ds: DS };
+    IX.ms = new Map(DS.ms.map(r => [U(r.ms_drg), r]));
+    IX.apr = new Map(DS.apr.map(r => [U(r.apr_drg), r]));
+    IX.dxDesc = new Map(); IX.dxDisp = new Map(); IX.dxLevel = new Map(); IX.dxLevelAny = new Map(); IX.aprDx = new Map();
+    Object.values(SYN.DXM).forEach(d => { IX.dxDisp.set(normCode(d.code), d.code); IX.dxDesc.set(normCode(d.code), d.desc); });
+    for (const r of DS.aprdx) {
+      const a = U(r.apr_drg), c = normCode(r.diagnosis_code); if (!a || !c) continue;
+      IX.dxDisp.set(c, U(r.diagnosis_code).toUpperCase());
+      if (U(r.diagnosis_description)) IX.dxDesc.set(c, U(r.diagnosis_description));
+      const role = U(r.dx_role).toUpperCase().startsWith('P') ? 'P' : 'S';
+      if (!IX.aprDx.has(a)) IX.aprDx.set(a, { P: new Set(), S: new Set(), all: new Set(), lvl: new Map() });
+      const o = IX.aprDx.get(a); o[role].add(c); o.all.add(c);
+      const lv = num(r.soi);
+      if (lv) { o.lvl.set(c + '|' + role, lv); if (role === 'S') { IX.dxLevel.set(a + '|' + c, lv); IX.dxLevelAny.set(c, Math.max(lv, IX.dxLevelAny.get(c) || 0)); } }
+    }
+    IX.msFlag = new Map();
+    IX.claims = DS.claims.map((r, i) => {
+      const c = {
+        i, claim_id: U(r.claim_id) || ('ROW' + (i + 1)), ms_drg: U(r.ms_drg), apr_drg: U(r.apr_drg), pdx: normCode(r.principal_dx),
+        sdx: splitList(r.secondary_dx).map(normCode), px: splitList(r.procedures).map(normCode),
+        mcc_codes: splitList(r.mcc_codes).map(normCode), cc_codes: splitList(r.cc_codes).map(normCode),
+        soi: num(r.soi), rom: num(r.rom), los: num(r.los), age: num(r.age), discharge_status: U(r.discharge_status) ? U(r.discharge_status).padStart(2, '0') : '',
+        paid: num(r.paid_amount), audited: yn(r.audited), finding: yn(r.finding), overpayment: num(r.overpayment_amount) || 0, sme: yn(r.sme_confirmed), overturn: yn(r.appeal_overturned)
+      };
+      c.mcc_count = num(r.mcc_count); if (c.mcc_count == null) c.mcc_count = c.mcc_codes.length;
+      c.cc_count = num(r.cc_count); if (c.cc_count == null) c.cc_count = c.cc_codes.length;
+      c.mcc_codes.forEach(d => IX.msFlag.set(d, 'MCC')); c.cc_codes.forEach(d => { if (!IX.msFlag.has(d)) IX.msFlag.set(d, 'CC'); });
+      const lvl = d => IX.dxLevel.get(c.apr_drg + '|' + d) || IX.dxLevelAny.get(d) || 0;
+      c.drivers = c.soi ? c.sdx.filter(d => lvl(d) >= c.soi) : [];
+      c.soi_drivers = c.drivers.length;
+      return c;
+    });
+    IX.hasOutcomes = IX.claims.some(c => c.finding !== null);
+    IX.hasClaims = IX.claims.length > 0;
+    IX.lvl = (apr, d) => IX.dxLevel.get(apr + '|' + d) || IX.dxLevelAny.get(d) || null;
+    IX.disp = c => IX.dxDisp.get(c) || (c.length > 3 && /^[A-Z]\d/.test(c) ? c.slice(0, 3) + '.' + c.slice(3) : c);
+    IX.desc = c => IX.dxDesc.get(c) || (SYN.PX[c] || '');
+    E.IX = IX;
+    return IX;
+  };
+
+  /* ---------------- schema validation ---------------- */
+  E.SCHEMA = {
+    ms: { label: 'MS-DRG master', req: ['ms_drg', 'ms_drg_description', 'grouper_version'], opt: ['relative_weight'] },
+    apr: { label: 'APR-DRG master', req: ['apr_drg', 'apr_drg_description', 'grouper_version'], opt: ['rw_soi1', 'rw_soi2', 'rw_soi3', 'rw_soi4'] },
+    concepts: { label: 'MS-DRG concept dataset', req: ['concept_id', 'ms_drg', 'concept_description'], opt: ['mcc_condition', 'cc_condition', 'diagnosis_conditions', 'procedure_conditions', 'los_conditions', 'additional_filters'] },
+    aprdx: { label: 'APR-DRG diagnosis dataset', req: ['apr_drg', 'diagnosis_code', 'soi'], opt: ['diagnosis_description', 'dx_role', 'rom'] },
+    claims: { label: 'Paired claim dataset (optional, preferred)', req: ['claim_id', 'ms_drg', 'apr_drg', 'principal_dx'], opt: ['secondary_dx', 'procedures', 'mcc_codes', 'cc_codes', 'mcc_count', 'cc_count', 'soi', 'rom', 'los', 'age', 'discharge_status', 'paid_amount', 'audited', 'finding', 'overpayment_amount', 'sme_confirmed', 'appeal_overturned'] }
+  };
+  E.validateSchema = function (key, rows, headers) {
+    const sc = E.SCHEMA[key], hs = headers || (rows[0] ? Object.keys(rows[0]) : []);
+    const missingReq = sc.req.filter(c => !hs.includes(c)), missingOpt = sc.opt.filter(c => !hs.includes(c));
+    const unknown = hs.filter(h => !sc.req.includes(h) && !sc.opt.includes(h));
+    const blanks = {}; [...sc.req, ...sc.opt].filter(c => hs.includes(c)).forEach(c => { blanks[c] = rows.filter(r => !U(r[c])).length; });
+    const reqBlank = sc.req.filter(c => blanks[c] > 0).map(c => c + ' (' + blanks[c] + ' blank)');
+    return { ok: missingReq.length === 0 && rows.length > 0, rows: rows.length, missingReq, missingOpt, unknown, blanks, reqBlank };
+  };
+
+  /* ---------------- CSV ---------------- */
+  E.parseCSV = function (text) {
+    const rows = []; let row = [], f = '', q = false;
+    text = text.replace(/^\uFEFF/, '');
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
+      else if (ch === '"') q = true; else if (ch === ',') { row.push(f); f = ''; }
+      else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(f); f = ''; if (row.some(x => x !== '')) rows.push(row); row = []; }
+      else f += ch;
+    }
+    row.push(f); if (row.some(x => x !== '')) rows.push(row);
+    if (!rows.length) return { headers: [], rows: [] };
+    const headers = rows[0].map(h => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
+    return { headers, rows: rows.slice(1).map(r => { const o = {}; headers.forEach((h, j) => o[h] = (r[j] || '').trim()); return o; }) };
+  };
+  E.toCSV = function (rows, cols) {
+    cols = cols || (rows[0] ? Object.keys(rows[0]) : []);
+    const esc = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    return [cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+  };
+
+  /* =====================================================================
+     MODULE B — CONCEPT DECOMPOSITION (rule-based NL parser; never invents)
+     ===================================================================== */
+  const NUMW = { zero: 0, no: 0, none: 0, one: 1, single: 1, two: 2, three: 3, four: 4, five: 5 };
+  const toN = s => { s = String(s).toLowerCase(); return s in NUMW ? NUMW[s] : parseInt(s, 10); };
+  const OPW = [['less than or equal to', '<='], ['greater than or equal to', '>='], ['no more than', '<='], ['no less than', '>='], ['at most', '<='], ['at least', '>='], ['less than', '<'], ['fewer than', '<'], ['under', '<'], ['below', '<'], ['greater than', '>'], ['more than', '>'], ['over', '>'], ['above', '>'], ['equal to', '='], ['equals', '='], ['<=', '<='], ['>=', '>='], ['=<', '<='], ['=>', '>='], ['==', '='], ['!=', '!='], ['<', '<'], ['>', '>'], ['=', '='], ['of', '='], ['is', '=']];
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+  const OPALT = OPW.map(x => reEsc(x[0])).join('|');
+  const opOf = s => { s = s.toLowerCase().replace(/\s+/g, ' '); const f = OPW.find(x => x[0] === s); return f ? f[1] : '='; };
+  const CODE = '[A-TV-Z]\\d[0-9A-Z](?:\\.[0-9A-Z]{1,4})?\\*?';
+  const CODES = `\\b(${CODE}(?:\\s*(?:,|/|\\bor\\b|\\band\\b)\\s*${CODE})*)`;
+  const PCS = '(?=[0-9A-Z]*\\d)[0-9A-HJ-NP-Z]{7}\\b';
+  const PCSL = `\\b(${PCS}(?:\\s*(?:,|/|\\bor\\b)\\s*${PCS})*)`;
+  const codes = s => (s.match(new RegExp(CODE, 'gi')) || []).map(normCode);
+  const pcs = s => (s.match(new RegExp(PCS, 'gi')) || []).map(x => x.toUpperCase());
+  const NW = '(\\d+|zero|no|none|one|single|two|three|four|five)';
+  function sevPatterns(t) {
+    const T = t === 'mcc' ? 'mccs?' : 'ccs?', F = t + '_count';
+    return [
+      [`\\b(?:${t}\\s*count|number\\s+of\\s+${T}|${T})\\s*(${OPALT})\\s*(\\d+)\\b`, m => ({ field: F, op: opOf(m[1]), value: +m[2] })],
+      [`\\b(?:exactly|only)\\s+${NW}\\s+${T}\\b`, m => ({ field: F, op: '=', value: toN(m[1]) })],
+      [`\\bat\\s+least\\s+${NW}\\s+${T}\\b`, m => ({ field: F, op: '>=', value: toN(m[1]) })],
+      [`\\b(?:at\\s+most|no\\s+more\\s+than)\\s+${NW}\\s+${T}\\b`, m => ({ field: F, op: '<=', value: toN(m[1]) })],
+      [`\\b(?:more\\s+than)\\s+${NW}\\s+${T}\\b`, m => ({ field: F, op: '>', value: toN(m[1]) })],
+      [`(?:\\bno|\\bzero|\\bwithout(?:\\s+an?)?|\\bw/o)\\s+${T}\\b`, () => ({ field: F, op: '=', value: 0 })],
+      [`\\b(?:with|and|has|having)\\s+${NW}\\s+${T}\\b`, m => ({ field: F, op: '=', value: toN(m[1]) })],
+      [`(?:\\bwith|\\bhas|\\bhaving|\\bw/)\\s+(?:an?\\s+)?${T}\\b`, () => ({ field: F, op: '>=', value: 1 })]
+    ];
+  }
+  const PATTERNS = [
+    [`\\b(?:ms[- ]?)?drgs?\\s*(?:=|:|is|in)?\\s*(\\d{3}(?:\\s*(?:,|/|&|\\bor\\b|\\band\\b)\\s*\\d{3})*)`, m => ({ field: 'ms_drg', op: 'in', value: m[1].match(/\d{3}/g) })],
+    [`\\b(?:the\\s+)?mccs?\\s+(?:code\\s+)?(?:is|=|:|includes?|in)\\s*${CODES}`, m => ({ field: 'mcc_code', op: 'includes any', value: codes(m[1]) })],
+    [`\\b(?:exclude|excluding|not)\\s+(?:a\\s+)?(?:principal|primary)\\s+(?:diagnosis|dx)\\s*(?:codes?)?\\s*(?:of|is|=|:)?\\s*${CODES}`, m => ({ field: 'pdx', op: 'not in', value: codes(m[1]) })],
+    [`\\b(?:principal|primary)\\s+(?:diagnosis|dx)\\s*(?:codes?)?\\s*(?:is|=|of|in|includes?|:)?\\s*${CODES}`, m => ({ field: 'pdx', op: 'in', value: codes(m[1]) })],
+    [`\\b(?:exclude|excluding|without|absence\\s+of|no)\\s+(?:any\\s+)?(?:secondary\\s+)?(?:diagnosis|diagnoses|dx|sdx)\\s*(?:codes?)?\\s*(?:of|:)?\\s*${CODES}`, m => ({ field: 'sdx', op: 'excludes', value: codes(m[1]) })],
+    [`\\b(?:secondary\\s+(?:diagnosis|diagnoses|dx)|sdx|diagnosis|dx)\\s*(?:codes?)?\\s*(?:includes?|contains?|=|is|in|of|:)?\\s*${CODES}`, m => ({ field: 'sdx', op: 'includes any', value: codes(m[1]) })],
+    [`\\b(?:exclude|excluding|without|no)\\s+(?:procedures?|px|pcs)\\s*(?:codes?)?\\s*(?:of|:)?\\s*${PCSL}`, m => ({ field: 'px', op: 'excludes', value: pcs(m[1]) })],
+    [`\\b(?:procedures?|px|pcs)\\s*(?:codes?)?\\s*(?:includes?|=|is|of|:)?\\s*${PCSL}`, m => ({ field: 'px', op: 'includes any', value: pcs(m[1]) })],
+    [`\\b(?:los|length\\s+of\\s+stay)\\s*(?:is\\s+)?(?:between\\s+)?(\\d+)\\s*(?:and|-|to|–)\\s*(\\d+)`, m => ({ field: 'los', op: 'between', value: [+m[1], +m[2]] })],
+    [`\\b(?:los|length\\s+of\\s+stay)\\s*(?:days\\s*)?(?:is\\s+)?(${OPALT})\\s*(\\d+)(?:\\s*days?)?`, m => ({ field: 'los', op: opOf(m[1]), value: +m[2] })],
+    [`\\bage\\s*(?:is\\s+)?(?:between\\s+)?(\\d+)\\s*(?:and|-|to)\\s*(\\d+)`, m => ({ field: 'age', op: 'between', value: [+m[1], +m[2]] })],
+    [`\\bage\\s*(?:is\\s+)?(${OPALT})\\s*(\\d+)`, m => ({ field: 'age', op: opOf(m[1]), value: +m[2] })],
+    [`\\bdischarge\\s+status\\s*(?:codes?)?\\s*(?:=|is|of|in|:)?\\s*(\\d{1,2}(?:\\s*(?:,|/|\\bor\\b)\\s*\\d{1,2})*)`, m => ({ field: 'discharge_status', op: 'in', value: m[1].match(/\d{1,2}/g).map(x => x.padStart(2, '0')) })],
+    ...sevPatterns('mcc'), ...sevPatterns('cc')
+  ].map(([re, fn]) => [new RegExp(re, 'gi'), fn]);
+  const STOPW = new Set('select selecting choose claims claim cases case with and where the a an of in is are that which only any also to when for days day drg drgs ms ms-drg population encounters admissions or than code codes having has must be'.split(' '));
+
+  function parseSegment(seg, descOf) {
+    let s = ' ' + seg + ' ';
+    const conds = [];
+    for (const [re, fn] of PATTERNS) {
+      re.lastIndex = 0;
+      s = s.replace(re, (...m) => { const r = fn(m); if (r && (!Array.isArray(r.value) || r.value.length)) { conds.push(r); return ' \u2023 '; } return m[0]; });
+    }
+    const descWords = new Set();
+    conds.forEach(c => { if (Array.isArray(c.value)) c.value.forEach(v => (descOf(v) || '').toLowerCase().split(/[^a-z0-9]+/).forEach(w => w && descWords.add(w))); });
+    const left = s.replace(/\u2023/g, ' ').toLowerCase().replace(/[^a-z0-9.\- ]/g, ' ').split(/\s+/).map(w => w.replace(/^[.\-]+|[.\-]+$/g, '')).filter(w => w.length > 2 && !STOPW.has(w) && !descWords.has(w) && !/^[.\-]+$/.test(w));
+    return { conds, leftover: left };
+  }
+  const keyOf = c => c.field + '|' + c.op + '|' + JSON.stringify(c.value);
+
+  E.parseText = function (text, descOf) {
+    descOf = descOf || (c => E.IX ? E.IX.desc(c) : '');
+    const segs = U(text).split(/\s+OR\s+|\s*\|\|\s*/);
+    const groups = [], warnings = [];
+    segs.forEach((seg, i) => {
+      const r = parseSegment(seg, descOf);
+      groups.push(r.conds);
+      if (r.leftover.length) warnings.push(`Unparsed text in ${segs.length > 1 ? 'OR-branch ' + (i + 1) : 'description'}: "${r.leftover.join(' ')}" — not converted; no restriction invented.`);
+    });
+    // inherit shared conditions of the first branch into later OR branches
+    for (let k = 1; k < groups.length; k++) {
+      const fields = new Set(groups[k].map(c => c.field));
+      groups[0].forEach(c => { if (!fields.has(c.field)) groups[k].unshift(clone(c)); });
+    }
+    return { groups: groups.filter(g => g.length), warnings };
+  };
+
+  E.parseConcept = function (concept, descOf) {
+    const P = E.parseText(concept.concept_description, descOf);
+    const shared = [], warnings = P.warnings.slice();
+    const numForm = (v, field) => { const m = U(v).match(/^(=|==|>=|<=|<|>|!=)?\s*(\d+)$/); return m ? { field, op: m[1] === '==' ? '=' : (m[1] || '='), value: +m[2] } : null; };
+    const addText = (txt, label) => { if (!U(txt)) return; const r = E.parseText(txt, descOf); r.groups.forEach(g => shared.push(...g)); if (r.groups.length > 1) warnings.push(`Structured column "${label}" contains OR; branches were combined with AND.`); r.warnings.forEach(w => warnings.push(`[${label}] ` + w)); };
+    if (U(concept.ms_drg)) { const d = U(concept.ms_drg).match(/\d{3}/g); if (d) shared.push({ field: 'ms_drg', op: 'in', value: d }); }
+    [['mcc_condition', 'mcc_count', 'MCC'], ['cc_condition', 'cc_count', 'CC']].forEach(([col, f, w]) => { const v = concept[col]; if (!U(v)) return; const n = numForm(v, f); if (n) shared.push(n); else addText(/mcc|cc/i.test(v) ? v : v + ' ' + w, col); });
+    if (U(concept.los_conditions)) addText(/los|length/i.test(concept.los_conditions) ? concept.los_conditions : 'LOS ' + concept.los_conditions, 'los_conditions');
+    ['diagnosis_conditions', 'procedure_conditions', 'additional_filters'].forEach(col => addText(concept[col], col));
+    let groups = P.groups.length ? P.groups : (shared.length ? [[]] : []);
+    groups = groups.map(g => {
+      const keys = new Set(g.map(keyOf)), fields = new Set(g.map(c => c.field));
+      shared.forEach(c => {
+        if (keys.has(keyOf(c))) return;
+        if (c.field === 'ms_drg' && fields.has('ms_drg')) return; // description DRG list takes precedence
+        if (fields.has(c.field) && !['sdx', 'px'].includes(c.field)) warnings.push(`Structured column and description disagree on ${FIELDS[c.field].l} (${E.condText(c)}); both retained (AND).`);
+        g.push(clone(c)); keys.add(keyOf(c));
+      });
+      return g;
+    });
+    groups = groups.map(g => { const seen = new Set(); return g.filter(c => { const k = keyOf(c); if (seen.has(k)) return false; seen.add(k); return true; }); });
+    return { groups, warnings: [...new Set(warnings)], intent: E.intent(groups) };
+  };
+
+  E.intent = function (groups) {
+    const f = new Set(groups.flat().map(c => c.field)), parts = [];
+    if (f.has('ms_drg')) parts.push('DRG population selection');
+    if (f.has('mcc_count') || f.has('cc_count')) parts.push('severity (MCC/CC) validation');
+    if (f.has('mcc_code') || f.has('sdx')) parts.push('specific secondary-diagnosis validation');
+    if (f.has('pdx')) parts.push('principal-diagnosis validation');
+    if (f.has('los')) parts.push('length-of-stay screen');
+    if (f.has('px')) parts.push('procedure restriction');
+    if (f.has('age') || f.has('discharge_status')) parts.push('claim-attribute filter');
+    return parts.length ? parts.join(' + ') : 'Undetermined (no structured conditions parsed)';
+  };
+
+  E.getParsed = function (concept, manual) {
+    const auto = E.parseConcept(concept);
+    if (manual && manual[concept.concept_id]) { const g = manual[concept.concept_id]; return { groups: g, warnings: auto.warnings, intent: E.intent(g), manual: true }; }
+    return auto;
+  };
+  E.msCodes = groups => [...new Set(groups.flat().filter(c => c.field === 'ms_drg' && c.op === 'in').flatMap(c => c.value))];
+
+  /* ---------------- condition evaluation ---------------- */
+  const cm = (code, p) => { if (!code) return false; p = normCode(p); return p.endsWith('*') ? code.startsWith(p.slice(0, -1)) : code === p; };
+  const fv = (c, f) => f === 'mcc_code' ? c.mcc_codes : c[f];
+  E.test = function (k, c) {
+    const v = fv(c, k.field), val = k.value, t = (FIELDS[k.field] || {}).t;
+    if (t === 'list') { const hit = (v || []).some(x => val.some(p => cm(x, p))); return k.op === 'excludes' ? !hit : hit; }
+    if (t === 'code' || t === 'dx') { const hit = val.some(p => t === 'dx' ? cm(v, p) : String(v) === String(p)); return k.op === 'not in' ? !hit : hit; }
+    if (v == null || v === '') return false;
+    switch (k.op) { case '=': return v == val; case '!=': return v != val; case '<': return v < val; case '<=': return v <= val; case '>': return v > val; case '>=': return v >= val; case 'between': return v >= val[0] && v <= val[1]; case 'in': return val.map(Number).includes(v); }
+    return false;
+  };
+  E.select = function (groups, claims) {
+    const out = []; if (!groups || !groups.length) return out;
+    for (let i = 0; i < claims.length; i++) { const c = claims[i]; if (groups.some(g => g.length && g.every(k => E.test(k, c)))) out.push(i); }
+    return out;
+  };
+  E.valStr = function (k) {
+    if (!Array.isArray(k.value)) return String(k.value);
+    if (k.op === 'between') return k.value.join(' – ');
+    const t = FIELDS[k.field].t;
+    return k.value.map(x => (t === 'list' && k.field !== 'px') || t === 'dx' ? (E.IX ? E.IX.disp(x) : x) : x).join(', ');
+  };
+  E.condText = k => `${(FIELDS[k.field] || { l: k.field }).l} ${k.op} ${E.valStr(k)}`;
+  E.groupsText = groups => groups.map(g => g.map(E.condText).join(' AND ')).join('  OR  ');
+  E.strToVal = function (field, op, s) {
+    const t = FIELDS[field].t; s = String(s);
+    if (t === 'num') {
+      if (op === 'between') { const m = s.match(/(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)/); return m ? [+m[1], +m[2]] : [0, 0]; }
+      if (op === 'in') return s.split(/[^\d.]+/).filter(Boolean).map(Number);
+      const n = parseFloat(s); return isNaN(n) ? 0 : n;
+    }
+    return s.split(/[,|;\s]+/).map(x => x.trim()).filter(Boolean).map(x => t === 'code' ? (field === 'discharge_status' ? x.padStart(2, '0') : x) : (field === 'px' ? x.toUpperCase() : normCode(x)));
+  };
+
+  /* ---------------- similarity helpers ---------------- */
+  const STOP = new Set('with without w o or and the of to for in on mcc cc hours hrs mv other others major minor diagnoses diagnosis disorders except unspecified than'.split(' '));
+  const SYNM = { septicemia: 'sepsis', septic: 'sepsis', renal: 'kidney', cardiac: 'heart', pulmonary: 'lung', respiratory: 'lung', pneumonitis: 'pneumonia', infections: 'infection', infectious: 'infection', dysrhythmia: 'arrhythmia', fibrillation: 'arrhythmia', congestive: 'heart', copd: 'obstructive' };
+  E.tokens = s => new Set(U(s).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 1 && !STOP.has(t)).map(t => { t = SYNM[t] || t; if (t.length > 4 && t.endsWith('s')) t = t.slice(0, -1); return SYNM[t] || t; }));
+  E.jaccard = (A, B) => { if (!A.size && !B.size) return 0; let i = 0; for (const x of A) if (B.has(x)) i++; return i / (A.size + B.size - i); };
+  E.overlap = (A, B) => { if (!A.size || !B.size) return 0; let i = 0; for (const x of A) if (B.has(x)) i++; return i / Math.min(A.size, B.size); };
+  E.descSim = (a, b) => E.overlap(E.tokens(a), E.tokens(b));
+
+  /* =====================================================================
+     MODULE C — MS-DRG → APR-DRG RELATIONSHIP DISCOVERY
+     ===================================================================== */
+  E.candidates = function (concept, IX, cfg, manual) {
+    const P = E.getParsed(concept, manual);
+    const msCodes = E.msCodes(P.groups);
+    const orig = E.select(P.groups, IX.claims);
+    const msDesc = msCodes.map(m => (IX.ms.get(m) || {}).ms_drg_description || '').join(' ');
+    const W = cfg.candW;
+    const res = { msCodes, origN: orig.length, orig, list: [], mode: '', msKnown: msCodes.filter(m => IX.ms.has(m)) };
+    if (cfg.useClaims && IX.hasClaims && orig.length) {
+      res.mode = 'empirical';
+      const origDx = new Set(orig.flatMap(i => [IX.claims[i].pdx, ...IX.claims[i].sdx]));
+      const msAll = IX.claims.filter(c => msCodes.includes(c.ms_drg));
+      const byApr = countBy(orig, i => IX.claims[i].apr_drg);
+      const msByApr = countBy(msAll, c => c.apr_drg);
+      Object.keys(byApr).forEach(a => {
+        const sub = orig.filter(i => IX.claims[i].apr_drg === a).map(i => IX.claims[i]);
+        const ad = IX.aprDx.get(a) || { P: new Set(), S: new Set(), all: new Set() };
+        const pdxAlign = sub.filter(c => ad.P.has(c.pdx)).length / sub.length;
+        const ov = E.overlap(origDx, ad.all), jac = E.jaccard(origDx, ad.all);
+        const ds = E.descSim(msDesc, (IX.apr.get(a) || {}).apr_drg_description || '');
+        const share = byApr[a] / orig.length;
+        const score = (W.share * share + W.dx * ov + W.desc * ds + W.pdx * pdxAlign) / (W.share + W.dx + W.desc + W.pdx);
+        res.list.push({ apr: a, desc: (IX.apr.get(a) || {}).apr_drg_description || '(not in APR master)', n: byApr[a], share, pAprGivenMs: msAll.length ? (msByApr[a] || 0) / msAll.length : 0, msN: msAll.length, overlap: ov, jaccard: jac, descSim: ds, pdxAlign, soiDist: countBy(sub, c => c.soi), score, inMaster: IX.apr.has(a) });
+      });
+    } else {
+      res.mode = 'provisional';
+      const dxConds = new Set(P.groups.flat().filter(c => ['pdx', 'sdx', 'mcc_code'].includes(c.field) && !['not in', 'excludes'].includes(c.op)).flatMap(c => c.value));
+      for (const [a, row] of IX.apr) {
+        const ds = E.descSim(msDesc, row.apr_drg_description);
+        const ad = IX.aprDx.get(a) || { all: new Set(), P: new Set() };
+        const ov = dxConds.size ? E.overlap(dxConds, ad.all) : 0;
+        const score = dxConds.size ? 0.6 * ds + 0.4 * ov : ds;
+        if (score > 0) res.list.push({ apr: a, desc: row.apr_drg_description, n: 0, share: 0, pAprGivenMs: 0, msN: 0, overlap: ov, jaccard: dxConds.size ? E.jaccard(dxConds, ad.all) : 0, descSim: ds, pdxAlign: null, soiDist: {}, score, inMaster: true });
+      }
+    }
+    res.list.sort((a, b) => b.score - a.score || b.n - a.n);
+    res.list.forEach((c, i) => c.rank = i + 1);
+    return res;
+  };
+
+  /* =====================================================================
+     MODULE D — DIAGNOSIS TRANSLATION
+     ===================================================================== */
+  E.dxMapping = function (orig, apr, IX, cfg) {
+    const claims = orig.map(i => IX.claims[i]);
+    const freq = {};
+    claims.forEach(c => { [[c.pdx, 'P'], ...c.sdx.map(d => [d, 'S'])].forEach(([d, r]) => { freq[d] = freq[d] || { P: 0, S: 0 }; freq[d][r]++; }); });
+    const ad = IX.aprDx.get(apr) || { P: new Set(), S: new Set(), all: new Set(), lvl: new Map() };
+    const aprCodes = [...ad.all];
+    const rows = Object.keys(freq).map(d => {
+      const f = freq[d], tot = f.P + f.S, pct = tot / Math.max(1, claims.length);
+      let type = 'Unmatched', match = '', score = 0;
+      if (ad.all.has(d)) { type = 'Exact'; match = d; score = 1; }
+      else {
+        let best = null, bs = 0;
+        aprCodes.forEach(a => { const s = E.descSim(IX.desc(d), IX.desc(a)); if (s > bs) { bs = s; best = a; } });
+        if (best && bs >= cfg.descThreshold) { type = 'Description-similar'; match = best; score = bs; }
+        else if (cfg.familyMatch) { const fam = aprCodes.find(a => a.slice(0, 3) === d.slice(0, 3)); if (fam) { type = 'Family (category ' + d.slice(0, 3) + ')'; match = fam; score = 0.5; } }
+      }
+      const roleA = ad.P.has(d) && ad.S.has(d) ? 'P/S' : ad.P.has(d) ? 'P' : ad.S.has(d) ? 'S' : '';
+      return { code: d, desc: IX.desc(d), P: f.P, S: f.S, pct, flag: IX.msFlag.get(d) || '', type, match, score, roleA, lvl: ad.lvl.get(d + '|S') || ad.lvl.get(d + '|P') || null };
+    }).filter(r => r.pct >= (cfg.minDxFreq || 0)).sort((a, b) => (b.P + b.S) - (a.P + a.S));
+    const A = new Set(rows.map(r => r.code));
+    const exact = rows.filter(r => r.type === 'Exact').length, sim = rows.filter(r => r.type === 'Description-similar').length, fam = rows.filter(r => r.type.startsWith('Family')).length;
+    const pA = new Set(rows.filter(r => r.P).map(r => r.code));
+    const covW = rows.reduce((s, r) => s + (r.type === 'Exact' ? r.P + r.S : 0), 0) / Math.max(1, rows.reduce((s, r) => s + r.P + r.S, 0));
+    return { rows, jaccard: E.jaccard(A, ad.all), overlap: E.overlap(A, ad.all), exact, sim, fam, unmatched: rows.length - exact - sim - fam, pdxJaccard: E.jaccard(pA, ad.P), weightedCoverage: covW, aprSize: ad.all.size };
+  };
+
+  /* =====================================================================
+     MODULE E — SEVERITY TRANSLATION  P(APR SOI | MS-DRG, MCC, CC, dx)
+     ===================================================================== */
+  const bucket = (n, cap) => n >= cap ? cap + '+' : String(n);
+  E.sevGrid = function (msCodes, apr, IX) {
+    const cs = IX.claims.filter(c => msCodes.includes(c.ms_drg) && (!apr || c.apr_drg === apr));
+    const grid = {};
+    cs.forEach(c => { const k = bucket(c.mcc_count, 3) + '|' + bucket(c.cc_count, 2); grid[k] = grid[k] || {}; grid[k][c.soi] = (grid[k][c.soi] || 0) + 1; });
+    return { grid, n: cs.length };
+  };
+  E.sevByMcc = function (msCodes, IX) {
+    const cs = IX.claims.filter(c => msCodes.includes(c.ms_drg) && c.mcc_count === 1);
+    const by = {}; cs.forEach(c => { const d = c.mcc_codes[0]; by[d] = by[d] || {}; by[d][c.soi] = (by[d][c.soi] || 0) + 1; });
+    return Object.keys(by).map(d => ({ code: d, dist: by[d], n: Object.values(by[d]).reduce((a, b) => a + b, 0) })).sort((a, b) => b.n - a.n);
+  };
+  const RANGES = [[1], [2], [3], [4], [1, 2], [2, 3], [3, 4], [1, 2, 3], [2, 3, 4], [1, 2, 3, 4]];
+  E.severityAnalysis = function (concept, apr, base, IX, cfg, manual) {
+    const P = E.getParsed(concept, manual);
+    const orig = E.select(P.groups, IX.claims);
+    const target = orig.filter(i => IX.claims[i].apr_drg === apr), tSet = new Set(target);
+    const dist = countBy(target, i => IX.claims[i].soi);
+    const mc = P.groups.flat().find(c => c.field === 'mcc_count');
+    const drv = [null];
+    if (cfg.useDrivers && mc && typeof mc.value === 'number') {
+      if (mc.op === '=' && mc.value >= 1) drv.push({ op: '=', value: mc.value }, { op: '>=', value: mc.value });
+      else if (mc.op === '>=' && mc.value >= 1) drv.push({ op: '>=', value: mc.value });
+      else if (mc.op === '>') drv.push({ op: '>=', value: mc.value + 1 });
+    }
+    const opts = [];
+    for (const r of RANGES) for (const d of drv) {
+      const groups = base.groups.map(g => { const ng = g.concat([{ field: 'soi', op: 'in', value: r.slice() }]); if (d) ng.push({ field: 'soi_drivers', op: d.op, value: d.value }); return ng; });
+      const sel = E.select(groups, IX.claims); let inter = 0; sel.forEach(i => { if (tSet.has(i)) inter++; });
+      const uni = target.length + sel.length - inter;
+      opts.push({ soi: r, driver: d, n: sel.length, inter, cov: target.length ? inter / target.length : 0, fi: sel.length ? (sel.length - inter) / sel.length : 0, jac: uni ? inter / uni : 0, f1: (target.length + sel.length) ? 2 * inter / (target.length + sel.length) : 0, groups });
+    }
+    const obj = o => cfg.objective === 'f1' ? o.f1 : cfg.objective === 'coverage' ? (o.cov >= cfg.covTarget ? 1 + (1 - o.fi) : o.cov) : o.jac;
+    opts.sort((a, b) => (Math.round((obj(b) - obj(a)) * 1e6)) || ((a.driver ? 1 : 0) - (b.driver ? 1 : 0)) || (a.soi.length - b.soi.length));
+    const chosen = opts[0];
+    const flags = [];
+    if (target.length < cfg.minEvidence) flags.push('Insufficient evidence: only ' + target.length + ' original claims grouped to APR ' + apr + '.');
+    else if (target.length < cfg.minVolume) flags.push('Low volume: ' + target.length + ' claims (< ' + cfg.minVolume + ' configured minimum).');
+    return { apr, n: target.length, dist, options: opts, chosen, flags, mccCond: mc || null };
+  };
+
+  /* =====================================================================
+     MODULE F — APR-DRG CONCEPT GENERATOR
+     ===================================================================== */
+  function losEquivalent(op, val, msCodes, apr, IX) {
+    const msL = IX.claims.filter(c => msCodes.includes(c.ms_drg) && c.los != null).map(c => c.los);
+    const apL = IX.claims.filter(c => c.apr_drg === apr && c.los != null).map(c => c.los);
+    if (msL.length < 5 || apL.length < 5) return null;
+    const pass = (arr, v) => arr.filter(x => E.test({ field: 'los', op, value: v }, { los: x })).length / arr.length;
+    const q = pass(msL, val); let best = val, bd = 9;
+    for (let v = 1; v <= Math.max(...apL) + 1; v++) { const d = Math.abs(pass(apL, v) - q); if (d < bd - 1e-9) { bd = d; best = v; } }
+    return { q, value: best };
+  }
+  E.translateBase = function (concept, apr, IX, cfg, manual) {
+    const P = E.getParsed(concept, manual);
+    const msCodes = E.msCodes(P.groups);
+    const status = [], seen = new Set();
+    const note = (orig, translated, st, why) => { const k = orig + '|' + translated; if (seen.has(k)) return; seen.add(k); status.push({ original: orig, translated, status: st, note: why }); };
+    const ad = IX.aprDx.get(apr) || { all: new Set() };
+    const imp = msCodes.map(m => SYN.IMPLICIT[m]).filter(Boolean);
+    const implicit = imp.length && imp.length === msCodes.length && imp.every(x => x.op === imp[0].op) ? imp[0] : null;
+    const losInfo = [];
+    const groups = P.groups.map(g => {
+      const ng = [{ field: 'apr_drg', op: 'in', value: [apr] }];
+      g.forEach(c => {
+        switch (c.field) {
+          case 'ms_drg': note(E.condText(c), 'APR-DRG in ' + apr, 'Translated', 'APR-DRG selected by relationship discovery (claim frequency, P(APR|MS), diagnosis overlap, description and principal-dx alignment).'); break;
+          case 'mcc_count': note(E.condText(c), 'APR SOI restriction (see severity)', 'Approximated', 'APR-DRG has no MCC concept. Severity is translated empirically to SOI levels (and optionally a SOI-level diagnosis count); not a fixed MCC→SOI equivalence.'); break;
+          case 'cc_count': note(E.condText(c), '— (absorbed into SOI)', 'Not directly translatable', 'APR-DRG does not use CC designations. The CC restriction cannot be expressed directly; its effect is only partially captured by the SOI restriction. SME review advised.'); break;
+          case 'mcc_code': { const nc = { field: 'sdx', op: 'includes any', value: c.value.slice() }; ng.push(nc); const miss = c.value.filter(v => !ad.all.has(v)); note(E.condText(c), E.condText(nc), miss.length ? 'Partially preserved (verify)' : 'Partially preserved', 'Diagnosis code kept as a secondary-diagnosis inclusion; the "MCC" designation has no APR equivalent.' + (miss.length ? ' Not observed in APR dx dataset for ' + apr + ': ' + miss.map(IX.disp).join(', ') + '.' : '')); break; }
+          case 'los': {
+            let nc = clone(c), eq = null;
+            if (c.op === 'between') { const lo = losEquivalent('>=', c.value[0], msCodes, apr, IX), hi = losEquivalent('<=', c.value[1], msCodes, apr, IX); if (lo && hi) eq = { value: [lo.value, hi.value], q: [lo.q, hi.q] }; }
+            else if (typeof c.value === 'number') { const r = losEquivalent(c.op, c.value, msCodes, apr, IX); if (r) eq = r; }
+            losInfo.push({ original: clone(c), equivalent: eq });
+            const usePct = cfg.losMethod === 'percentile' && eq;
+            if (usePct) nc.value = eq.value;
+            ng.push(nc);
+            note(E.condText(c), E.condText(nc), usePct ? 'Adjusted (percentile-equivalent)' : 'Preserved', usePct ? 'LOS threshold re-anchored to the same percentile of the APR population.' : 'LOS is grouper-independent and preserved as-is.' + (eq ? ' Percentile-equivalent alternative: ' + (Array.isArray(eq.value) ? eq.value.join('–') : c.op + ' ' + eq.value) + '.' : ''));
+            break;
+          }
+          case 'pdx': case 'sdx': { ng.push(clone(c)); const miss = c.op.includes('in') || c.op === 'includes any' ? c.value.filter(v => !ad.all.has(v)) : []; note(E.condText(c), E.condText(c), miss.length ? 'Preserved (verify)' : 'Preserved', 'ICD-10-CM codes are grouper-independent and carried over.' + (miss.length ? ' Not observed in APR dx dataset for ' + apr + ': ' + miss.map(IX.disp).join(', ') + '.' : '')); break; }
+          default: ng.push(clone(c)); note(E.condText(c), E.condText(c), 'Preserved', 'Grouper-independent claim attribute carried over unchanged.');
+        }
+      });
+      if (implicit && !ng.some(k => k.field === 'px' && JSON.stringify(k.value) === JSON.stringify(implicit.value))) { const nc = { field: implicit.field, op: implicit.op, value: implicit.value.slice() }; ng.push(nc); note('(implicit in MS-DRG definition)', E.condText(nc), 'Implicit condition made explicit', implicit.note); }
+      return ng;
+    });
+    return { groups, status, losInfo, msCodes };
+  };
+
+  E.generate = function (concept, IX, cfg, manual) {
+    const P = E.getParsed(concept, manual);
+    const cand = E.candidates(concept, IX, cfg, manual);
+    const out = { gens: [], cand, reason: '' };
+    if (!cand.msCodes.length) { out.reason = 'No MS-DRG condition could be parsed from the concept.'; return out; }
+    let picks;
+    if (cand.mode === 'empirical') { picks = cand.list.filter(c => c.share >= cfg.candMinShare).slice(0, cfg.maxCand); if (!picks.length) picks = cand.list.slice(0, 1); }
+    else picks = cand.list.slice(0, 1);
+    if (!picks.length) { out.reason = cand.msKnown.length ? 'No candidate APR-DRG found (no paired claims and no description/diagnosis similarity).' : 'MS-DRG ' + cand.msCodes.join(', ') + ' is not in the MS-DRG master and has no paired claims.'; return out; }
+    const now = new Date().toISOString();
+    picks.forEach(c => {
+      const base = E.translateBase(concept, c.apr, IX, cfg, manual);
+      let sev = null, groups = base.groups, status = base.status.slice();
+      if (cand.mode === 'empirical') {
+        sev = E.severityAnalysis(concept, c.apr, base, IX, cfg, manual);
+        groups = sev.chosen.groups;
+        const ch = sev.chosen;
+        status = status.filter(s => !(s.status === 'Approximated' && /^MCC count/.test(s.original)));
+        status.push({ original: sev.mccCond ? E.condText(sev.mccCond) : '(MS-DRG severity split implicit in DRG)', translated: 'APR SOI in ' + ch.soi.join(', ') + (ch.driver ? ' AND SOI-level secondary dx count ' + ch.driver.op + ' ' + ch.driver.value : ''), status: 'Approximated (empirical)', note: `Chosen from ${sev.options.length} candidate SOI restrictions by ${cfg.objective} against the original claims that grouped to APR ${c.apr}: coverage ${(ch.cov * 100).toFixed(0)}%, false inclusion ${(ch.fi * 100).toFixed(0)}%.` });
+      } else {
+        status.push({ original: P.groups.flat().filter(k => k.field === 'mcc_count').map(E.condText).join('; ') || '(none)', translated: '— (no SOI restriction)', status: 'Not translatable without evidence', note: 'No paired claims: SOI cannot be estimated, so no severity restriction is applied. Provisional mapping only.' });
+      }
+      const gid = 'G-' + concept.concept_id + '-' + c.apr;
+      out.gens.push({
+        gid, source: concept.concept_id, apr: c.apr, groups: clone(groups), provisional: cand.mode !== 'empirical', provisionalReason: cand.mode === 'empirical' ? '' : (IX.hasClaims && cfg.useClaims ? 'zero-claims' : 'no-claims'),
+        candidate: Object.assign({}, c, { soiDist: c.soiDist }),
+        sev: sev ? { n: sev.n, dist: sev.dist, flags: sev.flags, chosen: { soi: sev.chosen.soi, driver: sev.chosen.driver, cov: sev.chosen.cov, fi: sev.chosen.fi, jac: sev.chosen.jac, n: sev.chosen.n }, options: sev.options.slice(0, 6).map(o => ({ soi: o.soi, driver: o.driver, cov: o.cov, fi: o.fi, jac: o.jac, n: o.n })) } : null,
+        condStatus: status, losInfo: base.losInfo, version: '1.0', status: 'Draft', created: now,
+        grouper: { ms: cand.msCodes.map(m => (IX.ms.get(m) || {}).grouper_version).filter(Boolean)[0] || 'unknown', apr: (IX.apr.get(c.apr) || {}).grouper_version || 'unknown' },
+        history: [{ ts: now, action: 'Generated', by: 'engine', note: (cand.mode === 'empirical' ? 'Empirical' : 'Provisional') + ' translation; candidate rank ' + c.rank + '.' }]
+      });
+    });
+    return out;
+  };
+
+  /* =====================================================================
+     MODULE G — TRANSLATION VALIDATION
+     ===================================================================== */
+  const losB = l => l == null ? null : l <= 2 ? '1-2' : l <= 4 ? '3-4' : l <= 6 ? '5-6' : l <= 9 ? '7-9' : l <= 14 ? '10-14' : '15+';
+  const ageB = a => a == null ? null : a < 45 ? '<45' : a < 65 ? '45-64' : a < 75 ? '65-74' : a < 85 ? '75-84' : '85+';
+  E.compare = function (O, T, IX, cfg) {
+    const So = new Set(O), St = new Set(T); let inter = 0; St.forEach(i => { if (So.has(i)) inter++; });
+    const co = O.map(i => IX.claims[i]), ct = T.map(i => IX.claims[i]);
+    const d = f => [countBy(co, f), countBy(ct, f)];
+    const dists = { soi: d(c => c.soi), mcc: d(c => bucket(c.mcc_count, 3)), los: d(c => losB(c.los)), age: d(c => ageB(c.age)), ds: d(c => c.discharge_status || null), pdx: d(c => c.pdx), dx: d(c => [c.pdx, ...c.sdx]) };
+    const uni = O.length + T.length - inter;
+    const r = { nO: O.length, nT: T.length, inter, onlyO: O.length - inter, onlyT: T.length - inter, cov: O.length ? inter / O.length : 0, fi: T.length ? (T.length - inter) / T.length : 0, jac: uni ? inter / uni : 0, dists };
+    r.fe = O.length ? 1 - r.cov : 0;
+    if (!T.length || !O.length) { Object.assign(r, { clinical: 0, dx: 0, sev: 0, attr: 0, ips: 0 }); return r; }
+    r.pdxSim = distSim(...dists.pdx);
+    r.clinical = (r.jac + r.pdxSim) / 2;
+    r.dx = distSim(...dists.dx);
+    r.sev = (distSim(...dists.mcc) + distSim(...dists.soi)) / 2;
+    r.attr = (distSim(...dists.los) + distSim(...dists.age) + distSim(...dists.ds)) / 3;
+    const w = cfg.w, sw = w.clinical + w.dx + w.sev + w.attr || 1;
+    r.ips = (r.clinical * w.clinical + r.dx * w.dx + r.sev * w.sev + r.attr * w.attr) / sw;
+    return r;
+  };
+  E.activeGens = (gens, src) => gens.filter(g => g.source === src && !['Rejected', 'Superseded'].includes(g.status));
+  E.validateSource = function (concept, gens, IX, cfg, manual) {
+    const P = E.getParsed(concept, manual);
+    const O = E.select(P.groups, IX.claims);
+    const act = E.activeGens(gens, concept.concept_id);
+    const T = act.length ? E.select(act.flatMap(g => g.groups), IX.claims) : [];
+    return Object.assign(E.compare(O, T, IX, cfg), { O, T, nGen: act.length });
+  };
+  E.validateGen = function (gen, concept, IX, cfg, manual) {
+    const O = E.select(E.getParsed(concept, manual).groups, IX.claims);
+    const T = E.select(gen.groups, IX.claims);
+    return Object.assign(E.compare(O, T, IX, cfg), { O, T });
+  };
+
+  /* =====================================================================
+     MODULE H — PAYMENT INTEGRITY PERFORMANCE (never manufactured)
+     ===================================================================== */
+  E.perf = function (idx, IX) {
+    if (!IX.hasOutcomes) return null;
+    const cs = idx.map(i => IX.claims[i]);
+    const aud = cs.filter(c => c.audited === true || (c.audited === null && c.finding !== null));
+    const f = aud.filter(c => c.finding === true);
+    const op = f.reduce((s, c) => s + (c.overpayment || 0), 0);
+    const smeK = f.filter(c => c.sme !== null), ovK = f.filter(c => c.overturn !== null);
+    const hit = aud.length ? f.length / aud.length : null, dpf = f.length ? op / f.length : null;
+    return { volume: cs.length, audited: aud.length, findings: f.length, hit, overpay: op, dpf, sme: smeK.length ? smeK.filter(c => c.sme).length / smeK.length : null, overturn: ovK.length ? ovK.filter(c => c.overturn).length / ovK.length : null, unaudited: cs.length - aud.length, opportunity: hit != null && dpf != null ? (cs.length - aud.length) * hit * dpf : null, paid: cs.reduce((s, c) => s + (c.paid || 0), 0) };
+  };
+
+  /* =====================================================================
+     MODULE I — CLASSIFICATION & GOVERNANCE
+     ===================================================================== */
+  E.CLASSES = ['High-confidence translation', 'Partial clinical translation', 'Multi-concept translation', 'SME review required', 'Insufficient evidence', 'Not translatable'];
+  E.classifyGen = function (gen, siblings, val, srcVal, cfg) {
+    const reasons = [];
+    if (gen.provisional) { reasons.push('Provisional mapping (no paired-claim evidence); severity not translated.'); if (gen.provisionalReason === 'zero-claims') { reasons.push('Paired claims exist but none match the original concept, so the translation cannot be validated.'); return { cls: 'Insufficient evidence', reasons }; } return { cls: 'SME review required', reasons }; }
+    const n = gen.sev ? gen.sev.n : (val ? val.inter : 0);
+    if (n < cfg.minEvidence) { reasons.push(`Only ${n} original claims support APR ${gen.apr} (< ${cfg.minEvidence}).`); return { cls: 'Insufficient evidence', reasons }; }
+    const notT = gen.condStatus.some(s => /^Not directly translatable/.test(s.status));
+    if (notT) reasons.push('Contains a condition that cannot be translated directly (e.g., CC count).');
+    if (n < cfg.minVolume) reasons.push(`Low volume (${n} < ${cfg.minVolume}); cannot be high-confidence.`);
+    if (siblings > 1) { reasons.push(`Original population splits across ${siblings} APR-DRGs; combined intent preservation ${(srcVal.ips * 100).toFixed(0)}%, combined coverage ${(srcVal.cov * 100).toFixed(0)}%.`); return { cls: 'Multi-concept translation', reasons }; }
+    const hi = val.ips >= cfg.hiIPS && val.cov >= cfg.hiCoverage && val.fi <= cfg.maxFalseInc && n >= cfg.minVolume && !notT;
+    reasons.push(`IPS ${(val.ips * 100).toFixed(0)}% (high ≥ ${(cfg.hiIPS * 100).toFixed(0)}%), coverage ${(val.cov * 100).toFixed(0)}% (≥ ${(cfg.hiCoverage * 100).toFixed(0)}%), false inclusion ${(val.fi * 100).toFixed(0)}% (≤ ${(cfg.maxFalseInc * 100).toFixed(0)}%).`);
+    if (hi) return { cls: 'High-confidence translation', reasons };
+    if (val.ips >= cfg.partialIPS) return { cls: 'Partial clinical translation', reasons };
+    return { cls: 'SME review required', reasons };
+  };
+  E.bumpVersion = v => { const [a, b] = String(v || '1.0').split('.').map(Number); return a + '.' + ((b || 0) + 1); };
+
+  return E;
+})();
+if (typeof module !== 'undefined') module.exports = { ENG, SYN };
+
+</script>
+<script>
+/* =====================================================================
+   UI LAYER — state, persistence, views and actions
+   ===================================================================== */
+const STORE_KEY = 'drgx_translation_engine_v1';
+const DEFAULT_CFG = {
+  useClaims: true, minVolume: 15, minEvidence: 5, candMinShare: 0.10, maxCand: 3, objective: 'jaccard', covTarget: 0.80,
+  losMethod: 'preserve', useDrivers: true, descThreshold: 0.5, familyMatch: true, minDxFreq: 0,
+  hiIPS: 0.80, partialIPS: 0.60, hiCoverage: 0.80, maxFalseInc: 0.25, user: 'SME reviewer',
+  w: { clinical: 0.30, dx: 0.25, sev: 0.25, attr: 0.20 }, candW: { share: 0.45, dx: 0.20, desc: 0.10, pdx: 0.25 }
+};
+const VIEWS = [['overview', 'Executive Overview'], ['data', 'Data Management'], ['repo', 'Concept Repository'], ['decomp', 'Concept Decomposition'], ['rel', 'DRG Relationship Explorer'], ['dx', 'Diagnosis Mapping'], ['sev', 'Severity Translation'], ['gen', 'Concept Generator'], ['val', 'Translation Validation'], ['perf', 'PI Performance'], ['gov', 'Governance & Approvals']];
+const S = { ds: null, src: {}, cfg: null, manual: {}, gens: [], genReason: {}, removed: [], view: 'overview', sel: { concept: 'C001', apr: null, valScope: 'union' }, ui: { sort: {}, open: {}, mergeSel: [], dsMsg: {}, preview: {} } };
+let IX = null, SAMPLE = null, MEMO = new Map();
+
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const jsa = s => esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+const pct = (v, d = 0) => v == null || isNaN(v) ? 'n/a' : (v * 100).toFixed(d) + '%';
+const fmt = (v, d = 0) => v == null || isNaN(v) ? 'n/a' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+const money = v => v == null || isNaN(v) ? 'n/a' : '$' + Math.round(v).toLocaleString();
+const sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+const clone = o => JSON.parse(JSON.stringify(o));
+const memo = (k, f) => { if (!MEMO.has(k)) MEMO.set(k, f()); return MEMO.get(k); };
+const conceptById = id => S.ds.concepts.find(c => c.concept_id === id);
+const parsed = c => memo('p|' + c.concept_id, () => ENG.getParsed(c, S.manual));
+const sample = () => SAMPLE || (SAMPLE = SYN.build());
+function touch() { MEMO = new Map(); save(); }
+function rebuild() { IX = ENG.prepare(S.ds); touch(); }
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify({ ds: S.ds, src: S.src, cfg: S.cfg, manual: S.manual, gens: S.gens, genReason: S.genReason, removed: S.removed, sel: S.sel, view: S.view })); } catch (e) { console.warn('save failed', e); } }
+function load() {
+  try {
+    const j = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if (!j || !j.ds) return false;
+    ['ds', 'src', 'manual', 'gens', 'genReason', 'removed', 'sel', 'view'].forEach(k => { if (j[k] != null) S[k] = j[k]; });
+    S.cfg = Object.assign(clone(DEFAULT_CFG), j.cfg || {}); S.cfg.w = Object.assign({}, DEFAULT_CFG.w, (j.cfg || {}).w); S.cfg.candW = Object.assign({}, DEFAULT_CFG.candW, (j.cfg || {}).candW);
+    return true;
+  } catch (e) { return false; }
+}
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2600); }
+function download(name, text, type) { const b = new Blob([text], { type: type || 'text/csv' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 200); }
+const CLS = { 'High-confidence translation': 'b-hi', 'Partial clinical translation': 'b-part', 'Multi-concept translation': 'b-multi', 'SME review required': 'b-sme', 'Insufficient evidence': 'b-ins', 'Not translatable': 'b-not' };
+const badge = cls => `<span class="badge ${CLS[cls] || 'b-st'}">${esc(cls)}</span>`;
+const stBadge = st => `<span class="badge ${st === 'Approved' ? 'b-hi' : st === 'Rejected' ? 'b-not' : st === 'Superseded' ? 'b-ins' : st === 'Pending SME review' ? 'b-sme' : st === 'Modified' ? 'b-multi' : 'b-st'}">${esc(st)}</span>`;
+const kpi = (l, v, s) => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+const aprDesc = a => (IX.apr.get(a) || {}).apr_drg_description || '';
+const msDesc = m => (IX.ms.get(m) || {}).ms_drg_description || '';
+
+/* ---------------- derived summaries (memoized) ---------------- */
+function srcVal(id) { return memo('sv|' + id, () => ENG.validateSource(conceptById(id), S.gens, IX, S.cfg, S.manual)); }
+function genInfo(g) {
+  return memo('gi|' + g.gid, () => {
+    const c = conceptById(g.source); if (!c) return null;
+    const sib = ENG.activeGens(S.gens, g.source).length;
+    const v = ENG.validateGen(g, c, IX, S.cfg, S.manual);
+    const cl = ENG.classifyGen(g, Math.max(sib, 1), v, srcVal(g.source), S.cfg);
+    return { v, cls: cl.cls, reasons: cl.reasons, sib };
+  });
+}
+function srcSummary(id) {
+  return memo('ss|' + id, () => {
+    const c = conceptById(id), P = parsed(c), sv = srcVal(id), act = ENG.activeGens(S.gens, id);
+    let cls, reasons = [];
+    if (!act.length) {
+      const r = S.genReason[id] || '';
+      if (S.gens.some(g => g.source === id)) { cls = 'SME review required'; reasons.push('All generated concepts were rejected or superseded.'); }
+      else if (!(id in S.genReason)) { cls = 'Insufficient evidence'; reasons.push('Not yet translated — run the translation.'); }
+      else { cls = /not in the MS-DRG master|No MS-DRG condition|No candidate/.test(r) ? 'Not translatable' : 'Insufficient evidence'; reasons.push(r || 'No translation generated.'); }
+    } else if (act.length > 1) { cls = 'Multi-concept translation'; reasons.push(`${act.length} APR-DRG concepts jointly represent the original population.`); }
+    else { const gi = genInfo(act[0]); cls = gi.cls; reasons = gi.reasons; }
+    const st = act.length ? (act.every(g => g.status === 'Approved') ? 'Approved' : act.some(g => g.status === 'Pending SME review') ? 'Pending SME review' : act.some(g => g.status === 'Modified') ? 'Modified' : 'Draft') : '—';
+    return { c, P, sv, act, cls, reasons, st };
+  });
+}
+
+/* ---------------- generation ---------------- */
+function generateFor(id) {
+  const c = conceptById(id); if (!c) return;
+  MEMO.delete('p|' + id);
+  const r = ENG.generate(c, IX, S.cfg, S.manual);
+  const prev = new Map(S.gens.filter(g => g.source === id).map(g => [g.gid, g]));
+  r.gens.forEach(g => { const p = prev.get(g.gid); if (p) { g.version = ENG.bumpVersion(p.version); g.history = p.history.concat([{ ts: g.created, action: 'Regenerated', by: 'engine', note: `Replaced v${p.version} (${p.status}).` }]); } });
+  S.gens = S.gens.filter(g => g.source !== id).concat(r.gens);
+  S.genReason[id] = r.reason;
+}
+function runAll() { S.ds.concepts.forEach(c => generateFor(c.concept_id)); touch(); }
+
+/* ---------------- charts ---------------- */
+function bars(items, opt = {}) {
+  const max = opt.max || Math.max(...items.map(i => i.v), 1e-9);
+  return items.map(i => `<div class="bar"><span class="lb" title="${esc(i.t || i.l)}">${esc(i.l)}</span><span class="tr"><span class="fl" style="display:block;width:${Math.max(0, 100 * i.v / max).toFixed(1)}%;background:${i.c || opt.c || 'var(--pri)'}"></span></span><span class="vl">${i.d != null ? i.d : fmt(i.v, 2)}</span></div>`).join('') || '<div class="mute">No data</div>';
+}
+function cmpBars(a, b, keys, lab) {
+  const sa = sum(a) || 1, sb = sum(b) || 1;
+  keys = keys || [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+  return `<div class="legend"><span><i style="background:var(--orig)"></i>Original MS-DRG concept</span><span><i style="background:var(--tran)"></i>Translated APR-DRG concept</span></div>` + keys.map(k => { const x = (a[k] || 0) / sa, y = (b[k] || 0) / sb; return `<div class="bar cmp"><span class="lb" title="${esc(lab ? lab(k) : k)}">${esc(lab ? lab(k) : k)}</span><span style="flex:1"><span class="tr" style="display:block"><span class="fl" style="display:block;width:${(x * 100).toFixed(1)}%;background:var(--orig)"></span></span><span class="tr" style="display:block"><span class="fl" style="display:block;width:${(y * 100).toFixed(1)}%;background:var(--tran)"></span></span></span><span class="vl">${pct(x)} / ${pct(y)}</span></div>`; }).join('');
+}
+function stack(dist) {
+  const n = sum(dist); if (!n) return '<span class="mute">—</span>';
+  return `<div class="stack" title="${[1, 2, 3, 4].map(s => 'SOI ' + s + ': ' + (dist[s] || 0)).join(' | ')}">${[1, 2, 3, 4].map(s => dist[s] ? `<span class="s${s}" style="width:${(100 * dist[s] / n).toFixed(1)}%"></span>` : '').join('')}</div>`;
+}
+const soiLegend = `<div class="legend">${[1, 2, 3, 4].map(s => `<span><i class="s${s}"></i>SOI ${s}</span>`).join('')}</div>`;
+const distTxt = d => { const n = sum(d); return [1, 2, 3, 4].filter(s => d[s]).map(s => `S${s} ${pct(d[s] / n)}`).join(' · ') || '—'; };
+
+/* ---------------- tables ---------------- */
+function tbl(key, cols, rows, opt = {}) {
+  const st = S.ui.sort[key];
+  if (st) { const col = cols.find(c => c.k === st.k); if (col) { const g = r => col.sv ? col.sv(r) : r[col.k]; rows = rows.slice().sort((x, y) => { const a = g(x), b = g(y); return (a > b ? 1 : a < b ? -1 : 0) * st.d; }); } }
+  return `<div class="tw" ${opt.h ? `style="max-height:${opt.h}px"` : ''}><table><thead><tr>${cols.map(c => `<th class="${c.ns ? '' : 's'} ${c.num ? 'num' : ''}" ${c.ns ? '' : `onclick="A.sort('${key}','${c.k}')"`}>${esc(c.l)}${st && st.k === c.k ? (st.d > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr ${opt.attr ? opt.attr(r) : ''}>${cols.map(c => `<td class="${c.num ? 'num' : ''}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${c.r ? c.r(r) : esc(r[c.k])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="mute">No rows</td></tr>`}</tbody></table></div>`;
+}
+
+/* ---------------- shared widgets ---------------- */
+function validSel() { if (!conceptById(S.sel.concept) && S.ds.concepts.length) S.sel.concept = S.ds.concepts[0].concept_id; }
+function conceptPicker() {
+  return `<label class="f">MS-DRG concept<select id="conceptSel" onchange="A.setConcept(this.value)" style="max-width:520px">${S.ds.concepts.map(c => `<option value="${esc(c.concept_id)}" ${c.concept_id === S.sel.concept ? 'selected' : ''}>${esc(c.concept_id)} — ${esc(String(c.concept_description).slice(0, 90))}</option>`).join('')}</select></label>`;
+}
+function candFor(id) { return memo('cand|' + id, () => ENG.candidates(conceptById(id), IX, S.cfg, S.manual)); }
+function aprPicker(id) {
+  const cand = candFor(id);
+  if (!cand.list.length) return '<span class="mute">No candidate APR-DRGs</span>';
+  if (!S.sel.apr || !cand.list.some(c => c.apr === S.sel.apr)) S.sel.apr = cand.list[0].apr;
+  return `<label class="f">Candidate APR-DRG<select onchange="A.setApr(this.value)">${cand.list.slice(0, 12).map(c => `<option value="${esc(c.apr)}" ${c.apr === S.sel.apr ? 'selected' : ''}>#${c.rank} APR ${esc(c.apr)} — ${esc(c.desc)} (${c.n} claims)</option>`).join('')}</select></label>`;
+}
+function head(title, sub) { return `<h2>${esc(title)} <span class="syn" style="font-size:10px;vertical-align:3px">SYNTHETIC DATA</span></h2><p class="sub">${sub}</p>`; }
+function evidenceBadge(mode) { return mode === 'empirical' ? '<span class="badge b-emp">Empirically validated (paired claims)</span>' : '<span class="badge b-prov">Provisional — diagnosis/description-based</span>'; }
+function condEditor(t, groups) {
+  return groups.map((g, gi) => `${gi ? '<div class="or">OR</div>' : ''}<div class="grp"><div class="gh"><span>Condition group ${gi + 1} — all conditions must hold (AND)</span><span><button class="sm gh" onclick="A.ceAdd('${t}',${gi})">+ condition</button> <button class="sm bad" onclick="A.ceDelGroup('${t}',${gi})">remove group</button></span></div>${g.map((c, ci) => condRow(t, gi, ci, c)).join('') || '<div class="mute">Empty group</div>'}</div>`).join('') + `<button class="sm sec" onclick="A.ceAddGroup('${t}')">+ OR group</button>`;
+}
+function condRow(t, gi, ci, c) {
+  const f = ENG.FIELDS[c.field] || { t: 'num' }, ops = ENG.OPS[f.t];
+  return `<div class="cond"><select onchange="A.ce('${t}',${gi},${ci},'field',this.value)">${Object.keys(ENG.FIELDS).map(k => `<option value="${k}" ${k === c.field ? 'selected' : ''}>${esc(ENG.FIELDS[k].l)}</option>`).join('')}</select><select onchange="A.ce('${t}',${gi},${ci},'op',this.value)">${ops.map(o => `<option value="${esc(o)}" ${o === c.op ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select><input value="${esc(ENG.valStr(c))}" onchange="A.ce('${t}',${gi},${ci},'value',this.value)" title="Comma-separated lists; 'a - b' for between"><button class="sm bad" title="Remove condition" onclick="A.ceDel('${t}',${gi},${ci})">✕</button></div>`;
+}
+const condPills = groups => groups.map(g => g.map(c => `<span class="pill">${esc(ENG.condText(c))}</span>`).join(' ')).join(' <b style="color:var(--violet)">OR</b> ');
+
+/* =====================================================================
+   VIEWS
+   ===================================================================== */
+const V = {};
+
+V.overview = function () {
+  const ids = S.ds.concepts.map(c => c.concept_id), sums = ids.map(srcSummary);
+  const act = S.gens.filter(g => !['Rejected', 'Superseded'].includes(g.status));
+  const clsC = {}; sums.forEach(s => clsC[s.cls] = (clsC[s.cls] || 0) + 1);
+  const withG = sums.filter(s => s.act.length), avgIps = withG.length ? withG.reduce((a, s) => a + s.sv.ips, 0) / withG.length : null;
+  const rows = sums.map(s => ({ id: s.c.concept_id, ms: s.c.ms_drg, desc: s.c.concept_description, intent: s.P.intent, n: s.sv.nO, k: s.act.length, aprs: s.act.map(g => g.apr).join(', '), ips: s.act.length ? s.sv.ips : null, cov: s.act.length ? s.sv.cov : null, fi: s.act.length ? s.sv.fi : null, cls: s.cls, st: s.st }));
+  return head('Executive Overview', 'Portfolio view of MS-DRG Payment Integrity concepts and their APR-DRG translations. Translation quality (does the new concept select the same clinical population?) is reported separately from PI performance (does it find overpayments?).') +
+    `<div class="kpis">${kpi('MS-DRG concepts', ids.length)}${kpi('Active APR concepts', act.length, `${S.gens.length} generated in total`)}${kpi('High-confidence', clsC['High-confidence translation'] || 0, 'source concepts')}${kpi('Multi-concept', clsC['Multi-concept translation'] || 0, 'split across APR-DRGs')}${kpi('Needs SME / evidence', (clsC['SME review required'] || 0) + (clsC['Insufficient evidence'] || 0) + (clsC['Not translatable'] || 0), 'review, low evidence, or not translatable')}${kpi('Avg intent preservation', pct(avgIps), 'concepts with translations')}${kpi('Pending SME review', S.gens.filter(g => g.status === 'Pending SME review').length)}${kpi('Approved', S.gens.filter(g => g.status === 'Approved').length)}${kpi('Paired claims', fmt(IX.claims.length), IX.hasOutcomes ? 'with PI outcome labels' : 'no outcome labels')}</div>` +
+    `<div class="card"><h3>Translation pipeline</h3><div class="flow"><span>A · Ingest &amp; validate data</span><em>→</em><span>B · Decompose concept</span><em>→</em><span>C · Discover APR-DRG candidates</span><em>→</em><span>D · Translate diagnoses</span><em>→</em><span>E · Translate severity (empirical SOI)</span><em>→</em><span>F · Generate APR concepts</span><em>→</em><span>G · Validate intent</span><em>→</em><span>H · PI performance</span><em>→</em><span>I · Classify &amp; govern</span></div></div>` +
+    `<div class="grid g2"><div class="card"><h3>Translation classification (source concepts)</h3>${bars(ENG.CLASSES.map(c => ({ l: c, v: clsC[c] || 0, d: String(clsC[c] || 0), c: c.startsWith('High') ? 'var(--acc)' : c.startsWith('Partial') ? '#2a5aa0' : c.startsWith('Multi') ? 'var(--violet)' : c.startsWith('SME') ? 'var(--warn)' : c.startsWith('Not') ? 'var(--bad)' : '#999' })), { max: Math.max(1, ...Object.values(clsC)) })}</div>` +
+    `<div class="card"><h3>Intent preservation score by concept</h3>${bars(withG.map(s => ({ l: s.c.concept_id + ' · ' + s.act.map(g => g.apr).join('/'), t: s.c.concept_description, v: s.sv.ips, d: pct(s.sv.ips), c: s.sv.ips >= S.cfg.hiIPS ? 'var(--acc)' : s.sv.ips >= S.cfg.partialIPS ? '#2a5aa0' : 'var(--warn)' })), { max: 1 })}</div></div>` +
+    `<div class="card"><h3>All concepts <span class="r"><button onclick="A.runAll()">Re-run all translations</button><button class="sec" onclick="A.exportVal()">Download validation report</button></span></h3>` +
+    tbl('ov', [{ k: 'id', l: 'Concept' }, { k: 'ms', l: 'MS-DRG' }, { k: 'desc', l: 'Description', r: r => `<span title="${esc(r.intent)}">${esc(r.desc)}</span>` }, { k: 'n', l: 'Orig. claims', num: 1 }, { k: 'aprs', l: 'APR-DRG(s)' }, { k: 'ips', l: 'IPS', num: 1, r: r => pct(r.ips), sv: r => r.ips == null ? -1 : r.ips }, { k: 'cov', l: 'Coverage', num: 1, r: r => pct(r.cov), sv: r => r.cov == null ? -1 : r.cov }, { k: 'fi', l: 'False incl.', num: 1, r: r => pct(r.fi), sv: r => r.fi == null ? -1 : r.fi }, { k: 'cls', l: 'Classification', r: r => badge(r.cls) }, { k: 'st', l: 'Governance', r: r => r.st === '—' ? '—' : stBadge(r.st) }, { k: 'x', l: '', ns: 1, r: r => `<button class="sm sec" onclick="A.open('${jsa(r.id)}','gen')">Open</button>` }], rows) + '</div>';
+};
+
+V.data = function () {
+  const cards = Object.keys(ENG.SCHEMA).map(key => {
+    const sc = ENG.SCHEMA[key], rows = S.ds[key] || [], vr = ENG.validateSchema(key, rows, rows[0] ? Object.keys(rows[0]) : sc.req.concat(sc.opt)), msg = S.ui.dsMsg[key];
+    const hs = rows[0] ? Object.keys(rows[0]) : [];
+    const blanks = Object.entries(vr.blanks).filter(([, n]) => n > 0);
+    return `<div class="card"><h3>${esc(sc.label)} <span class="badge ${String(S.src[key] || '').startsWith('sample') ? 'b-prov' : 'b-emp'}">${esc(S.src[key] || 'sample')}</span><span class="r"><button class="sm sec" onclick="A.template('${key}')">Download template</button><button class="sm sec" onclick="A.exportDs('${key}')">Export current</button><button class="sm gh" onclick="A.togglePreview('${key}')">${S.ui.preview[key] ? 'Hide' : 'Preview'}</button></span></h3>
+      <div class="row"><div><b>${fmt(rows.length)}</b> rows · <b>${hs.length}</b> columns</div><label class="f">Upload CSV (replaces this dataset)<input type="file" accept=".csv,text/csv" onchange="A.upload('${key}',this)"></label></div>
+      <div class="mute" style="margin-top:6px">Required: <span class="mono">${sc.req.join(', ')}</span><br>Optional: <span class="mono">${sc.opt.join(', ')}</span></div>
+      ${msg ? `<div class="${msg.ok ? 'note' : 'err'}">${msg.html}</div>` : ''}
+      <div style="margin-top:6px">${vr.missingReq.length ? `<div class="err">Missing required columns: ${vr.missingReq.join(', ')}</div>` : '<span class="badge b-hi">Schema valid</span>'} ${vr.missingOpt.length ? `<span class="mute">· optional columns absent: ${vr.missingOpt.join(', ')}</span>` : ''}
+      ${blanks.length ? `<div class="mute" style="margin-top:4px">Missing values: ${blanks.map(([c, n]) => `<span class="pill">${esc(c)}: ${n}</span>`).join('')}</div>` : '<div class="mute" style="margin-top:4px">No missing values in schema columns.</div>'}</div>
+      ${S.ui.preview[key] ? '<div style="margin-top:8px">' + tbl('pv_' + key, hs.map(h => ({ k: h, l: h })), rows.slice(0, 25), { h: 320 }) + `<div class="mute">First 25 of ${rows.length} rows.</div></div>` : ''}</div>`;
+  }).join('');
+  const c = S.cfg, num = (p, l, step, min, max) => `<label class="f">${l}<input type="number" step="${step}" min="${min}" max="${max}" value="${p.split('.').reduce((o, k) => o[k], c)}" onchange="A.setCfg('${p}',+this.value)"></label>`;
+  return head('Data Management', 'Upload client data as CSV, validate schemas, preview, and download templates. Paired claims are optional but needed for empirical (rather than provisional) translation. Data stays in this browser.') +
+    `<div class="warn">The bundled sample data is <b>SYNTHETIC and fictional</b>. DRG relationships, MCC/CC flags, SOI levels, relative weights and audit outcomes are demo values, not official CMS or 3M/Solventum grouper rules.</div>` + cards +
+    `<div class="card"><h3>Engine configuration <span class="r"><button onclick="A.runAll()">Apply &amp; re-run all translations</button><button class="sec" onclick="A.resetCfg()">Restore defaults</button></span></h3>
+     <div class="row">${num('minEvidence', 'Min evidence (claims)', 1, 1, 999)}${num('minVolume', 'Low-volume threshold', 1, 1, 9999)}${num('candMinShare', 'Candidate min share', 0.01, 0, 1)}${num('maxCand', 'Max APR candidates / concept', 1, 1, 10)}${num('covTarget', 'Coverage target', 0.05, 0, 1)}
+     <label class="f">Severity objective<select onchange="A.setCfg('objective',this.value)">${[['jaccard', 'Jaccard (balance)'], ['f1', 'F1'], ['coverage', 'Coverage-first, then precision']].map(o => `<option value="${o[0]}" ${c.objective === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></label>
+     <label class="f">LOS translation<select onchange="A.setCfg('losMethod',this.value)"><option value="preserve" ${c.losMethod === 'preserve' ? 'selected' : ''}>Preserve threshold</option><option value="percentile" ${c.losMethod === 'percentile' ? 'selected' : ''}>Percentile-equivalent</option></select></label>
+     <label class="f">SOI-level dx count restriction<select onchange="A.setCfg('useDrivers',this.value==='1')"><option value="1" ${c.useDrivers ? 'selected' : ''}>Evaluate</option><option value="0" ${!c.useDrivers ? 'selected' : ''}>Off</option></select></label>
+     <label class="f">Evidence mode<select onchange="A.setCfg('useClaims',this.value==='1')"><option value="1" ${c.useClaims ? 'selected' : ''}>Use paired claims</option><option value="0" ${!c.useClaims ? 'selected' : ''}>Provisional only</option></select></label></div>
+     <div class="row" style="margin-top:8px">${num('hiIPS', 'High-confidence IPS ≥', 0.05, 0, 1)}${num('hiCoverage', 'High-confidence coverage ≥', 0.05, 0, 1)}${num('maxFalseInc', 'High-confidence false incl. ≤', 0.05, 0, 1)}${num('partialIPS', 'Partial IPS ≥', 0.05, 0, 1)}${num('candW.share', 'Cand. wt: claim share', 0.05, 0, 5)}${num('candW.dx', 'Cand. wt: dx overlap', 0.05, 0, 5)}${num('candW.desc', 'Cand. wt: description', 0.05, 0, 5)}${num('candW.pdx', 'Cand. wt: principal dx', 0.05, 0, 5)}
+     <label class="f">Reviewer name<input value="${esc(c.user)}" onchange="A.setCfg('user',this.value)"></label></div>
+     <div class="mute" style="margin-top:6px">Configuration, uploaded data, manual parse edits and generated concepts are saved in this browser's local storage.</div></div>`;
+};
+
+V.repo = function () {
+  const q = (S.ui.repoQ || '').toLowerCase(), fd = S.ui.repoDrg || '', fc = S.ui.repoCls || '';
+  const drgs = [...new Set(S.ds.concepts.flatMap(c => String(c.ms_drg).match(/\d{3}/g) || []))].sort();
+  const rows = S.ds.concepts.map(c => { const s = srcSummary(c.concept_id); return Object.assign({}, c, { n: s.sv.nO, cls: s.cls, k: s.act.length }); })
+    .filter(r => (!q || JSON.stringify(r).toLowerCase().includes(q)) && (!fd || String(r.ms_drg).includes(fd)) && (!fc || r.cls === fc));
+  const next = 'C' + String(Math.max(0, ...S.ds.concepts.map(c => parseInt(String(c.concept_id).replace(/\D/g, '')) || 0)) + 1).padStart(3, '0');
+  const f = S.ui.newC || { concept_id: next };
+  const inp = (k, l, w) => `<label class="f">${l}<input style="width:${w || 140}px" value="${esc(f[k] || '')}" onchange="A.newC('${k}',this.value)"></label>`;
+  return head('Concept Repository', 'Source MS-DRG Payment Integrity concepts. Search, filter, add or remove concepts, then decompose and translate them.') +
+    `<div class="card"><div class="row"><label class="f">Search<input id="repoQ" value="${esc(S.ui.repoQ || '')}" oninput="A.ui('repoQ',this.value)" placeholder="text, code, DRG…" style="width:220px"></label>
+     <label class="f">MS-DRG<select onchange="A.ui('repoDrg',this.value)"><option value="">All</option>${drgs.map(d => `<option ${d === fd ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+     <label class="f">Classification<select onchange="A.ui('repoCls',this.value)"><option value="">All</option>${ENG.CLASSES.map(d => `<option ${d === fc ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+     <span style="flex:1"></span><button class="sec" onclick="A.exportDs('concepts')">Export concepts CSV</button></div><div style="margin-top:10px">` +
+    tbl('repo', [{ k: 'concept_id', l: 'ID' }, { k: 'ms_drg', l: 'MS-DRG' }, { k: 'concept_description', l: 'Description', w: 260 }, { k: 'mcc_condition', l: 'MCC' }, { k: 'cc_condition', l: 'CC' }, { k: 'diagnosis_conditions', l: 'Dx' }, { k: 'procedure_conditions', l: 'Px' }, { k: 'los_conditions', l: 'LOS' }, { k: 'additional_filters', l: 'Other' }, { k: 'n', l: 'Orig. claims', num: 1 }, { k: 'cls', l: 'Classification', r: r => badge(r.cls) },
+      { k: 'a', l: 'Actions', ns: 1, r: r => `<button class="sm sec" onclick="A.open('${jsa(r.concept_id)}','decomp')">Decompose</button> <button class="sm sec" onclick="A.genOne('${jsa(r.concept_id)}',true)">Translate</button> <button class="sm bad" onclick="A.delConcept('${jsa(r.concept_id)}')">Delete</button>` }], rows) +
+    `<div class="mute" style="margin-top:4px">${rows.length} of ${S.ds.concepts.length} concepts shown.</div></div></div>` +
+    `<div class="card"><h3>Add concept</h3><div class="row">${inp('concept_id', 'Concept ID', 90)}${inp('ms_drg', 'MS-DRG(s)', 90)}${inp('concept_description', 'Description (natural language)', 380)}${inp('mcc_condition', 'MCC condition', 80)}${inp('cc_condition', 'CC condition', 80)}${inp('diagnosis_conditions', 'Diagnosis conditions', 200)}${inp('procedure_conditions', 'Procedure conditions', 180)}${inp('los_conditions', 'LOS conditions', 110)}${inp('additional_filters', 'Additional filters', 160)}<button onclick="A.addConcept()">Add concept</button></div>
+     <div class="mute" style="margin-top:6px">Example: <span class="mono">Select DRG 871 with exactly one MCC and LOS less than 12.</span> Structured columns are optional; they are merged with the parsed description and conflicts are flagged.</div></div>`;
+};
+
+V.decomp = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return head('Concept Decomposition', '') + '<div class="card">No concepts.</div>';
+  const auto = ENG.parseConcept(c), P = parsed(c);
+  if (!S.ui.draft || S.ui.draft.id !== c.concept_id) S.ui.draft = { id: c.concept_id, groups: clone(P.groups) };
+  const d = S.ui.draft.groups, sel = ENG.select(d, IX.claims), byApr = ENG.countBy(sel, i => IX.claims[i].apr_drg);
+  const dirty = JSON.stringify(d) !== JSON.stringify(P.groups);
+  const fld = (k, l) => `<label class="f">${l}<input value="${esc(c[k] || '')}" onchange="A.editConcept('${k}',this.value)" style="width:150px"></label>`;
+  const flat = d.flat(); const intent = ENG.intent(d);
+  return head('Concept Decomposition', 'Natural-language and structured concept fields are parsed into explicit conditions. Review and edit them before translation. Text that cannot be parsed is flagged — the parser never invents clinical restrictions.') +
+    `<div class="card"><div class="row">${conceptPicker()}</div>
+     <label class="f" style="margin-top:10px">Concept description<textarea onchange="A.editConcept('concept_description',this.value)">${esc(c.concept_description)}</textarea></label>
+     <div class="row" style="margin-top:6px">${fld('ms_drg', 'MS-DRG(s)')}${fld('mcc_condition', 'MCC condition')}${fld('cc_condition', 'CC condition')}${fld('diagnosis_conditions', 'Diagnosis conditions')}${fld('procedure_conditions', 'Procedure conditions')}${fld('los_conditions', 'LOS conditions')}${fld('additional_filters', 'Additional filters')}</div>
+     <div class="row" style="margin-top:10px"><button onclick="A.reparse()">Parse description</button><button class="ok" onclick="A.saveDraft()" ${dirty ? '' : 'disabled'}>Save edits as manual override</button><button class="sec" onclick="A.revertParse()" ${S.manual[c.concept_id] ? '' : 'disabled'}>Revert to automatic parse</button>${P.manual ? '<span class="badge b-multi">Manual override active</span>' : '<span class="badge b-st">Automatic parse</span>'}${dirty ? '<span class="badge b-sme">Unsaved edits</span>' : ''}</div>
+     ${auto.warnings.map(w => `<div class="warn">${esc(w)}</div>`).join('')}</div>
+     <div class="grid g2"><div class="card"><h3>Structured output</h3><ul style="margin:0;padding-left:18px">${flat.length ? [...new Map(flat.map(k => [ENG.condText(k), k])).keys()].map(t => `<li>${esc(t)}</li>`).join('') : '<li class="mute">No conditions</li>'}<li><b>Concept intent</b> = ${esc(intent)}</li>${d.length > 1 ? `<li><b>Logic</b>: ${d.length} OR-groups</li>` : ''}</ul>
+       <h3 style="margin-top:14px">Edit conditions</h3>${condEditor('draft', d)}</div>
+     <div class="card"><h3>Original claim population (live)</h3><div class="kpis">${kpi('Matching paired claims', fmt(sel.length))}${kpi('APR-DRGs observed', Object.keys(byApr).length)}</div>${bars(Object.entries(byApr).sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ l: 'APR ' + a, t: aprDesc(a), v: n, d: n + ' (' + pct(n / sel.length) + ')' })))}
+       <details style="margin-top:10px"><summary>Supported grammar</summary><div class="mute" style="font-size:12px;margin-top:6px">DRG lists (<span class="mono">DRG 871 or 872</span>) · MCC/CC counts (<span class="mono">exactly one MCC</span>, <span class="mono">at least 2 MCC</span>, <span class="mono">no CC</span>, <span class="mono">MCC count = 1</span>) · <span class="mono">where the MCC is G93.41</span> · <span class="mono">principal diagnosis A41.9</span> · <span class="mono">secondary diagnosis includes R65.20</span> · <span class="mono">exclude diagnosis E43</span> · <span class="mono">exclude procedure 5A1945Z</span> · LOS (<span class="mono">LOS less than 12</span>, <span class="mono">LOS between 2 and 5</span>, <span class="mono">LOS &gt;= 3</span>) · <span class="mono">age &gt;= 65</span> · <span class="mono">discharge status 01</span> · uppercase <span class="mono">OR</span> splits branches; shared conditions from the first branch are inherited. Codes accept a trailing <span class="mono">*</span> wildcard.</div></details></div></div>`;
+};
+
+function relGraph(highlight) {
+  const cnt = {}; IX.claims.forEach(c => { const k = c.ms_drg + '>' + c.apr_drg; cnt[k] = (cnt[k] || 0) + 1; });
+  let edges = Object.entries(cnt).map(([k, n]) => { const [m, a] = k.split('>'); return { m, a, n }; });
+  if (!S.ui.relAll) edges = edges.filter(e => highlight.includes(e.m));
+  if (!edges.length) return '<div class="mute">No paired-claim relationships for this selection.</div>';
+  const ms = [...new Set(edges.map(e => e.m))].sort(), ap = [...new Set(edges.map(e => e.a))].sort();
+  const H = Math.max(ms.length, ap.length) * 24 + 24, W = 660, max = Math.max(...edges.map(e => e.n));
+  const y = (arr, v) => 20 + arr.indexOf(v) * ((H - 40) / Math.max(1, arr.length - 1 || 1)) + (arr.length === 1 ? (H - 40) / 2 : 0);
+  const paths = edges.map(e => { const y1 = y(ms, e.m), y2 = y(ap, e.a), hl = highlight.includes(e.m); return `<path d="M150 ${y1} C 300 ${y1}, 300 ${y2}, 440 ${y2}" fill="none" stroke="${hl ? '#c27c2c' : '#9fb7c4'}" stroke-opacity="${hl ? 0.85 : 0.45}" stroke-width="${(1 + 10 * e.n / max).toFixed(1)}"><title>MS ${e.m} → APR ${e.a}: ${e.n} claims</title></path>`; }).join('');
+  const node = (x, v, lab, desc, hl, anchor) => `<g><circle cx="${x}" cy="${y(anchor === 'end' ? ms : ap, v)}" r="5" fill="${hl ? '#c27c2c' : '#0f5b78'}"/><text x="${anchor === 'end' ? x - 9 : x + 9}" y="${y(anchor === 'end' ? ms : ap, v) + 4}" font-size="11.5" text-anchor="${anchor}" fill="#1c2733" font-weight="${hl ? 700 : 400}">${esc(lab)}<title>${esc(desc)}</title></text></g>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="MS-DRG to APR-DRG relationship graph">${paths}${ms.map(m => node(150, m, 'MS ' + m, msDesc(m), highlight.includes(m), 'end')).join('')}${ap.map(a => node(440, a, 'APR ' + a + ' ' + (aprDesc(a).length > 30 ? aprDesc(a).slice(0, 29) + '…' : aprDesc(a)), aprDesc(a), false, 'start')).join('')}</svg>`;
+}
+
+V.rel = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const cand = candFor(c.concept_id), W = S.cfg.candW;
+  return head('DRG Relationship Explorer', 'Candidate APR-DRGs for the selected concept, ranked by a transparent clinical alignment score. Empirical mapping uses the claims that match the original concept; provisional mapping (no paired claims) uses only descriptions and diagnosis codes.') +
+    `<div class="card"><div class="row">${conceptPicker()}<label class="f">Evidence mode<select onchange="A.setCfg('useClaims',this.value==='1',true)"><option value="1" ${S.cfg.useClaims ? 'selected' : ''}>Use paired claims</option><option value="0" ${!S.cfg.useClaims ? 'selected' : ''}>Provisional only (ignore claims)</option></select></label>${evidenceBadge(cand.mode)}</div>
+     <div class="note">MS-DRG(s): <b>${cand.msCodes.map(m => esc(m + ' ' + msDesc(m))).join('; ') || '—'}</b> · original concept population: <b>${cand.origN}</b> claims. Clinical alignment score = (${W.share}×claim share + ${W.dx}×dx overlap coefficient + ${W.desc}×description similarity + ${W.pdx}×principal-dx alignment) / Σweights.${cand.mode === 'provisional' ? ' <b>Provisional</b>: score = 0.6×description similarity + 0.4×overlap of the concept’s own diagnosis codes with the APR dx dataset. Not validated against claims.' : ''}</div>
+     ${tbl('cand', [{ k: 'rank', l: '#', num: 1 }, { k: 'apr', l: 'APR-DRG' }, { k: 'desc', l: 'Description', w: 220 }, { k: 'n', l: 'Mapping freq.', num: 1 }, { k: 'share', l: '% of orig. claims', num: 1, r: r => pct(r.share, 1) }, { k: 'pAprGivenMs', l: 'P(APR|MS-DRG)', num: 1, r: r => cand.mode === 'empirical' ? pct(r.pAprGivenMs, 1) + ` <span class="mute">n=${r.msN}</span>` : 'n/a' }, { k: 'overlap', l: 'Dx overlap coef.', num: 1, r: r => fmt(r.overlap, 2) }, { k: 'jaccard', l: 'Dx Jaccard', num: 1, r: r => fmt(r.jaccard, 2) }, { k: 'descSim', l: 'Desc. sim.', num: 1, r: r => fmt(r.descSim, 2) }, { k: 'pdxAlign', l: 'Pdx align.', num: 1, r: r => r.pdxAlign == null ? 'n/a' : pct(r.pdxAlign) }, { k: 'score', l: 'Clinical alignment', num: 1, r: r => `<b>${fmt(r.score, 3)}</b>` }, { k: 'soi', l: 'SOI distribution', ns: 1, r: r => stack(r.soiDist) }], cand.list.slice(0, 15))}
+     ${soiLegend}</div>
+     <div class="grid g2"><div class="card"><h3>Candidate ranking</h3>${bars(cand.list.slice(0, 10).map(r => ({ l: '#' + r.rank + ' APR ' + r.apr, t: r.desc, v: r.score, d: fmt(r.score, 3) })), { max: 1 })}</div>
+     <div class="card"><h3>MS-DRG → APR-DRG relationship graph <span class="r"><button class="sm ${S.ui.relAll ? 'sec' : ''}" onclick="A.ui('relAll',false)">Concept DRGs</button><button class="sm ${S.ui.relAll ? '' : 'sec'}" onclick="A.ui('relAll',true)">All DRGs</button></span></h3>${IX.hasClaims ? relGraph(cand.msCodes) : '<div class="mute">No paired claims loaded.</div>'}<div class="mute">Edge width = paired-claim count (all claims of the MS-DRG, not only the concept population). Highlighted: concept MS-DRGs.</div></div></div>`;
+};
+
+function heatmap(metric) {
+  return memo('heat|' + metric, () => {
+    const ms = [...new Set(IX.claims.map(c => c.ms_drg))].sort(), ap = [...IX.apr.keys()].sort();
+    const msDx = {}, msN = {}, pair = {};
+    IX.claims.forEach(c => { (msDx[c.ms_drg] = msDx[c.ms_drg] || new Set()); msDx[c.ms_drg].add(c.pdx); c.sdx.forEach(d => msDx[c.ms_drg].add(d)); msN[c.ms_drg] = (msN[c.ms_drg] || 0) + 1; pair[c.ms_drg + '|' + c.apr_drg] = (pair[c.ms_drg + '|' + c.apr_drg] || 0) + 1; });
+    const val = (m, a) => metric === 'prob' ? (pair[m + '|' + a] || 0) / msN[m] : ENG.overlap(msDx[m], (IX.aprDx.get(a) || { all: new Set() }).all);
+    return { ms, ap, val };
+  });
+}
+
+V.dx = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const cand = candFor(c.concept_id), apr = cand.list.length ? (S.sel.apr && cand.list.some(x => x.apr === S.sel.apr) ? S.sel.apr : cand.list[0].apr) : null;
+  const picker = aprPicker(c.concept_id);
+  let body = '<div class="card mute">No candidate APR-DRG.</div>';
+  if (apr) {
+    const m = ENG.dxMapping(cand.orig, apr, IX, S.cfg);
+    const base = ENG.translateBase(c, apr, IX, S.cfg, S.manual);
+    const dxSt = base.status.filter(s => /dx|MCC diagnosis|Principal|Secondary/.test(s.original));
+    body = `<div class="kpis">${kpi('Jaccard similarity', fmt(m.jaccard, 2), 'orig. dx set vs APR dx set')}${kpi('Overlap coefficient', fmt(m.overlap, 2), '|A∩B| / min(|A|,|B|)')}${kpi('Exact ICD-10-CM', m.exact)}${kpi('Description-similar', m.sim, 'threshold ' + S.cfg.descThreshold)}${kpi('Family matches', m.fam, S.cfg.familyMatch ? '3-char category' : 'disabled')}${kpi('Unmatched', m.unmatched)}${kpi('Frequency-weighted coverage', pct(m.weightedCoverage), 'dx occurrences exactly matched')}${kpi('Principal-dx Jaccard', fmt(m.pdxJaccard, 2))}</div>
+      <div class="warn"><b>Clinical code similarity ≠ grouper equivalence.</b> These measures compare diagnosis code sets; they do not prove a claim would group to APR ${esc(apr)}. Only paired claims (or regrouping with a licensed APR-DRG grouper) establish grouper behaviour.</div>
+      <div class="card"><h3>Concept diagnosis conditions → APR translation</h3>${dxSt.length ? tbl('dxst', [{ k: 'original', l: 'Original condition' }, { k: 'translated', l: 'Translated condition' }, { k: 'status', l: 'Status', r: r => `<span class="badge ${/verify/.test(r.status) ? 'b-sme' : 'b-st'}">${esc(r.status)}</span>` }, { k: 'note', l: 'Rationale' }], dxSt) : '<div class="mute">The concept has no explicit diagnosis conditions; its clinical population is defined by the DRG and severity conditions.</div>'}</div>
+      <div class="card"><h3>Diagnosis-level matching — original population (${cand.origN} claims) vs APR ${esc(apr)} dataset (${m.aprSize} codes)</h3>
+      ${tbl('dxm', [{ k: 'code', l: 'ICD-10-CM', r: r => `<span class="mono">${esc(IX.disp(r.code))}</span>` }, { k: 'desc', l: 'Description' }, { k: 'P', l: 'As principal', num: 1 }, { k: 'S', l: 'As secondary', num: 1 }, { k: 'pct', l: '% of claims', num: 1, r: r => pct(r.pct, 1) }, { k: 'flag', l: 'MS flag', r: r => r.flag ? `<span class="badge ${r.flag === 'MCC' ? 'b-not' : 'b-sme'}">${r.flag}</span>` : '' }, { k: 'type', l: 'Match type', r: r => `<span class="badge ${r.type === 'Exact' ? 'b-hi' : r.type === 'Unmatched' ? 'b-ins' : 'b-part'}">${esc(r.type)}</span>` }, { k: 'match', l: 'APR match', r: r => r.match && r.type !== 'Exact' ? `<span class="mono">${esc(IX.disp(r.match))}</span> <span class="mute">${esc(IX.desc(r.match).slice(0, 40))}</span>` : '' }, { k: 'roleA', l: 'APR role' }, { k: 'lvl', l: 'APR SOI level', num: 1, r: r => r.lvl || '' }], m.rows, { h: 420 })}</div>`;
+  }
+  const hm = IX.hasClaims ? heatmap(S.ui.heat || 'overlap') : null;
+  const conMs = cand.msCodes;
+  return head('Diagnosis Mapping', 'Compares the diagnosis population of the original concept with the APR-DRG diagnosis dataset using exact ICD-10-CM matching, description similarity, code-family matching, Jaccard similarity and the overlap coefficient.') +
+    `<div class="card"><div class="row">${conceptPicker()}${picker}<label class="f">Description-similarity threshold: ${S.cfg.descThreshold}<input type="range" min="0.1" max="1" step="0.05" value="${S.cfg.descThreshold}" onchange="A.setCfg('descThreshold',+this.value,true)"></label><label class="f">Family matching<select onchange="A.setCfg('familyMatch',this.value==='1',true)"><option value="1" ${S.cfg.familyMatch ? 'selected' : ''}>On (ICD category)</option><option value="0" ${!S.cfg.familyMatch ? 'selected' : ''}>Off</option></select></label><label class="f">Min. dx frequency<input type="number" step="0.01" min="0" max="1" value="${S.cfg.minDxFreq}" onchange="A.setCfg('minDxFreq',+this.value,true)"></label></div></div>` + body +
+    (hm ? `<div class="card"><h3>MS-DRG × APR-DRG heatmap <span class="r"><button class="sm ${S.ui.heat === 'prob' ? 'sec' : ''}" onclick="A.ui('heat','overlap')">Dx overlap coefficient</button><button class="sm ${S.ui.heat === 'prob' ? '' : 'sec'}" onclick="A.ui('heat','prob')">P(APR | MS-DRG)</button></span></h3><div class="tw"><table class="heat"><thead><tr><th>MS \\ APR</th>${hm.ap.map(a => `<th title="${esc(aprDesc(a))}">${a}</th>`).join('')}</tr></thead><tbody>${hm.ms.map(m => `<tr><th title="${esc(msDesc(m))}" style="${conMs.includes(m) ? 'color:var(--tran)' : ''}">${m}</th>${hm.ap.map(a => { const v = hm.val(m, a); return `<td title="MS ${m} × APR ${a}: ${fmt(v, 2)}" style="background:rgba(15,91,120,${v.toFixed(2)});color:${v > 0.55 ? '#fff' : '#1c2733'}">${v ? fmt(v, 2) : ''}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div><div class="mute">Rows: MS-DRGs with paired claims (concept DRGs highlighted). Overlap coefficient compares all diagnoses seen on the MS-DRG’s claims with the APR-DRG’s dx dataset.</div></div>` : '');
+};
+
+V.sev = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const cand = candFor(c.concept_id);
+  if (!cand.list.length) return head('Severity Translation', '') + `<div class="card">${conceptPicker()}<div class="mute">No candidate APR-DRG.</div></div>`;
+  const picker = aprPicker(c.concept_id), apr = S.sel.apr;
+  const head2 = head('Severity Translation', 'Estimates P(APR SOI | MS-DRG, MCC, CC, diagnosis combinations) from paired claims. There is no hard-coded MCC→SOI equivalence; candidate SOI restrictions are evaluated against the original population and the evidence is shown.');
+  if (cand.mode !== 'empirical') return head2 + `<div class="card"><div class="row">${conceptPicker()}${picker}</div><div class="warn">No paired claims match this concept (or evidence mode is provisional). Severity cannot be estimated, and no SOI restriction is recommended. Load paired claims or switch evidence mode on the Relationship Explorer.</div></div>`;
+  const base = ENG.translateBase(c, apr, IX, S.cfg, S.manual);
+  const sa = ENG.severityAnalysis(c, apr, base, IX, S.cfg, S.manual);
+  const grid = ENG.sevGrid(cand.msCodes, S.ui.gridAll ? null : apr, IX), byMcc = ENG.sevByMcc(cand.msCodes, IX);
+  const single = IX.claims.filter(x => cand.msCodes.includes(x.ms_drg) && x.mcc_count === 1), sd = ENG.countBy(single, x => x.soi);
+  const g = S.gens.find(x => x.gid === 'G-' + c.concept_id + '-' + apr);
+  const cs = S.ui.customSoi || {}, csKey = c.concept_id + '|' + apr, custom = cs[csKey] || { soi: sa.chosen.soi, drv: sa.chosen.driver ? sa.chosen.driver.op + sa.chosen.driver.value : '' };
+  let customRes = null;
+  { const T = ENG.select(base.groups.map(gr => { const ng = gr.concat([{ field: 'soi', op: 'in', value: custom.soi }]); if (custom.drv) { const m = custom.drv.match(/(>=|=)(\d+)/); if (m) ng.push({ field: 'soi_drivers', op: m[1], value: +m[2] }); } return ng; }), IX.claims); const tg = new Set(cand.orig.filter(i => IX.claims[i].apr_drg === apr)); let inter = 0; T.forEach(i => { if (tg.has(i)) inter++; }); customRes = { n: T.length, cov: tg.size ? inter / tg.size : 0, fi: T.length ? (T.length - inter) / T.length : 0, jac: (tg.size + T.length - inter) ? inter / (tg.size + T.length - inter) : 0 }; }
+  const drvTxt = d => d ? `SOI-level dx count ${d.op} ${d.value}` : '—';
+  return head2 + `<div class="card"><div class="row">${conceptPicker()}${picker}${evidenceBadge(cand.mode)}</div>
+    <div class="note"><b>Why not “1 MCC = SOI 3”?</b> Among ${single.length} claims in MS-DRG ${cand.msCodes.join('/')} with exactly one MCC, the APR SOI distribution is ${distTxt(sd)}. SOI depends on the specific diagnosis, its interaction with other diagnoses, age and the APR base DRG. The <i>SOI-level dx count</i> is the number of secondary diagnoses whose standard SOI level (from the APR dx dataset) is at or above the claim’s final SOI — the APR analogue of “a single code is carrying the severity”.</div>
+    ${sa.flags.map(f => `<div class="warn">${esc(f)}</div>`).join('')}</div>
+    <div class="grid g2"><div class="card"><h3>P(APR SOI | concept) in APR ${esc(apr)} — n=${sa.n}</h3>${bars([1, 2, 3, 4].map(s => ({ l: 'SOI ' + s, v: sa.n ? (sa.dist[s] || 0) / sa.n : 0, d: `${pct(sa.n ? (sa.dist[s] || 0) / sa.n : 0)} (${sa.dist[s] || 0})`, c: ['#7fb6cc', '#4f97b4', '#2f7f9f', '#0d3f55'][s - 1] })), { max: 1 })}
+      <h3 style="margin-top:12px">Recommended restriction</h3><div><span class="pill">APR-DRG ${esc(apr)}</span><span class="pill">SOI in ${sa.chosen.soi.join(', ')}</span>${sa.chosen.driver ? `<span class="pill">${esc(drvTxt(sa.chosen.driver))}</span>` : ''}</div>
+      <div class="mute" style="margin-top:4px">Coverage of original APR-${esc(apr)} claims ${pct(sa.chosen.cov)} · false inclusion ${pct(sa.chosen.fi)} · Jaccard ${fmt(sa.chosen.jac, 2)} · objective: ${esc(S.cfg.objective)}</div></div>
+    <div class="card"><h3>Custom SOI restriction (multi-select)</h3><div class="row">${[1, 2, 3, 4].map(s => `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" ${custom.soi.includes(s) ? 'checked' : ''} onchange="A.customSoi('${jsa(csKey)}',${s},this.checked)"> SOI ${s}</label>`).join('')}<label class="f">SOI-level dx count<select onchange="A.customDrv('${jsa(csKey)}',this.value)">${['', '=1', '>=1', '=2', '>=2'].map(o => `<option value="${o}" ${custom.drv === o ? 'selected' : ''}>${o || 'no restriction'}</option>`).join('')}</select></label></div>
+      <div class="kpis" style="margin-top:10px">${kpi('Selected claims', customRes.n)}${kpi('Coverage', pct(customRes.cov))}${kpi('False inclusion', pct(customRes.fi))}${kpi('Jaccard', fmt(customRes.jac, 2))}</div>
+      ${g ? `<button onclick="A.applySoi('${jsa(g.gid)}','${jsa(csKey)}')">Apply to generated concept ${esc(g.gid)}</button>` : '<span class="mute">Generate this APR concept first to apply a custom restriction.</span>'}</div></div>
+    <div class="card"><h3>Candidate SOI restrictions evaluated (top 12 of ${sa.options.length})</h3>${tbl('sevopt', [{ k: 'soi', l: 'SOI levels', r: r => r.soi.join(', ') }, { k: 'driver', l: 'Diagnosis-combination restriction', r: r => esc(drvTxt(r.driver)) }, { k: 'n', l: 'Selected', num: 1 }, { k: 'cov', l: 'Coverage', num: 1, r: r => pct(r.cov) }, { k: 'fi', l: 'False incl.', num: 1, r: r => pct(r.fi) }, { k: 'jac', l: 'Jaccard', num: 1, r: r => fmt(r.jac, 3) }, { k: 'f1', l: 'F1', num: 1, r: r => fmt(r.f1, 3) }], sa.options.slice(0, 12), { attr: r => r === sa.chosen ? 'class="sel"' : '' })}<div class="mute">Highlighted row = recommendation. All other original conditions (LOS, diagnoses, procedures, implicit DRG conditions) are applied when evaluating each option.</div></div>
+    <div class="grid g2"><div class="card"><h3>P(SOI | MS-DRG ${cand.msCodes.join('/')}, MCC, CC) <span class="r"><button class="sm ${S.ui.gridAll ? 'sec' : ''}" onclick="A.ui('gridAll',false)">APR ${esc(apr)} only</button><button class="sm ${S.ui.gridAll ? '' : 'sec'}" onclick="A.ui('gridAll',true)">All APR-DRGs</button></span></h3>
+      <div class="tw"><table><thead><tr><th>MCC \\ CC</th>${['0', '1', '2+'].map(x => `<th>CC ${x}</th>`).join('')}</tr></thead><tbody>${['0', '1', '2', '3+'].map(mc => `<tr><th>MCC ${mc}</th>${['0', '1', '2+'].map(cc => { const d = grid.grid[mc + '|' + cc] || {}, n = sum(d); const mean = n ? Object.entries(d).reduce((a, [k, v]) => a + k * v, 0) / n : null; return `<td>${n ? `${stack(d)}<div class="mute" style="font-size:11px">n=${n} · mean SOI ${fmt(mean, 2)}${n < S.cfg.minEvidence ? ' · <b style="color:var(--warn)">low</b>' : ''}</div>` : '<span class="mute">—</span>'}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>${soiLegend}</div>
+    <div class="card"><h3>Diagnosis combinations: single-MCC code → SOI</h3>${tbl('bymcc', [{ k: 'code', l: 'The one MCC', r: r => `<span class="mono">${esc(IX.disp(r.code))}</span> <span class="mute">${esc(IX.desc(r.code).slice(0, 34))}</span>` }, { k: 'n', l: 'n', num: 1 }, { k: 'd', l: 'SOI distribution', ns: 1, r: r => stack(r.dist) }, { k: 't', l: 'P(SOI)', ns: 1, r: r => distTxt(r.dist) }, { k: 'f', l: 'Evidence', ns: 1, r: r => r.n < S.cfg.minEvidence ? '<span class="badge b-ins">Insufficient</span>' : r.n < S.cfg.minVolume ? '<span class="badge b-sme">Low volume</span>' : '<span class="badge b-hi">OK</span>' }], byMcc, { h: 360 })}</div></div>`;
+};
+
+function explain(g) {
+  const c = conceptById(g.source), gi = genInfo(g), cd = g.candidate || {};
+  const cand = candFor(g.source);
+  const m = (g.apr && cand.orig.length) ? ENG.dxMapping(cand.orig.filter(i => IX.claims[i].apr_drg === g.apr), g.apr, IX, S.cfg) : null;
+  const pres = g.condStatus.filter(s => /^(Preserved|Translated|Implicit|Partially)/.test(s.status));
+  const notT = g.condStatus.filter(s => /^(Not|Approximated|Adjusted|Manual)/.test(s.status));
+  const need = [];
+  if (g.provisional) need.push('Obtain paired claims (or regroup a claim sample with a licensed APR-DRG grouper) to replace the provisional mapping with empirical evidence.');
+  if (g.sev && g.sev.n < S.cfg.minVolume) need.push(`Increase evidence volume: only ${g.sev.n} original claims support this APR-DRG.`);
+  if (gi && gi.sib > 1) need.push('SME to decide whether sibling APR concepts are deployed separately or merged, and whether low-share candidates should be dropped.');
+  if (g.condStatus.some(s => /verify/.test(s.status))) need.push('Coding SME to verify diagnosis codes not observed in the APR dx dataset for this APR-DRG.');
+  if (g.condStatus.some(s => /^Not directly/.test(s.status))) need.push('Clinical SME to confirm how the untranslatable CC restriction should be handled.');
+  if ((g.losInfo || []).some(l => l.equivalent)) need.push('Confirm whether the LOS threshold should be preserved or re-anchored to the APR population (percentile-equivalent shown in the side-by-side view).');
+  if (gi && gi.v.fi > S.cfg.maxFalseInc) need.push(`Review false inclusions (${pct(gi.v.fi)} of translated claims were not in the original population).`);
+  need.push('Clinical/PI SME sign-off that the translated concept preserves the original audit intent before production use.');
+  return `<div class="expl"><ol>
+   <li><b>Why this APR-DRG was selected.</b> ${g.provisional ? 'Provisional: ' : ''}${cd.rank ? `Rank #${cd.rank} of ${cand.list.length} candidates. ` : ''}${cd.n != null && !g.provisional ? `${cd.n} of ${cand.origN} original claims (${pct(cd.share)}) grouped to APR ${esc(g.apr)}; P(APR|MS) ${pct(cd.pAprGivenMs)}; ` : ''}${cd.overlap != null ? `dx overlap coefficient ${fmt(cd.overlap, 2)}, description similarity ${fmt(cd.descSim, 2)}${cd.pdxAlign != null ? `, principal-dx alignment ${pct(cd.pdxAlign)}` : ''}; clinical alignment score ${fmt(cd.score, 3)}.` : 'User-defined concept; no engine evidence.'}</li>
+   <li><b>Supporting diagnosis codes.</b> ${m && m.rows.length ? m.rows.filter(r => r.type === 'Exact').slice(0, 8).map(r => `<span class="pill" title="${esc(r.desc)}">${esc(IX.disp(r.code))} ${r.P ? 'P' : ''}${r.S ? 'S' : ''} ${pct(r.pct)}</span>`).join('') + ` <span class="mute">(exact matches in APR dx dataset; Jaccard ${fmt(m.jaccard, 2)})</span>` : '<span class="mute">No claim-level diagnosis evidence.</span>'}</li>
+   <li><b>How severity was translated.</b> ${g.sev && g.sev.chosen ? `Original APR-${esc(g.apr)} claims SOI: ${distTxt(g.sev.dist)}. Selected SOI ${g.sev.chosen.soi.join(', ')}${g.sev.chosen.driver ? ` with SOI-level dx count ${g.sev.chosen.driver.op} ${g.sev.chosen.driver.value}` : ''} — best ${S.cfg.objective} across evaluated restrictions (coverage of the original claims that grouped to APR ${esc(g.apr)}: ${pct(g.sev.chosen.cov)}; false inclusion ${pct(g.sev.chosen.fi)}). Not a fixed MCC→SOI rule.` : g.provisional ? 'Not translated — no paired-claim evidence.' : 'See condition list (manual or merged concept).'}</li>
+   <li><b>Original conditions preserved.</b> ${pres.length ? pres.map(s => `<span class="pill">${esc(s.original)} → ${esc(s.translated)}</span>`).join('') : '—'}</li>
+   <li><b>Conditions not directly translatable / approximated.</b> ${notT.length ? notT.map(s => `<div>• <b>${esc(s.original)}</b> → ${esc(s.translated)} <span class="mute">(${esc(s.status)}: ${esc(s.note)})</span></div>`).join('') : 'None.'}</li>
+   <li><b>Confidence classification.</b> ${gi ? badge(gi.cls) + ' ' + gi.reasons.map(esc).join(' ') : ''}</li>
+   <li><b>Additional evidence / SME review needed.</b><ul style="margin:4px 0 0 16px;padding:0">${need.map(n => `<li>${esc(n)}</li>`).join('')}</ul></li></ol></div>`;
+}
+function sideBySide(g) {
+  const c = conceptById(g.source), P = parsed(c), gi = genInfo(g);
+  const cat = f => ({ ms_drg: 'Population (DRG)', apr_drg: 'Population (DRG)', mcc_count: 'Severity', cc_count: 'Severity', soi: 'Severity', soi_drivers: 'Severity', rom: 'Severity', mcc_code: 'Diagnoses', pdx: 'Diagnoses', sdx: 'Diagnoses', px: 'Procedures', los: 'Length of stay', age: 'Other attributes', discharge_status: 'Other attributes' }[f] || 'Other');
+  const cats = ['Population (DRG)', 'Severity', 'Diagnoses', 'Procedures', 'Length of stay', 'Other attributes'];
+  const col = groups => cats.map(k => { const items = [...new Set(groups.flat().filter(x => cat(x.field) === k).map(ENG.condText))]; return items.length ? items.map(t => `<div>${esc(t)}</div>`).join('') : '<span class="mute">—</span>'; });
+  const o = col(P.groups), t = col(g.groups);
+  const losAlt = (g.losInfo || []).filter(l => l.equivalent).map(l => `<div class="mute">LOS ${esc(l.original.op)} ${esc(Array.isArray(l.original.value) ? l.original.value.join('–') : l.original.value)} sits at the ${pct(Array.isArray(l.equivalent.q) ? l.equivalent.q[1] : l.equivalent.q)} pass-rate in the MS-DRG population; APR equivalent ≈ ${esc(Array.isArray(l.equivalent.value) ? l.equivalent.value.join('–') : l.original.op + ' ' + l.equivalent.value)}.</div>`).join('');
+  return `<div class="side"><div class="h">Original MS-DRG concept ${esc(c.concept_id)}</div><div class="h">Translated APR-DRG concept ${esc(g.gid)}</div>${cats.map((k, i) => `<div><div class="mute" style="font-size:11px">${k}</div>${o[i]}</div><div><div class="mute" style="font-size:11px">${k}</div>${t[i]}${k === 'Length of stay' ? losAlt : ''}</div>`).join('')}
+    <div><div class="mute" style="font-size:11px">Logic</div>${P.groups.length} group(s)</div><div><div class="mute" style="font-size:11px">Logic</div>${g.groups.length} group(s)</div>
+    <div><div class="mute" style="font-size:11px">Claim population</div>${gi ? gi.v.nO : '—'} claims</div><div><div class="mute" style="font-size:11px">Claim population</div>${gi ? `${gi.v.nT} claims · coverage ${pct(gi.v.cov)} · false incl. ${pct(gi.v.fi)}` : '—'}</div></div>
+    <h4 style="margin:12px 0 6px">Condition-level translation log</h4>${tbl('cs_' + g.gid, [{ k: 'original', l: 'Original' }, { k: 'translated', l: 'Translated' }, { k: 'status', l: 'Status', r: r => `<span class="badge ${/^(Preserved|Translated)$/.test(r.status) ? 'b-hi' : /^Not/.test(r.status) ? 'b-not' : 'b-sme'}">${esc(r.status)}</span>` }, { k: 'note', l: 'Rationale' }], g.condStatus)}`;
+}
+
+V.gen = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const P = parsed(c), gens = S.gens.filter(g => g.source === c.concept_id), reason = S.genReason[c.concept_id];
+  const ss = srcSummary(c.concept_id);
+  const cards = gens.map(g => {
+    const gi = genInfo(g), op = S.ui.open[g.gid] || {}, editing = S.ui.genEdit && S.ui.genEdit.gid === g.gid, inactive = ['Rejected', 'Superseded'].includes(g.status);
+    return `<div class="gen ${g.provisional ? 'prov' : ''}" style="${inactive ? 'opacity:.6' : ''}"><div class="hd"><input type="checkbox" ${S.ui.mergeSel.includes(g.gid) ? 'checked' : ''} ${inactive ? 'disabled' : ''} onchange="A.mergeToggle('${jsa(g.gid)}',this.checked)" title="Select for merge"><b>${esc(g.gid)}</b><span>APR-DRG ${esc(g.apr || '—')} ${esc(g.apr && !g.apr.includes('/') ? aprDesc(g.apr) : '')}</span>${gi ? badge(gi.cls) : ''}${stBadge(g.status)}<span class="badge b-st">v${esc(g.version)}</span>${g.provisional ? '<span class="badge b-prov">Provisional</span>' : ''}${g.sev && g.sev.flags && g.sev.flags.length ? '<span class="badge b-sme">' + esc(g.sev.flags[0].split(':')[0]) + '</span>' : ''}
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="sm sec" onclick="A.openSec('${jsa(g.gid)}','exp')">${op.exp ? 'Hide explanation' : 'Explain'}</button><button class="sm sec" onclick="A.openSec('${jsa(g.gid)}','side')">${op.side ? 'Hide side-by-side' : 'Side-by-side'}</button><button class="sm sec" onclick="A.editGen('${jsa(g.gid)}')" ${inactive ? 'disabled' : ''}>Edit</button><button class="sm bad" onclick="A.removeGen('${jsa(g.gid)}')">Remove</button></span></div>
+      <div style="margin-top:8px">${condPills(g.groups)}</div>
+      ${gi ? `<div class="mute" style="margin-top:6px">Translated population ${gi.v.nT} · coverage of original ${pct(gi.v.cov)} · false inclusion ${pct(gi.v.fi)} · intent preservation ${pct(gi.v.ips)}</div>` : ''}
+      ${editing ? `<div class="card" style="margin-top:10px;background:#fbfcfd"><h3>Edit conditions</h3>${condEditor('gen', S.ui.genEdit.groups)}<div class="row" style="margin-top:8px"><label class="f" style="flex:1">Change note<input id="genNote" value="${esc(S.ui.genEdit.note || '')}" onchange="S.ui.genEdit.note=this.value" placeholder="Why was this changed?"></label><button class="ok" onclick="A.saveGen()">Save (new version)</button><button class="gh" onclick="A.cancelGen()">Cancel</button></div></div>` : ''}
+      ${op.exp ? `<div style="margin-top:10px">${explain(g)}</div>` : ''}${op.side ? `<div style="margin-top:10px">${sideBySide(g)}</div>` : ''}</div>`;
+  }).join('');
+  return head('Concept Generator', 'Generates one or more APR-DRG concepts per MS-DRG concept. Original conditions are preserved where they are grouper-independent; DRG and severity conditions are translated from evidence; anything that cannot be translated is flagged.') +
+    `<div class="card"><div class="row">${conceptPicker()}<button onclick="A.genOne('${jsa(c.concept_id)}')">${gens.length ? 'Regenerate' : 'Generate'} for this concept</button><button class="sec" onclick="A.runAll()">Generate all concepts</button><button class="sec" onclick="A.addBlank()">+ Add APR concept manually</button><button class="sec" onclick="A.merge()" ${S.ui.mergeSel.length >= 2 ? '' : 'disabled'}>Merge selected (${S.ui.mergeSel.length})</button><button class="sec" onclick="A.exportGens()">Download generated concepts</button></div>
+     <div class="note"><b>Original:</b> ${esc(c.concept_description)}<br><b>Parsed:</b> ${condPills(P.groups) || '—'}<br><b>Intent:</b> ${esc(P.intent)} · <b>Source classification:</b> ${badge(ss.cls)} · original population ${ss.sv.nO} claims${ss.act.length ? ` · combined coverage ${pct(ss.sv.cov)}, false inclusion ${pct(ss.sv.fi)}, IPS ${pct(ss.sv.ips)}` : ''}</div>
+     ${!gens.length ? `<div class="${reason ? 'err' : 'warn'}">${esc(reason || 'No APR concepts generated yet.')} ${reason ? '<b>Classification: ' + esc(ss.cls) + '.</b>' : ''}</div>` : ''}</div>` + cards;
+};
+
+V.val = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const gens = ENG.activeGens(S.gens, c.concept_id);
+  const scope = gens.some(g => g.gid === S.sel.valScope) ? S.sel.valScope : 'union';
+  const r = scope === 'union' ? srcVal(c.concept_id) : genInfo(gens.find(g => g.gid === scope)).v;
+  const w = S.cfg.w;
+  const all = S.ds.concepts.map(x => { const s = srcSummary(x.concept_id); return { id: x.concept_id, ms: x.ms_drg, k: s.act.length, nO: s.sv.nO, nT: s.sv.nT, cov: s.sv.cov, fi: s.sv.fi, jac: s.sv.jac, ips: s.sv.ips, cls: s.cls }; });
+  const D = r.dists;
+  return head('Translation Validation', 'Compares the claim population selected by the original MS-DRG concept with the population selected by the translated APR-DRG concept(s). This measures translation quality only — not Payment Integrity performance.') +
+    `<div class="card"><div class="row">${conceptPicker()}<label class="f">Translated concept scope<select onchange="A.setValScope(this.value)"><option value="union">All active APR concepts (union, ${gens.length})</option>${gens.map(g => `<option value="${esc(g.gid)}" ${scope === g.gid ? 'selected' : ''}>${esc(g.gid)}</option>`).join('')}</select></label></div>
+     ${!gens.length ? '<div class="warn">No active translated concepts for this source — metrics are zero.</div>' : ''}
+     ${!IX.hasClaims ? '<div class="err">No paired claims loaded: population-level validation is not possible.</div>' : ''}</div>
+    <div class="kpis">${kpi('Original population', fmt(r.nO))}${kpi('Translated population', fmt(r.nT))}${kpi('Original coverage', pct(r.cov), 'recall of original claims')}${kpi('False inclusion rate', pct(r.fi), 'translated claims not in original')}${kpi('False exclusion rate', pct(r.fe), 'original claims missed')}${kpi('Concept overlap', fmt(r.jac, 2), 'Jaccard of populations')}${kpi('Clinical alignment', pct(r.clinical))}${kpi('Diagnosis alignment', pct(r.dx))}${kpi('Severity alignment', pct(r.sev))}${kpi('Claim attribute alignment', pct(r.attr))}${kpi('Intent Preservation Score', `<span style="color:${r.ips >= S.cfg.hiIPS ? 'var(--acc)' : r.ips >= S.cfg.partialIPS ? '#2a5aa0' : 'var(--warn)'}">${pct(r.ips)}</span>`, 'weighted')}</div>
+    <div class="grid g2"><div class="card"><h3>Intent Preservation Score weights</h3><div class="mono" style="font-size:12px;margin-bottom:8px">IPS = (Clinical×${w.clinical} + Diagnosis×${w.dx} + Severity×${w.sev} + ClaimAttr×${w.attr}) / Σw</div>
+      <div class="row">${[['clinical', 'Clinical'], ['dx', 'Diagnosis'], ['sev', 'Severity'], ['attr', 'Claim attribute']].map(([k, l]) => `<label class="f">${l}<input type="number" step="0.05" min="0" value="${w[k]}" onchange="A.setW('${k}',+this.value)"></label>`).join('')}</div>
+      <div class="mute" style="margin-top:8px;font-size:12px">Clinical = mean(population Jaccard, principal-dx distribution similarity). Diagnosis = all-diagnosis distribution similarity. Severity = mean(MCC-count, SOI distribution similarity). Claim attribute = mean(LOS, age, discharge-status distribution similarity). Distribution similarity = Σ min(pᵢ, qᵢ).</div></div>
+    <div class="card"><h3>Population overlap</h3>${r.nO + r.nT ? `<div class="stack" style="height:22px"><span style="width:${100 * r.onlyO / (r.nO + r.onlyT)}%;background:var(--orig)" title="Original only"></span><span style="width:${100 * r.inter / (r.nO + r.onlyT)}%;background:#6a8f5a" title="Both"></span><span style="width:${100 * r.onlyT / (r.nO + r.onlyT)}%;background:var(--tran)" title="Translated only"></span></div>` : ''}<div class="legend"><span><i style="background:var(--orig)"></i>Original only (false exclusions): ${r.onlyO}</span><span><i style="background:#6a8f5a"></i>Both: ${r.inter}</span><span><i style="background:var(--tran)"></i>Translated only (false inclusions): ${r.onlyT}</span></div>
+      <h3 style="margin-top:10px">SOI distribution</h3>${cmpBars(D.soi[0], D.soi[1], ['1', '2', '3', '4'], k => 'SOI ' + k)}</div></div>
+    <div class="grid g3"><div class="card"><h3>MCC count</h3>${cmpBars(D.mcc[0], D.mcc[1], ['0', '1', '2', '3+'], k => 'MCC ' + k)}</div><div class="card"><h3>LOS (days)</h3>${cmpBars(D.los[0], D.los[1], ['1-2', '3-4', '5-6', '7-9', '10-14', '15+'])}</div>
+    <div class="card"><h3>Top principal diagnoses</h3>${cmpBars(D.pdx[0], D.pdx[1], Object.entries(Object.assign({}, D.pdx[1], D.pdx[0])).sort((a, b) => ((D.pdx[0][b[0]] || 0) + (D.pdx[1][b[0]] || 0)) - ((D.pdx[0][a[0]] || 0) + (D.pdx[1][a[0]] || 0))).slice(0, 8).map(x => x[0]), k => IX.disp(k))}</div></div>
+    <div class="card"><h3>All concepts — validation summary <span class="r"><button class="sec" onclick="A.exportVal()">Download validation report</button></span></h3>${tbl('valall', [{ k: 'id', l: 'Concept' }, { k: 'ms', l: 'MS-DRG' }, { k: 'k', l: '# APR concepts', num: 1 }, { k: 'nO', l: 'Original', num: 1 }, { k: 'nT', l: 'Translated', num: 1 }, { k: 'cov', l: 'Coverage', num: 1, r: x => pct(x.cov) }, { k: 'fi', l: 'False incl.', num: 1, r: x => pct(x.fi) }, { k: 'jac', l: 'Overlap', num: 1, r: x => fmt(x.jac, 2) }, { k: 'ips', l: 'IPS', num: 1, r: x => pct(x.ips) }, { k: 'cls', l: 'Classification', r: x => badge(x.cls) }], all, { attr: x => x.id === c.concept_id ? 'class="sel"' : '' })}</div>`;
+};
+
+V.perf = function () {
+  validSel(); const c = conceptById(S.sel.concept); if (!c) return '';
+  const h = head('Payment Integrity Performance', 'Compares audit outcomes of claims selected by the original and the translated concept. Metrics are computed only from outcome labels in the paired claim dataset — nothing is manufactured.');
+  if (!IX.hasOutcomes) return h + `<div class="card">${conceptPicker()}<div class="warn" style="margin-top:10px">The paired claim dataset has no finding / overpayment columns, so performance metrics cannot be computed. Upload claims with <span class="mono">audited, finding, overpayment_amount, sme_confirmed, appeal_overturned</span>.</div></div>`;
+  const sv = srcVal(c.concept_id), O = sv.O, T = sv.T, So = new Set(O), St = new Set(T);
+  const pO = ENG.perf(O, IX), pT = ENG.perf(T, IX), pB = ENG.perf(O.filter(i => St.has(i)), IX), pTo = ENG.perf(T.filter(i => !So.has(i)), IX), pOo = ENG.perf(O.filter(i => !St.has(i)), IX);
+  const rows = [['Claim volume', 'volume', fmt], ['Audited claims', 'audited', fmt], ['Total findings', 'findings', fmt], ['Hit rate', 'hit', v => pct(v, 1)], ['Overpayment amount', 'overpay', money], ['Dollar per find', 'dpf', money], ['SME conversion', 'sme', v => pct(v)], ['Appeal overturn %', 'overturn', v => pct(v)], ['Financial opportunity (unaudited × hit rate × $/find)', 'opportunity', money]];
+  const delta = (k, f) => { const a = pO[k], b = pT[k]; if (a == null || b == null) return 'n/a'; const d = b - a; return (d > 0 ? '+' : '') + (f === money ? money(d) : f === fmt ? fmt(d) : pct(d, 1)); };
+  const all = S.ds.concepts.map(x => { const s = srcVal(x.concept_id), a = ENG.perf(s.O, IX), b = ENG.perf(s.T, IX); return { id: x.concept_id, nO: a.volume, nT: b.volume, hO: a.hit, hT: b.hit, oO: a.overpay, oT: b.overpay, fO: a.findings, fT: b.findings }; });
+  return h + `<div class="card"><div class="row">${conceptPicker()}</div><div class="warn">Finding labels come from audits performed under MS-DRG concepts. Applying them to the APR-selected population is a retrospective proxy, not a forecast. Claims selected only by the translated concept were audited only where the label exists.</div></div>
+    <div class="card"><h3>Original vs translated</h3>${tbl('perf', [{ k: 'l', l: 'Metric', ns: 1 }, { k: 'o', l: 'Original MS-DRG concept', num: 1, ns: 1 }, { k: 't', l: 'Translated APR-DRG concept(s)', num: 1, ns: 1 }, { k: 'd', l: 'Δ', num: 1, ns: 1 }], rows.map(([l, k, f]) => ({ l, o: f(pO[k]), t: sv.nGen ? f(pT[k]) : 'n/a', d: sv.nGen ? delta(k, f) : 'n/a' })).map(r => Object.assign(r, {})), {})}</div>
+    <div class="grid g3">${[['In both populations', pB], ['Original only (lost by translation)', pOo], ['Translated only (new inclusions)', pTo]].map(([l, p]) => `<div class="card"><h3>${l}</h3><div class="kpis">${kpi('Claims', fmt(p.volume))}${kpi('Findings', fmt(p.findings))}${kpi('Hit rate', pct(p.hit, 1))}${kpi('Overpayment', money(p.overpay))}</div></div>`).join('')}</div>
+    <div class="card"><h3>All concepts <span class="r"><button class="sec" onclick="A.exportPerf()">Download PI comparison</button></span></h3>${tbl('perfall', [{ k: 'id', l: 'Concept' }, { k: 'nO', l: 'Orig. volume', num: 1 }, { k: 'nT', l: 'Trans. volume', num: 1 }, { k: 'fO', l: 'Orig. findings', num: 1 }, { k: 'fT', l: 'Trans. findings', num: 1 }, { k: 'hO', l: 'Orig. hit rate', num: 1, r: x => pct(x.hO, 1) }, { k: 'hT', l: 'Trans. hit rate', num: 1, r: x => pct(x.hT, 1) }, { k: 'oO', l: 'Orig. overpayment', num: 1, r: x => money(x.oO) }, { k: 'oT', l: 'Trans. overpayment', num: 1, r: x => money(x.oT) }], all, { attr: x => x.id === c.concept_id ? 'class="sel"' : '' })}</div>`;
+};
+
+V.gov = function () {
+  const fs = S.ui.govSt || '', fc = S.ui.govCls || '', q = (S.ui.govQ || '').toLowerCase();
+  const rows = S.gens.map(g => { const gi = genInfo(g); return { g, gid: g.gid, src: g.source, apr: g.apr, cls: gi ? gi.cls : '—', st: g.status, ver: g.version, created: g.created, ips: gi ? gi.v.ips : null, gv: g.grouper.apr }; })
+    .filter(r => (!fs || r.st === fs) && (!fc || r.cls === fc) && (!q || (r.gid + ' ' + r.src + ' ' + r.apr).toLowerCase().includes(q)));
+  const stC = ENG.countBy(S.gens, g => g.status);
+  const sel = S.gens.find(g => g.gid === S.ui.govSel);
+  const noGen = S.ds.concepts.filter(c => !ENG.activeGens(S.gens, c.concept_id).length).map(c => ({ id: c.concept_id, desc: c.concept_description, cls: srcSummary(c.concept_id).cls, why: srcSummary(c.concept_id).reasons.join(' ') }));
+  const statuses = ['Draft', 'Pending SME review', 'Modified', 'Approved', 'Rejected', 'Superseded'];
+  let detail = '<div class="mute">Select a concept in the table to see its rationale, evidence and change history.</div>';
+  if (sel) {
+    const gi = genInfo(sel), c = conceptById(sel.source);
+    detail = `<div class="row"><b>${esc(sel.gid)}</b>${gi ? badge(gi.cls) : ''}${stBadge(sel.status)}<span class="badge b-st">v${esc(sel.version)}</span></div>
+      <table style="margin-top:8px"><tbody><tr><th>Source MS-DRG concept</th><td>${esc(c ? c.concept_id + ' — ' + c.concept_description : sel.source)}</td></tr><tr><th>Generated APR-DRG concept</th><td>${condPills(sel.groups)}</td></tr><tr><th>Translation date</th><td>${esc(sel.created)}</td></tr><tr><th>Grouper versions</th><td>${esc(sel.grouper.ms)} → ${esc(sel.grouper.apr)}</td></tr><tr><th>Evidence</th><td>${sel.provisional ? 'Provisional (no paired claims)' : `${sel.sev ? sel.sev.n : 0} original claims in APR ${esc(sel.apr)}`}${gi ? ` · coverage ${pct(gi.v.cov)} · false inclusion ${pct(gi.v.fi)} · IPS ${pct(gi.v.ips)}` : ''}</td></tr><tr><th>Rationale</th><td>${gi ? gi.reasons.map(esc).join('<br>') : ''}</td></tr></tbody></table>
+      <div class="row" style="margin-top:10px"><label class="f" style="flex:1">Reviewer note<input id="govNote" placeholder="Reason / comment (recorded in history)"></label>
+      <button class="sec" onclick="A.gov('${jsa(sel.gid)}','Pending SME review')" ${['Draft', 'Modified'].includes(sel.status) ? '' : 'disabled'}>Submit for SME review</button>
+      <button class="ok" onclick="A.gov('${jsa(sel.gid)}','Approved')" ${['Pending SME review', 'Modified', 'Draft'].includes(sel.status) ? '' : 'disabled'}>Approve</button>
+      <button class="bad" onclick="A.gov('${jsa(sel.gid)}','Rejected')" ${['Rejected', 'Superseded'].includes(sel.status) ? 'disabled' : ''}>Reject</button>
+      <button class="sec" onclick="A.modifyFromGov('${jsa(sel.gid)}')" ${['Superseded'].includes(sel.status) ? 'disabled' : ''}>Modify</button></div>
+      <h3 style="margin-top:12px">Change history</h3>${tbl('hist', [{ k: 'ts', l: 'Timestamp' }, { k: 'action', l: 'Action' }, { k: 'by', l: 'By' }, { k: 'note', l: 'Note' }], sel.history.slice().reverse(), { h: 260 })}`;
+  }
+  return head('Governance & Approvals', 'Classification, versioning, SME approval workflow and full change history for every generated APR-DRG concept.') +
+    `<div class="kpis">${statuses.map(s => kpi(s, stC[s] || 0)).join('')}</div>
+    <div class="card"><div class="row"><label class="f">Search<input id="govQ" value="${esc(S.ui.govQ || '')}" oninput="A.ui('govQ',this.value)" style="width:180px"></label><label class="f">Status<select onchange="A.ui('govSt',this.value)"><option value="">All</option>${statuses.map(s => `<option ${s === fs ? 'selected' : ''}>${s}</option>`).join('')}</select></label><label class="f">Classification<select onchange="A.ui('govCls',this.value)"><option value="">All</option>${ENG.CLASSES.map(s => `<option ${s === fc ? 'selected' : ''}>${s}</option>`).join('')}</select></label><span style="flex:1"></span><button class="sec" onclick="A.exportGov()">Download governance log</button><button class="sec" onclick="A.exportGens()">Download generated concepts</button></div>
+    <div style="margin-top:10px">${tbl('gov', [{ k: 'gid', l: 'Concept', r: r => `<a href="javascript:void 0" onclick="A.govSel('${jsa(r.gid)}')">${esc(r.gid)}</a>` }, { k: 'src', l: 'Source' }, { k: 'apr', l: 'APR-DRG' }, { k: 'cls', l: 'Classification', r: r => badge(r.cls) }, { k: 'st', l: 'Status', r: r => stBadge(r.st) }, { k: 'ver', l: 'Version' }, { k: 'ips', l: 'IPS', num: 1, r: r => pct(r.ips), sv: r => r.ips == null ? -1 : r.ips }, { k: 'created', l: 'Translation date', r: r => esc(String(r.created).slice(0, 16).replace('T', ' ')) }, { k: 'gv', l: 'APR grouper' }], rows, { h: 360, attr: r => r.gid === S.ui.govSel ? 'class="sel"' : '' })}</div></div>
+    <div class="card"><h3>Detail</h3>${detail}</div>
+    <div class="card"><h3>Source concepts without an active APR concept</h3>${tbl('nogen', [{ k: 'id', l: 'Concept' }, { k: 'desc', l: 'Description' }, { k: 'cls', l: 'Classification', r: r => badge(r.cls) }, { k: 'why', l: 'Reason' }], noGen)}
+    ${S.removed.length ? `<h3 style="margin-top:12px">Removed concepts log</h3>${tbl('rem', [{ k: 'ts', l: 'Timestamp' }, { k: 'gid', l: 'Concept' }, { k: 'by', l: 'By' }, { k: 'note', l: 'Note' }], S.removed.slice().reverse())}` : ''}</div>`;
+};
+
+/* =====================================================================
+   ACTIONS
+   ===================================================================== */
+const A = {};
+let renderTimer = null;
+function render() {
+  const ae = document.activeElement, fid = ae && ae.id, pos = ae && ae.selectionStart;
+  validSel();
+  $('nav').innerHTML = VIEWS.map(([k, l], i) => `<a class="${S.view === k ? 'on' : ''}" onclick="A.nav('${k}')"><span class="n">${i + 1}</span>${esc(l)}</a>`).join('');
+  try { $('main').innerHTML = V[S.view](); } catch (e) { console.error(e); $('main').innerHTML = `<div class="err">Render error: ${esc(e.message)}</div>`; }
+  const anySample = Object.values(S.src).some(s => String(s).startsWith('sample'));
+  $('synBadge').textContent = anySample ? 'SYNTHETIC DATA' : 'UPLOADED DATA';
+  $('synBadge').style.background = anySample ? '#f2c94c' : '#9fd3c0';
+  $('synLine').textContent = anySample ? 'Fictional demo data — DRG relationships, MCC/CC flags and SOI levels are not official CMS or 3M/Solventum grouper logic.' : 'All datasets uploaded by user. Results are still analytical estimates, not grouper output.';
+  const el = fid ? $(fid) : null;
+  if (el && el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'search')) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) { } }
+}
+A.nav = v => { S.view = v; save(); render(); window.scrollTo(0, 0); };
+A.setConcept = id => { S.sel.concept = id; S.sel.apr = null; S.ui.mergeSel = []; save(); render(); };
+A.setApr = a => { S.sel.apr = a; render(); };
+A.open = (id, v) => { S.sel.concept = id; S.sel.apr = null; A.nav(v); };
+A.sort = (k, c) => { const s = S.ui.sort[k]; S.ui.sort[k] = { k: c, d: s && s.k === c ? -s.d : 1 }; render(); };
+A.ui = (k, v) => { S.ui[k] = v; if (k.endsWith('Q')) { clearTimeout(renderTimer); renderTimer = setTimeout(render, 180); } else render(); };
+A.setCfg = (p, v, rerender) => { const ks = p.split('.'); let o = S.cfg; ks.slice(0, -1).forEach(k => o = o[k]); o[ks[ks.length - 1]] = v; touch(); if (rerender || true) render(); };
+A.resetCfg = () => { S.cfg = clone(DEFAULT_CFG); touch(); render(); toast('Configuration restored to defaults.'); };
+A.setW = (k, v) => { S.cfg.w[k] = Math.max(0, v || 0); touch(); render(); };
+A.runAll = () => { runAll(); render(); toast('Translated ' + S.ds.concepts.length + ' concepts.'); };
+A.genOne = (id, go) => {
+  const ex = S.gens.filter(g => g.source === id && ['Approved', 'Pending SME review', 'Modified'].includes(g.status));
+  if (ex.length && !confirm(`${ex.length} concept(s) for ${id} are approved, pending review or manually modified. Regenerating replaces them (history is retained). Continue?`)) return;
+  generateFor(id); touch(); if (go) { S.sel.concept = id; S.view = 'gen'; } render(); toast('Generated APR concepts for ' + id + '.');
+};
+A.resetSample = () => { if (!confirm('Reset all datasets, configuration, manual edits and generated concepts to the synthetic sample?')) return; try { localStorage.removeItem(STORE_KEY); } catch (e) { } init(true); toast('Reset to synthetic sample data.'); };
+
+/* data management */
+A.template = key => { const sc = ENG.SCHEMA[key], cols = sc.req.concat(sc.opt); download(key + '_template.csv', ENG.toCSV(sample()[key].slice(0, 3), cols)); };
+A.exportDs = key => { const rows = S.ds[key]; download(key + '_current.csv', ENG.toCSV(rows)); };
+A.togglePreview = key => { S.ui.preview[key] = !S.ui.preview[key]; render(); };
+A.upload = (key, input) => {
+  const f = input.files && input.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const p = ENG.parseCSV(String(rd.result)); const vr = ENG.validateSchema(key, p.rows, p.headers);
+    if (!vr.ok) { S.ui.dsMsg[key] = { ok: false, html: `Upload of <b>${esc(f.name)}</b> rejected. ${vr.missingReq.length ? 'Missing required columns: ' + esc(vr.missingReq.join(', ')) + '.' : ''} ${!p.rows.length ? 'No data rows.' : ''}` }; render(); return; }
+    S.ds[key] = p.rows; S.src[key] = 'uploaded: ' + f.name;
+    if (key === 'concepts') { const ids = new Set(p.rows.map(r => r.concept_id)); S.gens = S.gens.filter(g => ids.has(g.source)); Object.keys(S.manual).forEach(k => { if (!ids.has(k)) delete S.manual[k]; }); S.ui.draft = null; }
+    rebuild();
+    S.ui.dsMsg[key] = { ok: true, html: `Loaded <b>${p.rows.length}</b> rows from ${esc(f.name)}.${vr.reqBlank.length ? ' Blank required values: ' + esc(vr.reqBlank.join(', ')) + '.' : ''}${vr.unknown.length ? ' Extra columns kept: ' + esc(vr.unknown.join(', ')) + '.' : ''} <button class="sm" onclick="A.runAll()">Re-run translations</button>` };
+    render();
+  };
+  rd.readAsText(f);
+};
+
+/* repository */
+A.newC = (k, v) => { S.ui.newC = S.ui.newC || {}; S.ui.newC[k] = v; };
+A.addConcept = () => {
+  const f = Object.assign({}, S.ui.newC || {});
+  const next = 'C' + String(Math.max(0, ...S.ds.concepts.map(c => parseInt(String(c.concept_id).replace(/\D/g, '')) || 0)) + 1).padStart(3, '0');
+  f.concept_id = (f.concept_id || next).trim();
+  if (!f.concept_description) { toast('A description is required.'); return; }
+  if (S.ds.concepts.some(c => c.concept_id === f.concept_id)) { toast('Concept ID already exists.'); return; }
+  const row = {}; ENG.SCHEMA.concepts.req.concat(ENG.SCHEMA.concepts.opt).forEach(k => row[k] = f[k] || '');
+  if (!row.ms_drg) { const m = row.concept_description.match(/\b\d{3}\b/g); row.ms_drg = m ? m.join(', ') : ''; }
+  S.ds.concepts.push(row); S.ui.newC = null; S.src.concepts = String(S.src.concepts || 'sample').startsWith('sample') ? 'sample + user edits' : S.src.concepts;
+  generateFor(row.concept_id); touch(); render(); toast('Added and translated ' + row.concept_id + '.');
+};
+A.delConcept = id => { if (!confirm('Delete concept ' + id + ' and its generated APR concepts?')) return; S.ds.concepts = S.ds.concepts.filter(c => c.concept_id !== id); S.gens.filter(g => g.source === id).forEach(g => S.removed.push({ ts: new Date().toISOString(), gid: g.gid, by: S.cfg.user, note: 'Source concept deleted' })); S.gens = S.gens.filter(g => g.source !== id); delete S.manual[id]; touch(); render(); };
+
+/* decomposition */
+A.editConcept = (k, v) => { const c = conceptById(S.sel.concept); c[k] = v; S.ui.draft = null; touch(); render(); };
+A.reparse = () => { S.ui.draft = null; touch(); render(); toast('Description re-parsed.'); };
+A.saveDraft = () => { const d = S.ui.draft; S.manual[d.id] = clone(d.groups); touch(); render(); toast('Manual override saved. Regenerate to apply it to APR concepts.'); };
+A.revertParse = () => { delete S.manual[S.sel.concept]; S.ui.draft = null; touch(); render(); };
+function ceGroups(t) { return t === 'draft' ? S.ui.draft.groups : S.ui.genEdit.groups; }
+A.ce = (t, gi, ci, key, val) => {
+  const c = ceGroups(t)[gi][ci];
+  if (key === 'field') { const old = ENG.valStr(c); c.field = val; const ops = ENG.OPS[ENG.FIELDS[val].t]; if (!ops.includes(c.op)) c.op = ops[0]; c.value = ENG.strToVal(c.field, c.op, old); }
+  else if (key === 'op') { const old = ENG.valStr(c); c.op = val; c.value = ENG.strToVal(c.field, c.op, old); }
+  else c.value = ENG.strToVal(c.field, c.op, val);
+  render();
+};
+A.ceAdd = (t, gi) => { ceGroups(t)[gi].push({ field: 'los', op: '<', value: 10 }); render(); };
+A.ceDel = (t, gi, ci) => { ceGroups(t)[gi].splice(ci, 1); render(); };
+A.ceDelGroup = (t, gi) => { ceGroups(t).splice(gi, 1); render(); };
+A.ceAddGroup = t => { const g = ceGroups(t); g.push(g.length ? clone(g[0].filter(c => ['ms_drg', 'apr_drg'].includes(c.field))) : []); render(); };
+
+/* generator */
+A.openSec = (gid, k) => { S.ui.open[gid] = S.ui.open[gid] || {}; S.ui.open[gid][k] = !S.ui.open[gid][k]; render(); };
+A.editGen = gid => { const g = S.gens.find(x => x.gid === gid); S.ui.genEdit = { gid, groups: clone(g.groups), note: '' }; render(); };
+A.cancelGen = () => { S.ui.genEdit = null; render(); };
+A.saveGen = () => {
+  const e = S.ui.genEdit, g = S.gens.find(x => x.gid === e.gid); const n = $('genNote'); if (n) e.note = n.value;
+  const before = ENG.groupsText(g.groups), after = ENG.groupsText(e.groups);
+  if (before === after) { S.ui.genEdit = null; render(); return; }
+  g.groups = clone(e.groups); g.version = ENG.bumpVersion(g.version); g.status = 'Modified'; g.manual = true;
+  g.condStatus = g.condStatus.concat([{ original: 'Manual edit v' + g.version, translated: after, status: 'Manual', note: e.note || 'Conditions edited by ' + S.cfg.user + '.' }]);
+  g.history.push({ ts: new Date().toISOString(), action: 'Modified', by: S.cfg.user, note: `${e.note ? e.note + ' — ' : ''}Before: ${before} | After: ${after}` });
+  S.ui.genEdit = null; touch(); render(); toast('Saved as v' + g.version + '.');
+};
+A.removeGen = gid => { if (!confirm('Remove ' + gid + '?')) return; const g = S.gens.find(x => x.gid === gid); S.removed.push({ ts: new Date().toISOString(), gid, by: S.cfg.user, note: 'Removed (status was ' + g.status + ', v' + g.version + ')' }); S.gens = S.gens.filter(x => x.gid !== gid); S.ui.mergeSel = S.ui.mergeSel.filter(x => x !== gid); touch(); render(); };
+A.mergeToggle = (gid, on) => { S.ui.mergeSel = S.ui.mergeSel.filter(x => x !== gid); if (on) S.ui.mergeSel.push(gid); render(); };
+A.merge = () => {
+  const gs = S.ui.mergeSel.map(id => S.gens.find(g => g.gid === id)).filter(Boolean);
+  if (gs.length < 2) return; const src = gs[0].source; if (gs.some(g => g.source !== src)) { toast('Only concepts from the same source can be merged.'); return; }
+  let k = 1; while (S.gens.some(g => g.gid === `G-${src}-M${k}`)) k++;
+  const now = new Date().toISOString(), apr = [...new Set(gs.map(g => g.apr))].join('/');
+  const m = { gid: `G-${src}-M${k}`, source: src, apr, groups: gs.flatMap(g => clone(g.groups)), provisional: gs.some(g => g.provisional), provisionalReason: gs.map(g => g.provisionalReason).find(Boolean) || '', candidate: null,
+    sev: { n: gs.reduce((a, g) => a + (g.sev ? g.sev.n : 0), 0), dist: {}, flags: [], chosen: null, options: [] }, condStatus: [].concat(...gs.map(g => g.condStatus.map(s => Object.assign({}, s, { note: '[' + g.gid + '] ' + s.note })))), losInfo: [].concat(...gs.map(g => g.losInfo || [])),
+    version: '1.0', status: 'Draft', created: now, grouper: gs[0].grouper, manual: true, history: [{ ts: now, action: 'Merged', by: S.cfg.user, note: 'Merged from ' + gs.map(g => g.gid + ' v' + g.version).join(', ') }] };
+  gs.forEach(g => { g.status = 'Superseded'; g.history.push({ ts: now, action: 'Superseded', by: S.cfg.user, note: 'Merged into ' + m.gid }); });
+  S.gens.push(m); S.ui.mergeSel = []; touch(); render(); toast('Merged into ' + m.gid + '.');
+};
+A.addBlank = () => {
+  const src = S.sel.concept; let k = 1; while (S.gens.some(g => g.gid === `G-${src}-U${k}`)) k++;
+  const cand = candFor(src), apr = cand.list.length ? cand.list[0].apr : '';
+  const now = new Date().toISOString();
+  const g = { gid: `G-${src}-U${k}`, source: src, apr, groups: [[{ field: 'apr_drg', op: 'in', value: apr ? [apr] : [] }]], provisional: false, provisionalReason: '', candidate: null, sev: null,
+    condStatus: [{ original: '—', translated: 'User-defined concept', status: 'Manual', note: 'Created manually by ' + S.cfg.user + '; no engine evidence.' }], losInfo: [], version: '1.0', status: 'Draft', created: now,
+    grouper: { ms: '', apr: apr ? (IX.apr.get(apr) || {}).grouper_version || '' : '' }, manual: true, history: [{ ts: now, action: 'Created manually', by: S.cfg.user, note: '' }] };
+  S.gens.push(g); S.ui.genEdit = { gid: g.gid, groups: clone(g.groups), note: '' }; touch(); render();
+};
+A.customSoi = (key, s, on) => { S.ui.customSoi = S.ui.customSoi || {}; const c = S.ui.customSoi[key] || (() => { const sa = currentSev(); return { soi: sa.chosen.soi.slice(), drv: sa.chosen.driver ? sa.chosen.driver.op + sa.chosen.driver.value : '' }; })(); c.soi = c.soi.filter(x => x !== s); if (on) c.soi.push(s); c.soi.sort(); S.ui.customSoi[key] = c; render(); };
+A.customDrv = (key, v) => { S.ui.customSoi = S.ui.customSoi || {}; const c = S.ui.customSoi[key] || (() => { const sa = currentSev(); return { soi: sa.chosen.soi.slice(), drv: '' }; })(); c.drv = v; S.ui.customSoi[key] = c; render(); };
+function currentSev() { const c = conceptById(S.sel.concept), base = ENG.translateBase(c, S.sel.apr, IX, S.cfg, S.manual); return ENG.severityAnalysis(c, S.sel.apr, base, IX, S.cfg, S.manual); }
+A.applySoi = (gid, key) => {
+  const g = S.gens.find(x => x.gid === gid), cs = (S.ui.customSoi || {})[key]; if (!g) return;
+  const sa = currentSev(); const c = cs || { soi: sa.chosen.soi, drv: sa.chosen.driver ? sa.chosen.driver.op + sa.chosen.driver.value : '' };
+  if (!c.soi.length) { toast('Select at least one SOI level.'); return; }
+  const before = ENG.groupsText(g.groups);
+  g.groups = g.groups.map(gr => { const ng = gr.filter(k => !['soi', 'soi_drivers'].includes(k.field)); ng.push({ field: 'soi', op: 'in', value: c.soi.slice() }); const m = (c.drv || '').match(/(>=|=)(\d+)/); if (m) ng.push({ field: 'soi_drivers', op: m[1], value: +m[2] }); return ng; });
+  g.version = ENG.bumpVersion(g.version); g.status = 'Modified';
+  g.history.push({ ts: new Date().toISOString(), action: 'Severity modified', by: S.cfg.user, note: `SOI set to ${c.soi.join(',')}${c.drv ? ', SOI-level dx count ' + c.drv : ''}. Before: ${before}` });
+  touch(); render(); toast('Applied to ' + gid + ' (v' + g.version + ').');
+};
+
+/* validation / perf / governance */
+A.setValScope = v => { S.sel.valScope = v; render(); };
+A.govSel = gid => { S.ui.govSel = gid; render(); };
+A.gov = (gid, st) => { const g = S.gens.find(x => x.gid === gid), n = ($('govNote') || {}).value || ''; g.history.push({ ts: new Date().toISOString(), action: st === 'Pending SME review' ? 'Submitted for SME review' : st, by: S.cfg.user, note: n }); g.status = st; touch(); render(); toast(gid + ': ' + st + '.'); };
+A.modifyFromGov = gid => { const g = S.gens.find(x => x.gid === gid); S.sel.concept = g.source; S.view = 'gen'; S.ui.genEdit = { gid, groups: clone(g.groups), note: '' }; save(); render(); };
+
+/* exports */
+A.exportGens = () => {
+  const rows = S.gens.map(g => { const gi = genInfo(g), c = conceptById(g.source) || {}; return { generated_concept_id: g.gid, source_concept_id: g.source, source_description: c.concept_description, apr_drg: g.apr, apr_description: g.apr && !g.apr.includes('/') ? aprDesc(g.apr) : '', conditions: ENG.groupsText(g.groups), conditions_json: JSON.stringify(g.groups), evidence: g.provisional ? 'provisional' : 'empirical', evidence_claims: g.sev ? g.sev.n : '', classification: gi ? gi.cls : '', status: g.status, version: g.version, translation_date: g.created, grouper_ms: g.grouper.ms, grouper_apr: g.grouper.apr, coverage: gi ? gi.v.cov.toFixed(4) : '', false_inclusion: gi ? gi.v.fi.toFixed(4) : '', intent_preservation_score: gi ? gi.v.ips.toFixed(4) : '', untranslated_conditions: g.condStatus.filter(s => /^Not/.test(s.status)).map(s => s.original).join('; '), data_label: 'SYNTHETIC/PoC — not grouper output' }; });
+  download('generated_apr_concepts.csv', ENG.toCSV(rows));
+};
+A.exportVal = () => {
+  const rows = S.ds.concepts.map(c => { const s = srcSummary(c.concept_id), v = s.sv; return { concept_id: c.concept_id, ms_drg: c.ms_drg, description: c.concept_description, intent: s.P.intent, apr_concepts: s.act.map(g => g.gid).join('; '), original_claims: v.nO, translated_claims: v.nT, overlap_claims: v.inter, coverage: v.cov.toFixed(4), false_inclusion_rate: v.fi.toFixed(4), false_exclusion_rate: v.fe.toFixed(4), concept_overlap_jaccard: v.jac.toFixed(4), clinical_alignment: (v.clinical || 0).toFixed(4), diagnosis_alignment: (v.dx || 0).toFixed(4), severity_alignment: (v.sev || 0).toFixed(4), claim_attribute_alignment: (v.attr || 0).toFixed(4), intent_preservation_score: (v.ips || 0).toFixed(4), weights: JSON.stringify(S.cfg.w), classification: s.cls, governance_status: s.st }; });
+  download('translation_validation_report.csv', ENG.toCSV(rows));
+};
+A.exportPerf = () => {
+  if (!IX.hasOutcomes) { toast('No outcome data available.'); return; }
+  const rows = S.ds.concepts.map(c => { const v = srcVal(c.concept_id), a = ENG.perf(v.O, IX), b = ENG.perf(v.T, IX); const r = { concept_id: c.concept_id }; ['volume', 'audited', 'findings', 'hit', 'overpay', 'dpf', 'sme', 'overturn', 'opportunity'].forEach(k => { r['original_' + k] = a[k] == null ? '' : a[k]; r['translated_' + k] = b[k] == null ? '' : b[k]; }); return r; });
+  download('pi_performance_comparison.csv', ENG.toCSV(rows));
+};
+A.exportGov = () => {
+  const rows = []; S.gens.forEach(g => g.history.forEach(h => rows.push({ generated_concept_id: g.gid, source_concept_id: g.source, current_status: g.status, current_version: g.version, timestamp: h.ts, action: h.action, by: h.by, note: h.note })));
+  S.removed.forEach(r => rows.push({ generated_concept_id: r.gid, source_concept_id: '', current_status: 'Removed', current_version: '', timestamp: r.ts, action: 'Removed', by: r.by, note: r.note }));
+  download('governance_log.csv', ENG.toCSV(rows));
+};
+
+/* ---------------- init ---------------- */
+function init(force) {
+  if (force || !load()) {
+    S.ds = clone(sample()); S.src = { ms: 'sample', apr: 'sample', concepts: 'sample', aprdx: 'sample', claims: 'sample' };
+    S.cfg = clone(DEFAULT_CFG); S.manual = {}; S.gens = []; S.genReason = {}; S.removed = []; S.view = 'overview'; S.sel = { concept: 'C001', apr: null, valScope: 'union' };
+    S.ui = { sort: {}, open: {}, mergeSel: [], dsMsg: {}, preview: {} };
+    IX = ENG.prepare(S.ds); MEMO = new Map(); runAll();
+  } else { IX = ENG.prepare(S.ds); MEMO = new Map(); }
+  render();
+}
+init();
+
+</script>
+</body>
+</html>
